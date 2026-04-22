@@ -11,6 +11,10 @@ class DailyReportBase(BaseModel):
 class DailyReportResponse(BaseModel):
     id: int
     emp_id: int
+    emp_no: Optional[str] = None
+    name: Optional[str] = None
+    team: Optional[str] = None
+    dept: Optional[str] = None
     schedule_date: date
     shift_type_id: Optional[int]
     schedule_type: Optional[str]

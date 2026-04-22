@@ -45,6 +45,10 @@ def get_daily_reports(
             result_items.append(DailyReportResponse(
                 id=item.id,
                 emp_id=item.emp_id,
+                emp_no=emp.emp_no,
+                name=emp.name,
+                team=emp.team,
+                dept=emp.dept,
                 schedule_date=item.schedule_date,
                 shift_type_id=item.shift_type_id,
                 schedule_type=item.schedule_type,
@@ -232,6 +236,52 @@ def get_month_summary(
             "timeoff_days": len([r for r in daily_reports if r.status == "公休"])
         })
 
+    return result
+
+
+@router.get("/team-ranking", response_model=list)
+def get_team_ranking(
+    year_month: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    year, month = map(int, year_month.split('-'))
+
+    teams = db.query(Employee.team, func.count(Employee.id)).filter(
+        Employee.status == "在职",
+        Employee.team.isnot(None)
+    ).group_by(Employee.team).all()
+
+    result = []
+    for team_name, emp_count in teams:
+        daily_reports = db.query(DailyReport).join(Employee).filter(
+            Employee.team == team_name,
+            extract('year', DailyReport.schedule_date) == year,
+            extract('month', DailyReport.schedule_date) == month
+        ).all()
+
+        total_scheduled = sum(float(r.scheduled_hours or 0) for r in daily_reports)
+        total_actual = sum(float(r.actual_hours or 0) for r in daily_reports)
+        total_overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)
+        
+        late_count = len([r for r in daily_reports if r.status == "迟到"])
+        absent_count = len([r for r in daily_reports if r.status == "缺勤"])
+        
+        work_days = emp_count * month
+        avg_attendance = (work_days - absent_count) / work_days if work_days > 0 else 0
+
+        result.append({
+            "team": team_name,
+            "emp_count": emp_count,
+            "total_scheduled": round(total_scheduled, 1),
+            "total_actual": round(total_actual, 1),
+            "total_overtime": round(total_overtime, 1),
+            "avg_attendance": round(avg_attendance, 3),
+            "late_count": late_count,
+            "absent_count": absent_count
+        })
+
+    result.sort(key=lambda x: x['total_actual'], reverse=True)
     return result
 
 
