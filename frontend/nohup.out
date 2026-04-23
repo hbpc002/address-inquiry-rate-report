@@ -403,3 +403,7 @@ AggregateError [ECONNREFUSED]:
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: http://192.168.68.170:5173/
+10:03:24 AM [vite] hmr update /src/views/Employees.vue
+10:04:01 AM [vite] hmr update /src/views/Employees.vue
+10:04:12 AM [vite] hmr update /src/views/Employees.vue
+10:04:25 AM [vite] hmr update /src/views/Employees.vue

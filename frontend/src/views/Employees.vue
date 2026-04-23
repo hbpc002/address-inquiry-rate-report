@@ -4,7 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>员工管理</span>
-          <el-button type="primary" @click="handleAdd">新增员工</el-button>
+          <el-space>
+            <el-button type="success" @click="importVisible = true">导入员工</el-button>
+            <el-button type="primary" @click="handleAdd">新增员工</el-button>
+          </el-space>
         </div>
       </template>
 
@@ -88,6 +91,28 @@
         <el-button type="primary" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="importVisible" title="导入员工" width="500px">
+      <el-upload
+        ref="upload"
+        :auto-upload="false"
+        :limit="1"
+        accept=".xlsx"
+        :on-change="handleFileChange"
+      >
+        <el-button type="primary">选择员工Excel文件</el-button>
+        <template #tip>
+          <div class="el-upload__tip">
+            请上传员工信息Excel文件，需包含以下列：工号、姓名<br/>
+            可选列：班组、部门、岗位、状态
+          </div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="uploading" @click="handleImport">导入</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -98,12 +123,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const tableData = ref([])
 const dialogVisible = ref(false)
+const importVisible = ref(false)
+const uploading = ref(false)
 const isEdit = ref(false)
 const searchForm = reactive({ search: '', team: '', dept: '' })
 const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员' })
 const teams = ref([])
 const departments = ref([])
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
+const importFile = ref(null)
 
 async function loadData() {
   try {
@@ -176,6 +204,32 @@ function resetForm() {
   searchForm.team = ''
   searchForm.dept = ''
   loadData()
+}
+
+function handleFileChange(file) {
+  importFile.value = file.raw
+}
+
+async function handleImport() {
+  if (!importFile.value) {
+    ElMessage.warning('请选择文件')
+    return
+  }
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', importFile.value)
+    const res = await api.post('/employees/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    ElMessage.success(`导入完成！新增${res.data.created}人，更新${res.data.updated}人`)
+    importVisible.value = false
+    loadData()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '导入失败')
+  } finally {
+    uploading.value = false
+  }
 }
 
 onMounted(() => {
