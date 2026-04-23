@@ -9,6 +9,8 @@ import csv
 from app.models.database import get_db
 from app.models.employee import Employee
 from app.models.daily_report import DailyReport
+from app.models.schedule import Schedule
+from app.models.shift_type import ShiftType
 from app.schemas.daily_report import DailyReportResponse, DailyReportListResponse
 from app.core.security import get_current_user
 
@@ -213,7 +215,23 @@ def get_month_summary(
             )
         ).all()
 
+        schedules = db.query(Schedule).filter(
+            and_(
+                Schedule.emp_id == emp.id,
+                extract('year', Schedule.schedule_date) == year,
+                extract('month', Schedule.schedule_date) == month
+            )
+        ).all()
+        
+        scheduled_from_schedule = 0
+        for s in schedules:
+            shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+            if shift:
+                scheduled_from_schedule += float(shift.work_hours or 0)
+
         scheduled = sum(float(r.scheduled_hours or 0) for r in daily_reports)
+        if scheduled == 0 and scheduled_from_schedule > 0:
+            scheduled = scheduled_from_schedule
         actual = sum(float(r.actual_hours or 0) for r in daily_reports)
         overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)
         owed = max(0, scheduled - actual - overtime)
@@ -254,20 +272,37 @@ def get_team_ranking(
 
     result = []
     for team_name, emp_count in teams:
-        daily_reports = db.query(DailyReport).join(Employee).filter(
-            Employee.team == team_name,
+        team_employees = db.query(Employee).filter(Employee.team == team_name).all()
+        emp_ids = [e.id for e in team_employees]
+        
+        daily_reports = db.query(DailyReport).filter(
+            DailyReport.emp_id.in_(emp_ids),
             extract('year', DailyReport.schedule_date) == year,
             extract('month', DailyReport.schedule_date) == month
         ).all()
-
+        
+        schedules = db.query(Schedule).filter(
+            Schedule.emp_id.in_(emp_ids),
+            extract('year', Schedule.schedule_date) == year,
+            extract('month', Schedule.schedule_date) == month
+        ).all()
+        
+        total_scheduled_from_schedule = 0
+        for s in schedules:
+            shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+            if shift:
+                total_scheduled_from_schedule += float(shift.work_hours or 0)
+        
         total_scheduled = sum(float(r.scheduled_hours or 0) for r in daily_reports)
+        if total_scheduled == 0 and total_scheduled_from_schedule > 0:
+            total_scheduled = total_scheduled_from_schedule
         total_actual = sum(float(r.actual_hours or 0) for r in daily_reports)
         total_overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)
         
         late_count = len([r for r in daily_reports if r.status == "迟到"])
         absent_count = len([r for r in daily_reports if r.status == "缺勤"])
         
-        work_days = emp_count * month
+        work_days = len(schedules)
         avg_attendance = (work_days - absent_count) / work_days if work_days > 0 else 0
 
         result.append({

@@ -20,7 +20,7 @@ from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api/schedules", tags=["排班管理"])
 
-def parse_shift_from_header(header_value: str) -> Optional[dict]:
+def parse_shift_from_header(header_value) -> Optional[dict]:
     if pd.isna(header_value) or not header_value:
         return None
     header = str(header_value).strip()
@@ -32,8 +32,9 @@ def parse_shift_from_header(header_value: str) -> Optional[dict]:
     shift_name = name_match.group(1).strip()
     if not shift_name:
         return None
+    header_normalized = header.replace('：', ':').replace('（', '(').replace('）', ')')
     time_pattern = r'(\d{1,2}:\d{2})[-—](\d{1,2}:\d{2})'
-    times = re.findall(time_pattern, header)
+    times = re.findall(time_pattern, header_normalized)
     if not times:
         return None
     hours_match = re.search(r'（?(\d+\.?\d*)H', header)
@@ -75,6 +76,20 @@ def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
     db.flush()
     return shift
 
+def normalize_team(team: str) -> str:
+    team_mapping = {
+        '一班1组': '一班1组', '一班一组': '一班1组', '一班Ⅰ组': '一班1组', '一班①组': '一班1组',
+        '一班2组': '一班2组', '一班二组': '一班2组', '一班Ⅱ组': '一班2组', '一班②组': '一班2组',
+        '一班3组': '一班3组', '一班三组': '一班3组', '一班Ⅲ组': '一班3组', '一班③组': '一班3组',
+        '二班1组': '二班1组', '二班一组': '二班1组', '二班Ⅰ组': '二班1组', '二班①组': '二班1组',
+        '二班2组': '二班2组', '二班二组': '二班2组', '二班Ⅱ组': '二班2组', '二班②组': '二班2组',
+        '二班3组': '二班3组', '二班三组': '二班3组', '二班Ⅲ组': '二班3组', '二班③组': '二班3组',
+    }
+    for key, value in team_mapping.items():
+        if key in team:
+            return value
+    return team
+
 def extract_team_role(col_a_value: str) -> tuple:
     col_a = str(col_a_value).strip() if col_a_value else ""
     team = None
@@ -84,6 +99,7 @@ def extract_team_role(col_a_value: str) -> tuple:
             break
     if not team:
         team = col_a
+    team = normalize_team(team)
     if "组长" in col_a:
         role = "组长"
     elif "师傅" in col_a:
@@ -91,6 +107,20 @@ def extract_team_role(col_a_value: str) -> tuple:
     else:
         role = "组员"
     return team, role
+
+def is_valid_employee_name(name: str) -> bool:
+    name = str(name).strip()
+    if not name:
+        return False
+    if name in ['日期', '序号', '班组', '姓名', '工号']:
+        return False
+    if re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}$', name):
+        return False
+    if re.match(r'^\d+$', name):
+        return False
+    if name.startswith('TEMP_') and re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}$', name.replace('TEMP_', '')):
+        return False
+    return True
 
 @router.get("", response_model=ScheduleListResponse)
 def get_schedules(
@@ -100,18 +130,33 @@ def get_schedules(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    query = db.query(Schedule)
+    query = db.query(Schedule).join(Employee)
     if schedule_date:
         query = query.filter(Schedule.schedule_date == schedule_date)
     if emp_id:
         query = query.filter(Schedule.emp_id == emp_id)
     if team:
-        query = query.join(Employee).filter(Employee.team == team)
-    items = query.order_by(Schedule.schedule_date, Schedule.emp_id).all()
-    return ScheduleListResponse(
-        items=[ScheduleResponse.model_validate(s) for s in items],
-        total=len(items)
-    )
+        query = query.filter(Employee.team == team)
+    items = query.order_by(Schedule.schedule_date, Employee.name).all()
+    
+    result_items = []
+    for s in items:
+        emp = db.query(Employee).filter(Employee.id == s.emp_id).first()
+        shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first() if s.shift_type_id else None
+        result_items.append({
+            "id": s.id,
+            "emp_id": s.emp_id,
+            "schedule_date": s.schedule_date,
+            "shift_type_id": s.shift_type_id,
+            "schedule_type": s.schedule_type,
+            "notes": s.notes,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "name": emp.name if emp else None,
+            "emp_no": emp.emp_no if emp else None,
+            "team": emp.team if emp else None,
+            "shift_name": shift.shift_name if shift else None
+        })
+    return ScheduleListResponse(items=result_items, total=len(result_items))
 
 @router.post("", response_model=dict)
 def create_schedule(
@@ -256,7 +301,12 @@ def import_schedule_excel(
             if pd.isna(col):
                 continue
             col_str = str(col)
-            if col_str.startswith('20') or '休息' in col_str:
+            try:
+                if int(col_str):
+                    continue
+            except (ValueError, TypeError):
+                pass
+            if '休息' in col_str:
                 continue
             shift_info = parse_shift_from_header(col_str)
             if shift_info and shift_info["name"]:
@@ -271,6 +321,8 @@ def import_schedule_excel(
                 continue
             col_a = str(col_a).strip()
             col_b = str(col_b).strip()
+            if not is_valid_employee_name(col_b):
+                continue
             team, role = extract_team_role(col_a)
 
             matched_emp_id = None
@@ -300,14 +352,17 @@ def import_schedule_excel(
             for col in cols:
                 if pd.isna(col):
                     continue
-                col_str = str(col)
-                if not col_str.startswith('20'):
+                try:
+                    col_int = int(col)
+                except (ValueError, TypeError):
+                    continue
+                if col_int < 20200000:
                     continue
                 try:
-                    schedule_date = datetime.strptime(col_str, '%Y%m%d').date()
+                    schedule_date = datetime.strptime(str(col_int), '%Y%m%d').date()
                 except:
                     continue
-                shift_name = row.get(col)
+                shift_name = row.get(col_int)
                 if pd.isna(shift_name):
                     continue
                 shift_name = str(shift_name).strip()

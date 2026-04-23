@@ -8,7 +8,7 @@ export default defineConfig({
     allowedHosts: ['5173.app.cloudstudio.work', '80.app.cloudstudio.work'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:5000',
         changeOrigin: true
       }
     }

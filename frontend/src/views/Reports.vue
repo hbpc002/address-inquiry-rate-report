@@ -14,7 +14,7 @@
         <el-tab-pane label="日报表" name="daily">
           <el-form inline>
             <el-form-item label="日期">
-              <el-date-picker v-model="searchDaily.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
+              <el-date-picker v-model="searchDaily.schedule_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
             </el-form-item>
             <el-form-item label="部门">
               <el-select v-model="searchDaily.dept" placeholder="全部部门" clearable filterable>
@@ -341,7 +341,7 @@ const dailyStats = reactive({ total: 0, attend: 0, normal: 0, late: 0, absent: 0
 const monthlyStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
 const rangeStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
 
-const searchDaily = reactive({ date: '', dept: '', team: '', status: '' })
+const searchDaily = reactive({ schedule_date: '', dept: '', team: '', status: '' })
 const searchMonthly = reactive({ year_month: '', dept: '', team: '' })
 const searchRange = reactive({ start_date: '', end_date: '', dept: '', team: '', status: '' })
 const searchRank = reactive({ year_month: '' })
@@ -444,7 +444,7 @@ async function loadTeams() {
 
 async function loadDepts() {
   try {
-    const res = await api.get('/api/departments')
+    const res = await api.get('/employees/departments')
     depts.value = res.data || []
   } catch (e) {
     console.error(e)
@@ -452,7 +452,7 @@ async function loadDepts() {
 }
 
 function resetDaily() {
-  searchDaily.date = new Date().toISOString().slice(0, 10)
+  searchDaily.schedule_date = new Date().toISOString().slice(0, 10)
   searchDaily.dept = ''
   searchDaily.team = ''
   searchDaily.status = ''
@@ -505,7 +505,7 @@ function confirmExport() {
 
 onMounted(() => {
   const today = new Date().toISOString().slice(0, 10)
-  searchDaily.date = today
+  searchDaily.schedule_date = today
   searchMonthly.year_month = new Date().toISOString().slice(0, 7)
   searchRank.year_month = new Date().toISOString().slice(0, 7)
   

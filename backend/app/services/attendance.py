@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, extract
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
 from app.models.employee import Employee
@@ -18,9 +18,11 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         )
     ).first()
 
+    employee = db.query(Employee).filter(Employee.id == emp_id).first()
+    
     checkins = db.query(Checkin).filter(
         and_(
-            Checkin.emp_no == db.query(Employee).filter(Employee.id == emp_id).first().emp_no,
+            Checkin.name == employee.name,
             func.date(Checkin.checkin_time) == schedule_date
         )
     ).all()
@@ -77,9 +79,9 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
 
     actual_hours = 0
     if first_checkin and last_checkout:
-        actual_hours = (last_checkout.checkout_time - first_checkin.checkin_time).seconds / 3600
+        actual_hours = float((last_checkout.checkout_time - first_checkin.checkin_time).seconds / 3600)
 
-    overtime_hours = max(0, actual_hours - scheduled_hours) if scheduled_hours else 0
+    overtime_hours = max(0, actual_hours - float(scheduled_hours)) if scheduled_hours else 0
 
     if late_minutes > 0:
         status = "迟到"
@@ -128,13 +130,22 @@ def save_daily_report(db: Session, emp_id: int, schedule_date: date):
         existing.calculated_at = datetime.now()
     else:
         shift = db.query(ShiftType).filter(ShiftType.id == result.get("shift_type_id")).first() if result.get("shift_type_id") else None
+        scheduled_start = None
+        scheduled_end = None
+        if shift:
+            if shift.start_time:
+                parts = shift.start_time.split(':')
+                scheduled_start = time(int(parts[0]), int(parts[1]))
+            if shift.end_time:
+                parts = shift.end_time.split(':')
+                scheduled_end = time(int(parts[0]), int(parts[1]))
         report = DailyReport(
             emp_id=emp_id,
             schedule_date=schedule_date,
             shift_type_id=result.get("shift_type_id"),
             schedule_type=result.get("schedule_type"),
-            scheduled_start=shift.start_time if shift else None,
-            scheduled_end=shift.end_time if shift else None,
+            scheduled_start=scheduled_start,
+            scheduled_end=scheduled_end,
             scheduled_hours=result["scheduled_hours"],
             actual_checkin=result.get("actual_checkin"),
             actual_checkout=result.get("actual_checkout"),

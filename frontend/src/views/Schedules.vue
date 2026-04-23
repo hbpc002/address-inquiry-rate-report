@@ -28,8 +28,10 @@
 
       <el-table :data="tableData" border stripe>
         <el-table-column prop="schedule_date" label="日期" width="120" />
-        <el-table-column prop="emp_id" label="员工ID" width="80" />
-        <el-table-column prop="shift_type_id" label="班次ID" width="80" />
+        <el-table-column prop="name" label="姓名" width="100" />
+        <el-table-column prop="emp_no" label="工号" width="120" />
+        <el-table-column prop="team" label="班组" width="100" />
+        <el-table-column prop="shift_name" label="班次" width="120" />
         <el-table-column prop="schedule_type" label="排班类型" width="100">
           <template #default="{ row }">
             <el-tag>{{ row.schedule_type }}</el-tag>

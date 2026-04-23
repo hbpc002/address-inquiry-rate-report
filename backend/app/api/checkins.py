@@ -10,8 +10,11 @@ import uuid
 from app.models.database import get_db
 from app.models.checkin import Checkin
 from app.models.employee import Employee
+from app.models.schedule import Schedule
+from app.models.daily_report import DailyReport
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
 from app.core.security import get_current_user
+from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/checkins", tags=["签到记录"])
 
@@ -101,6 +104,16 @@ def import_checkins(
                 except:
                     pass
 
+            existing = db.query(Checkin).filter(
+                Checkin.name == name,
+                Checkin.checkin_time == checkin_time
+            ).first()
+            if existing:
+                if checkout_time and not existing.checkout_time:
+                    existing.checkout_time = checkout_time
+                skipped += 1
+                continue
+
             checkin = Checkin(
                 emp_no=emp_no,
                 name=name,
@@ -116,6 +129,23 @@ def import_checkins(
             continue
 
     db.commit()
+
+    checkin_names = db.query(Checkin.name).filter(Checkin.import_batch == batch).distinct().all()
+    checkin_names = [n[0] for n in checkin_names]
+    
+    emp_with_schedule = db.query(Employee).join(Schedule).filter(
+        Employee.name.in_(checkin_names)
+    ).all()
+
+    for emp in emp_with_schedule:
+        schedules = db.query(Schedule).filter(Schedule.emp_id == emp.id).all()
+        for schedule in schedules:
+            checkins_exist = db.query(Checkin).filter(
+                Checkin.name == emp.name,
+                func.date(Checkin.checkin_time) == schedule.schedule_date
+            ).first()
+            if checkins_exist:
+                save_daily_report(db, emp.id, schedule.schedule_date)
 
     return ImportCheckinResponse(count=count, batch=batch)
 
