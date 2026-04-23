@@ -223,15 +223,15 @@ def get_month_summary(
             )
         ).all()
         
-        scheduled_from_schedule = 0
+        scheduled = 0
+        shift_cache = {}
         for s in schedules:
-            shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+            if s.shift_type_id not in shift_cache:
+                shift_cache[s.shift_type_id] = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+            shift = shift_cache[s.shift_type_id]
             if shift:
-                scheduled_from_schedule += float(shift.work_hours or 0)
-
-        scheduled = sum(float(r.scheduled_hours or 0) for r in daily_reports)
-        if scheduled == 0 and scheduled_from_schedule > 0:
-            scheduled = scheduled_from_schedule
+                scheduled += float(shift.work_hours or 0)
+        
         actual = sum(float(r.actual_hours or 0) for r in daily_reports)
         overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)
         owed = max(0, scheduled - actual - overtime)
@@ -287,15 +287,15 @@ def get_team_ranking(
             extract('month', Schedule.schedule_date) == month
         ).all()
         
-        total_scheduled_from_schedule = 0
+        shift_cache = {}
+        total_scheduled = 0
         for s in schedules:
-            shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+            if s.shift_type_id not in shift_cache:
+                shift_cache[s.shift_type_id] = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+            shift = shift_cache[s.shift_type_id]
             if shift:
-                total_scheduled_from_schedule += float(shift.work_hours or 0)
+                total_scheduled += float(shift.work_hours or 0)
         
-        total_scheduled = sum(float(r.scheduled_hours or 0) for r in daily_reports)
-        if total_scheduled == 0 and total_scheduled_from_schedule > 0:
-            total_scheduled = total_scheduled_from_schedule
         total_actual = sum(float(r.actual_hours or 0) for r in daily_reports)
         total_overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)
         

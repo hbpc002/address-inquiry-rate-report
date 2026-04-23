@@ -20,40 +20,33 @@ from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api/schedules", tags=["排班管理"])
 
-def parse_shift_from_header(header_value) -> Optional[dict]:
-    if pd.isna(header_value) or not header_value:
+def parse_shift_from_cell(cell_value: str) -> Optional[dict]:
+    if pd.isna(cell_value) or not cell_value:
         return None
-    header = str(header_value).strip()
-    if '休息' in header:
+    cell = str(cell_value).strip()
+    if '休息' in cell:
         return None
-    name_match = re.match(r'^（?([^（\d]+)', header)
+    name_match = re.match(r'^（?([^（\d]+)', cell)
     if not name_match:
         return None
     shift_name = name_match.group(1).strip()
     if not shift_name:
         return None
-    header_normalized = header.replace('：', ':').replace('（', '(').replace('）', ')')
+    cell_normalized = cell.replace('：', ':').replace('（', '(').replace('）', ')')
     time_pattern = r'(\d{1,2}:\d{2})[-—](\d{1,2}:\d{2})'
-    times = re.findall(time_pattern, header_normalized)
+    times = re.findall(time_pattern, cell_normalized)
     if not times:
         return None
-    hours_match = re.search(r'（?(\d+\.?\d*)H', header)
+    hours_match = re.search(r'（?(\d+\.?\d*)H', cell)
     work_hours = float(hours_match.group(1)) if hours_match else 8.0
     is_night = '晚' in shift_name
-    shift_info = {
+    return {
         "name": shift_name,
         "work_hours": work_hours,
-        "is_night": is_night
+        "is_night": is_night,
+        "start_time": times[0][0],
+        "end_time": times[0][1]
     }
-    shift_info["start_time"] = times[0][0]
-    shift_info["end_time"] = times[0][1]
-    if len(times) >= 2:
-        shift_info["start_time2"] = times[1][0]
-        shift_info["end_time2"] = times[1][1]
-    if len(times) >= 3:
-        shift_info["start_time3"] = times[2][0]
-        shift_info["end_time3"] = times[2][1]
-    return shift_info
 
 def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
     shift = db.query(ShiftType).filter(ShiftType.shift_name == shift_info["name"]).first()
@@ -121,6 +114,41 @@ def is_valid_employee_name(name: str) -> bool:
     if name.startswith('TEMP_') and re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}$', name.replace('TEMP_', '')):
         return False
     return True
+
+def parse_shift_from_header(header_value) -> Optional[dict]:
+    if pd.isna(header_value) or not header_value:
+        return None
+    header = str(header_value).strip()
+    if '休息' in header:
+        return None
+    name_match = re.match(r'^（?([^（\d]+)', header)
+    if not name_match:
+        return None
+    shift_name = name_match.group(1).strip()
+    if not shift_name:
+        return None
+    header_normalized = header.replace('：', ':').replace('（', '(').replace('）', ')')
+    time_pattern = r'(\d{1,2}:\d{2})[-—](\d{1,2}:\d{2})'
+    times = re.findall(time_pattern, header_normalized)
+    if not times:
+        return None
+    hours_match = re.search(r'（?(\d+\.?\d*)H', header)
+    work_hours = float(hours_match.group(1)) if hours_match else 8.0
+    is_night = '晚' in shift_name
+    shift_info = {
+        "name": shift_name,
+        "work_hours": work_hours,
+        "is_night": is_night
+    }
+    shift_info["start_time"] = times[0][0]
+    shift_info["end_time"] = times[0][1]
+    if len(times) >= 2:
+        shift_info["start_time2"] = times[1][0]
+        shift_info["end_time2"] = times[1][1]
+    if len(times) >= 3:
+        shift_info["start_time3"] = times[2][0]
+        shift_info["end_time3"] = times[2][1]
+    return shift_info
 
 @router.get("", response_model=ScheduleListResponse)
 def get_schedules(
@@ -373,6 +401,8 @@ def import_schedule_excel(
                     if name in shift_name or shift_name in name:
                         shift_info = info
                         break
+                if not shift_info:
+                    shift_info = parse_shift_from_cell(shift_name)
                 if not shift_info:
                     continue
                 shift = get_or_create_shift(db, shift_info)

@@ -78,8 +78,9 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
                            datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
 
     actual_hours = 0
-    if first_checkin and last_checkout:
-        actual_hours = float((last_checkout.checkout_time - first_checkin.checkin_time).seconds / 3600)
+    for c in checkins:
+        if c.checkout_time:
+            actual_hours += (c.checkout_time - c.checkin_time).seconds / 3600
 
     overtime_hours = max(0, actual_hours - float(scheduled_hours)) if scheduled_hours else 0
 

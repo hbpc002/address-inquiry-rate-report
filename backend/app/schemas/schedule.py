@@ -23,11 +23,11 @@ class ScheduleUpdate(BaseModel):
 class ScheduleResponse(ScheduleBase):
     id: int
     schedule_type: str
-    original_shift_id: Optional[int]
-    notes: Optional[str]
-    created_by: Optional[int]
-    created_at: datetime
-    updated_at: datetime
+    original_shift_id: Optional[int] = None
+    notes: Optional[str] = None
+    created_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

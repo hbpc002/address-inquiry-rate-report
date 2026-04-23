@@ -1,0 +1,405 @@
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 159 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.67.225:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 851 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.234:5173/
+4:35:11 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:35:11 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:35:11 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:39:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:39:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:39:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:43:07 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:43:07 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:43:07 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:49:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:49:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:49:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:53:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:53:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:53:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:57:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:57:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+4:57:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:01:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:01:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:01:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:06:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:06:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:06:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:10:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:10:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:10:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:15:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:15:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:15:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:19:07 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:19:07 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:19:07 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:23:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:23:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:23:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:27:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:27:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:27:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:32:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:32:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:32:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:36:07 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:36:07 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:36:07 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:41:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:41:36 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:41:36 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:45:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:45:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:45:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:50:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:50:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:50:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:54:07 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:54:07 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:54:07 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:58:36 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:58:36 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+5:58:36 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:02:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:02:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:02:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:06:36 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:06:36 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:06:36 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:10:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:10:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:10:08 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:16:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:16:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:16:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:20:07 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:20:07 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:20:07 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:24:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:24:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:24:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:28:07 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:28:08 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:28:08 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:32:35 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:32:35 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+6:32:35 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 867 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.66.177:5173/
+7:58:06 AM [vite] http proxy error: /api/checkins?page=1&limit=20
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:01:27 AM [vite] http proxy error: /api/checkins?page=1&limit=20
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:01:45 AM [vite] http proxy error: /api/auth/login
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:09:10 AM [vite] http proxy error: /api/shift-types
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:28:17 AM [vite] hmr update /src/views/Schedules.vue
+8:36:14 AM [vite] http proxy error: /api/employees/departments
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:36:14 AM [vite] http proxy error: /api/employees/teams
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:36:14 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+8:36:15 AM [vite] http proxy error: /api/reports/daily?schedule_date=2026-04-23&dept=&team=&status=&date=2026-04-23
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 558 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.68.170:5173/
