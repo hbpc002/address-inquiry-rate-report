@@ -65,6 +65,20 @@
             </el-col>
           </el-row>
 
+          <el-row :gutter="20" v-if="dailyData.length" style="margin-bottom: 20px">
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <Echart :options="dailyChartOptions" :height="280" @click="handleDailyChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <div style="margin-bottom: 10px; text-align: center; font-size: 14px; color: #606266">部门出勤对比</div>
+                <Echart :options="monthlyDeptOptions" :height="250" @click="handleDeptChartClick" />
+              </el-card>
+            </el-col>
+          </el-row>
+
           <el-table :data="dailyData" border stripe show-summary>
             <el-table-column prop="schedule_date" label="日期" width="120" />
             <el-table-column prop="emp_no" label="工号" width="100" />
@@ -138,6 +152,26 @@
             </el-col>
             <el-col :span="4">
               <el-statistic title="出勤天数" :value="monthlyStats.workDays" :precision="0" />
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="20" v-if="monthlyData.length" style="margin-bottom: 20px">
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center">
+                  <span style="font-size: 14px; color: #606266">部门工时对比</span>
+                  <el-radio-group v-model="currentChartType" size="small">
+                    <el-radio-button value="bar">柱状图</el-radio-button>
+                    <el-radio-button value="line">折线图</el-radio-button>
+                  </el-radio-group>
+                </div>
+                <Echart :options="monthlyDeptOptions" :height="250" @click="handleDeptChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <Echart :options="monthlyOvertimeOptions" :height="280" @click="handleOvertimeChartClick" />
+              </el-card>
             </el-col>
           </el-row>
 
@@ -228,6 +262,19 @@
             </el-col>
           </el-row>
 
+          <el-row :gutter="20" v-if="rangeData.length" style="margin-bottom: 20px">
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <Echart :options="rangeDeptOptions" :height="280" @click="handleDeptChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <Echart :options="rangeStatusOptions" :height="280" @click="handleRangeStatusClick" />
+              </el-card>
+            </el-col>
+          </el-row>
+
           <el-table :data="rangeData" border stripe show-summary>
             <el-table-column prop="emp_no" label="工号" width="100" />
             <el-table-column prop="name" label="姓名" width="100" />
@@ -272,6 +319,14 @@
               <el-button type="primary" @click="loadRanking">查询</el-button>
             </el-form-item>
           </el-form>
+
+          <el-row :gutter="20" v-if="rankingData.length" style="margin-bottom: 20px">
+            <el-col :span="24">
+              <el-card shadow="hover">
+                <Echart :options="rankingChartOptions" :height="300" @click="handleRankingChartClick" />
+              </el-card>
+            </el-col>
+          </el-row>
 
           <el-table :data="rankingData" border stripe>
             <el-table-column type="index" label="排名" width="60" />
@@ -321,6 +376,36 @@
         <el-button type="primary" @click="confirmExport">确定导出</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="detailDialogVisible" :title="detailTitle" width="800px">
+      <el-table :data="detailData" border stripe max-height="400" v-if="detailData.length">
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="100" />
+        <el-table-column prop="team" label="班组" width="120" />
+        <el-table-column prop="dept" label="部门" width="120" />
+        <el-table-column prop="schedule_date" label="日期" width="120" v-if="activeTab === 'daily' || activeTab === 'daterange'" />
+        <el-table-column prop="status" label="状态" width="80" v-if="activeTab !== 'month'">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="actual_hours" label="实际工时" width="90" v-if="activeTab === 'month' || activeTab === 'daterange'" />
+        <el-table-column prop="overtime_hours" label="加班" width="70" v-if="activeTab === 'month' || activeTab === 'daterange'">
+          <template #default="{ row }">
+            <span :class="{'text-success': row.overtime_hours > 0}">{{ row.overtime_hours }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="owed_hours" label="欠时" width="70" v-if="activeTab === 'month' || activeTab === 'daterange'">
+          <template #default="{ row }">
+            <span :class="{'text-danger': row.owed_hours > 0}">{{ row.owed_hours }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!detailData.length" description="暂无数据" />
+      <template #footer>
+        <el-button @click="detailDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -328,6 +413,8 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
+import Echart from '../components/Echart.vue'
+import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions } from '../utils/echarts'
 
 const activeTab = ref('daily')
 const dailyData = ref([])
@@ -348,6 +435,81 @@ const searchRank = reactive({ year_month: '' })
 
 const exportDialogVisible = ref(false)
 const exportForm = reactive({ type: 'month', schedule_date: '', year_month: '', dateRange: [], team: '' })
+
+const currentChartType = ref('bar')
+const detailDialogVisible = ref(false)
+const detailTitle = ref('')
+const detailData = ref([])
+
+const dailyChartOptions = computed(() => {
+  if (!dailyData.value.length) return {}
+  const statusCount = {}
+  dailyData.value.forEach(d => { statusCount[d.status] = (statusCount[d.status] || 0) + 1 })
+  const pieData = Object.entries(statusCount).map(([name, value]) => ({ name, value }))
+  return createPieOptions(pieData, '考勤状态分布')
+})
+
+const monthlyDeptOptions = computed(() => {
+  if (!monthlyData.value.length) return {}
+  const deptMap = {}
+  monthlyData.value.forEach(d => {
+    if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
+    deptMap[d.dept].scheduled += d.scheduled_hours || 0
+    deptMap[d.dept].actual += d.actual_hours || 0
+  })
+  const depts = Object.keys(deptMap).slice(0, 8)
+  if (currentChartType.value === 'line') {
+    return createLineOptions(depts, depts.map(d => Math.round(deptMap[d].actual)), '部门工时趋势', '部门', '实际工时')
+  }
+  return createMultiBarOptions(depts, [
+    { name: '计划工时', data: depts.map(d => Math.round(deptMap[d].scheduled)) },
+    { name: '实际工时', data: depts.map(d => Math.round(deptMap[d].actual)) }
+  ], '部门工时对比')
+})
+
+const monthlyOvertimeOptions = computed(() => {
+  if (!monthlyData.value.length) return {}
+  const overtime = monthlyData.value.filter(d => d.overtime_hours > 0).length
+  const owed = monthlyData.value.filter(d => d.owed_hours > 0).length
+  const normal = monthlyData.value.length - overtime - owed
+  return createPieOptions([
+    { name: '正常', value: normal },
+    { name: '加班', value: overtime },
+    { name: '欠时', value: owed }
+  ], '加班/欠时分布', ['#67c23a', '#e6a23c', '#f56c6c'])
+})
+
+const rangeDeptOptions = computed(() => {
+  if (!rangeData.value.length) return {}
+  const deptMap = {}
+  rangeData.value.forEach(d => {
+    if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
+    deptMap[d.dept].scheduled += d.scheduled_hours || 0
+    deptMap[d.dept].actual += d.actual_hours || 0
+  })
+  const depts = Object.keys(deptMap).slice(0, 8)
+  if (currentChartType.value === 'line') {
+    return createLineOptions(depts, depts.map(d => Math.round(deptMap[d].actual)), '部门工时趋势', '部门', '实际工时')
+  }
+  return createMultiBarOptions(depts, [
+    { name: '计划工时', data: depts.map(d => Math.round(deptMap[d].scheduled)) },
+    { name: '实际工时', data: depts.map(d => Math.round(deptMap[d].actual)) }
+  ], '部门工时对比')
+})
+
+const rangeStatusOptions = computed(() => {
+  if (!rangeData.value.length) return {}
+  const statusCount = { '正常': 0, '迟到': 0, '早退': 0, '缺勤': 0, '请假': 0, '公休': 0 }
+  rangeData.value.forEach(d => { if (statusCount[d.status] !== undefined) statusCount[d.status]++ })
+  const data = Object.entries(statusCount).filter(([, v]) => v > 0).map(([n, v]) => ({ name: n, value: v }))
+  return createPieOptions(data, '异常考勤分布')
+})
+
+const rankingChartOptions = computed(() => {
+  if (!rankingData.value.length) return {}
+  const data = [...rankingData.value].sort((a, b) => b.avg_attendance - a.avg_attendance).slice(0, 8)
+  return createHorizontalBarOptions(data.map(d => d.team), data.map(d => Math.round(d.avg_attendance * 100)), '', '班组', '出勤率(%)')
+})
 
 function getStatusType(status) {
   const map = { '正常': 'success', '迟到': 'warning', '早退': 'warning', '缺勤': 'danger', '请假': 'info', '公休': '' }
@@ -487,7 +649,7 @@ function confirmExport() {
   const params = new URLSearchParams()
   params.append('type', exportForm.type)
   if (exportForm.team) params.append('team', exportForm.team)
-  
+
   if (exportForm.type === 'daily' && exportForm.schedule_date) {
     params.append('schedule_date', exportForm.schedule_date)
   } else if (exportForm.type === 'month' && exportForm.year_month) {
@@ -496,11 +658,67 @@ function confirmExport() {
     params.append('start_date', exportForm.dateRange[0])
     params.append('end_date', exportForm.dateRange[1])
   }
-  
+
   const url = `${import.meta.env.VITE_API_BASE_URL || '/api'}/reports/export?${params}`
   window.open(url, '_blank')
   exportDialogVisible.value = false
   ElMessage.success('导出成功')
+}
+
+function handleDailyChartClick(params) {
+  const status = params.name
+  const filtered = dailyData.value.filter(d => d.status === status)
+  detailTitle.value = `${status}人员列表 (${filtered.length}人)`
+  detailData.value = filtered
+  detailDialogVisible.value = true
+}
+
+function handleDeptChartClick(params) {
+  const deptName = params.name
+  let data = []
+  if (activeTab.value === 'month') {
+    data = monthlyData.value.filter(d => d.dept === deptName)
+  } else if (activeTab.value === 'daterange') {
+    data = rangeData.value.filter(d => d.dept === deptName)
+  } else if (activeTab.value === 'daily') {
+    data = dailyData.value.filter(d => d.dept === deptName)
+  }
+  detailTitle.value = `${deptName}员工列表 (${data.length}人)`
+  detailData.value = data
+  detailDialogVisible.value = true
+}
+
+function handleOvertimeChartClick(params) {
+  const type = params.name
+  let data = []
+  if (type === '加班') {
+    data = monthlyData.value.filter(d => d.overtime_hours > 0)
+  } else if (type === '欠时') {
+    data = monthlyData.value.filter(d => d.owed_hours > 0)
+  } else {
+    data = monthlyData.value.filter(d => d.overtime_hours <= 0 && d.owed_hours <= 0)
+  }
+  detailTitle.value = `${type}人员列表 (${data.length}人)`
+  detailData.value = data
+  detailDialogVisible.value = true
+}
+
+function handleRangeStatusClick(params) {
+  const status = params.name
+  const filtered = rangeData.value.filter(d => d.status === status)
+  detailTitle.value = `${status}人员列表 (${filtered.length}人)`
+  detailData.value = filtered
+  detailDialogVisible.value = true
+}
+
+function handleRankingChartClick(params) {
+  const teamName = params.name
+  const teamData = rankingData.value.find(r => r.team === teamName)
+  if (teamData) {
+    detailTitle.value = `${teamName} - 排名${rankingData.value.sort((a, b) => b.avg_attendance - a.avg_attendance).findIndex(r => r.team === teamName) + 1} (${teamData.emp_count}人, 出勤率${Math.round(teamData.avg_attendance * 100)}%)`
+    detailData.value = []
+  }
+  detailDialogVisible.value = true
 }
 
 onMounted(() => {
