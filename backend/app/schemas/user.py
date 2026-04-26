@@ -37,3 +37,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int

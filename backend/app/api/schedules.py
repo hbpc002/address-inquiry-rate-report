@@ -17,6 +17,7 @@ from app.schemas.schedule import (
     BatchScheduleRequest, SwapScheduleRequest
 )
 from app.core.security import get_current_user
+from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/schedules", tags=["排班管理"])
 
@@ -53,6 +54,8 @@ def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
     if shift:
         shift.start_time = shift_info.get("start_time", shift.start_time)
         shift.end_time = shift_info.get("end_time", shift.end_time)
+        shift.start_time2 = shift_info.get("start_time2")
+        shift.end_time2 = shift_info.get("end_time2")
         shift.work_hours = shift_info.get("work_hours", shift.work_hours)
         shift.is_night = shift_info.get("is_night", shift.is_night)
         db.flush()
@@ -61,6 +64,8 @@ def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
         shift_name=shift_info["name"],
         start_time=shift_info.get("start_time", "08:00"),
         end_time=shift_info.get("end_time", "18:00"),
+        start_time2=shift_info.get("start_time2"),
+        end_time2=shift_info.get("end_time2"),
         work_hours=shift_info.get("work_hours", 8.0),
         color="#409EFF" if not shift_info.get("is_night") else "#909399",
         is_night=shift_info.get("is_night", False)
@@ -208,6 +213,7 @@ def create_schedule(
     db.add(db_schedule)
     db.commit()
     db.refresh(db_schedule)
+    log_operation(db, current_user["id"], "create_schedule", "schedules", db_schedule.id, {"emp_id": schedule.emp_id, "schedule_date": str(schedule.schedule_date)})
     return {"id": db_schedule.id}
 
 @router.put("/{schedule_id}", response_model=dict)
@@ -236,6 +242,7 @@ def delete_schedule(
         raise HTTPException(status_code=404, detail="排班记录不存在")
     db.delete(db_schedule)
     db.commit()
+    log_operation(db, current_user["id"], "delete_schedule", "schedules", schedule_id)
     return {"message": "删除成功"}
 
 @router.post("/batch", response_model=dict)
@@ -284,6 +291,7 @@ def swap_schedule(
     schedule_a.schedule_type = "换班"
     schedule_b.schedule_type = "换班"
     db.commit()
+    log_operation(db, current_user["id"], "swap_schedule", "schedules", None, {"schedule_a_id": request.schedule_a_id, "schedule_b_id": request.schedule_b_id})
     return {"message": "换班成功"}
 
 @router.post("/import", response_model=dict)
@@ -293,6 +301,9 @@ def import_schedule_excel(
     current_user: dict = Depends(get_current_user)
 ):
     """从排班Excel导入员工和排班（支持多个sheet：组长、组员、新人）"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="仅管理员或经理可导入排班")
+    
     contents = file.file.read()
     try:
         xlsx = pd.ExcelFile(io.BytesIO(contents))

@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.user import LoginRequest, TokenResponse, UserResponse
 from app.core.security import verify_password, create_access_token, get_current_user
 from app.core.config import settings
+from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -29,6 +30,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
+    log_operation(db, user.id, "login", "users", user.id, {"username": user.username})
     return TokenResponse(
         access_token=access_token,
         user=UserResponse(
@@ -43,7 +45,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 
 @router.post("/logout")
-def logout(current_user: dict = Depends(get_current_user)):
+def logout(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    log_operation(db, current_user["id"], "logout", "users", current_user["id"])
     return {"message": "登出成功"}
 
 

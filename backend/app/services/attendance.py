@@ -38,7 +38,29 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         }
 
     shift = db.query(ShiftType).filter(ShiftType.id == schedule.shift_type_id).first() if schedule.shift_type_id else None
-    scheduled_hours = shift.work_hours if shift else 0
+
+    def time_to_minutes(t: str) -> int:
+        h, m = map(int, t.split(':'))
+        return h * 60 + m
+
+    def in_segment(c_in_h: int, c_in_m: int, c_out_h: int, c_out_m: int, seg_start: str, seg_end: str) -> bool:
+        s = time_to_minutes(seg_start)
+        e = time_to_minutes(seg_end)
+        ci = c_in_h * 60 + c_in_m
+        co = c_out_h * 60 + c_out_m
+        if e > s:
+            return s <= ci and co <= e
+        else:
+            return ci >= s or co <= e
+
+    def checkin_in_shifts(c: Checkin) -> bool:
+        if not c.checkout_time or not shift:
+            return False
+        ci_h, ci_m = c.checkin_time.hour, c.checkin_time.minute
+        co_h, co_m = c.checkout_time.hour, c.checkout_time.minute
+        seg1 = shift.start_time and shift.end_time and in_segment(ci_h, ci_m, co_h, co_m, shift.start_time, shift.end_time)
+        seg2 = shift.start_time2 and shift.end_time2 and in_segment(ci_h, ci_m, co_h, co_m, shift.start_time2, shift.end_time2)
+        return seg1 or seg2
 
     if schedule.schedule_type in ["请假", "公休", "加班"]:
         return {
@@ -46,41 +68,55 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
             "late_minutes": 0,
             "early_minutes": 0,
             "actual_hours": 0,
-            "scheduled_hours": scheduled_hours,
+            "scheduled_hours": shift.work_hours if shift else 0,
             "overtime_hours": 0,
             "schedule_type": schedule.schedule_type
         }
 
-    if not checkins:
+    valid = [c for c in checkins if checkin_in_shifts(c)]
+
+    if not valid:
         return {
             "status": "缺勤",
             "late_minutes": 0,
             "early_minutes": 0,
             "actual_hours": 0,
-            "scheduled_hours": scheduled_hours,
+            "scheduled_hours": shift.work_hours if shift else 0,
             "overtime_hours": 0
         }
 
-    first_checkin = min(checkins, key=lambda x: x.checkin_time)
-    checkout_candidates = [c for c in checkins if c.checkout_time]
-    last_checkout = max(checkout_candidates, key=lambda x: x.checkout_time) if checkout_candidates else None
+    scheduled_hours = shift.work_hours if shift else 0
+
+    first_checkin = min(valid, key=lambda x: x.checkin_time)
+    last_checkout = max((c for c in valid if c.checkout_time), key=lambda x: x.checkout_time)
 
     late_minutes = 0
     early_minutes = 0
 
-    if shift:
-        if first_checkin.checkin_time.time() > datetime.strptime(shift.start_time, '%H:%M').time():
-            late_minutes = (datetime.combine(schedule_date, first_checkin.checkin_time.time()) - 
-                          datetime.combine(schedule_date, datetime.strptime(shift.start_time, '%H:%M').time())).seconds // 60
+    if shift and shift.start_time:
+        shift_start = datetime.strptime(shift.start_time, '%H:%M').time()
+        if first_checkin.checkin_time.time() > shift_start:
+            late_minutes = (datetime.combine(schedule_date, first_checkin.checkin_time.time()) -
+                          datetime.combine(schedule_date, shift_start)).seconds // 60
 
-        if last_checkout and last_checkout.checkout_time.time() < datetime.strptime(shift.end_time, '%H:%M').time():
-            early_minutes = (datetime.combine(schedule_date, datetime.strptime(shift.end_time, '%H:%M').time()) -
-                           datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
+    if shift and shift.end_time:
+        seg1_early = None
+        if shift.start_time and shift.end_time:
+            seg1_end = datetime.strptime(shift.end_time, '%H:%M').time()
+            if last_checkout and last_checkout.checkout_time.time() < seg1_end:
+                seg1_early = (datetime.combine(schedule_date, seg1_end) -
+                            datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
+        seg2_early = None
+        if shift.start_time2 and shift.end_time2:
+            seg2_end = datetime.strptime(shift.end_time2, '%H:%M').time()
+            if last_checkout and last_checkout.checkout_time.time() < seg2_end:
+                seg2_early = (datetime.combine(schedule_date, seg2_end) -
+                            datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
+        early_minutes = min(x for x in [seg1_early, seg2_early] if x is not None) if (seg1_early is not None or seg2_early is not None) else 0
 
     actual_hours = 0
-    for c in checkins:
-        if c.checkout_time:
-            actual_hours += (c.checkout_time - c.checkin_time).seconds / 3600
+    for c in valid:
+        actual_hours += (c.checkout_time - c.checkin_time).seconds / 3600
 
     overtime_hours = max(0, actual_hours - float(scheduled_hours)) if scheduled_hours else 0
 

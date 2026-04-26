@@ -12,6 +12,7 @@ from app.models.checkin import Checkin
 from app.models.employee import Employee
 from app.models.schedule import Schedule
 from app.models.daily_report import DailyReport
+from app.utils.logger import log_operation
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
 from app.core.security import get_current_user
 from app.services.attendance import save_daily_report
@@ -52,6 +53,9 @@ def import_checkins(
     current_user: dict = Depends(get_current_user)
 ):
     """导入签到记录，只取目标部门的员工"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="仅管理员或经理可导入签到记录")
+    
     batch = str(uuid.uuid4())[:8]
     content = file.file.read()
 
@@ -129,6 +133,7 @@ def import_checkins(
             continue
 
     db.commit()
+    log_operation(db, current_user["id"], "import_checkins", "checkins", None, {"batch": batch, "count": count})
 
     checkin_names = db.query(Checkin.name).filter(Checkin.import_batch == batch).distinct().all()
     checkin_names = [n[0] for n in checkin_names]
@@ -162,6 +167,7 @@ def delete_checkin(
 
     db.delete(checkin)
     db.commit()
+    log_operation(db, current_user["id"], "delete_checkin", "checkins", checkin_id, {"name": checkin.name})
     return {"message": "删除成功"}
 
 
@@ -173,4 +179,105 @@ def delete_batch(
 ):
     count = db.query(Checkin).filter(Checkin.import_batch == batch).delete()
     db.commit()
+    log_operation(db, current_user["id"], "delete_batch", "checkins", None, {"batch": batch, "count": count})
     return {"count": count}
+
+
+@router.get("/report")
+def get_checkin_report(
+    date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    dept: Optional[str] = None,
+    team: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """签入签出报表"""
+    from datetime import timedelta
+    
+    query = db.query(Checkin)
+    
+    if date:
+        query = query.filter(func.date(Checkin.checkin_time) == date)
+    elif year_month:
+        start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d")
+        if year_month == datetime.now().strftime("%Y-%m"):
+            end = datetime.now()
+        else:
+            next_month = start.replace(day=28) + timedelta(days=4)
+            end = next_month.replace(day=1) - timedelta(days=1)
+        query = query.filter(
+            func.date(Checkin.checkin_time) >= start.date(),
+            func.date(Checkin.checkin_time) <= end.date()
+        )
+    elif start_date and end_date:
+        query = query.filter(
+            func.date(Checkin.checkin_time) >= start_date,
+            func.date(Checkin.checkin_time) <= end_date
+        )
+    else:
+        query = query.filter(func.date(Checkin.checkin_time) == datetime.now().strftime("%Y-%m-%d"))
+    
+    if dept:
+        query = query.filter(Checkin.dept.contains(dept))
+    
+    checkins = query.all()
+    
+    if team:
+        emp_nos = db.query(Employee.emp_no).filter(Employee.team == team).all()
+        emp_nos = [e[0] for e in emp_nos]
+        checkins = [c for c in checkins if c.emp_no in emp_nos]
+    
+    emp_stats = {}
+    for c in checkins:
+        key = c.emp_no
+        if key not in emp_stats:
+            emp_stats[key] = {
+                "emp_no": c.emp_no,
+                "name": c.name,
+                "dept": c.dept,
+                "checkin_count": 0,
+                "total_hours": 0.0,
+                "checkins": []
+            }
+        emp_stats[key]["checkin_count"] += 1
+        
+        checkin_time_str = None
+        checkout_time_str = None
+        duration = 0.0
+        
+        if c.checkin_time:
+            checkin_time_str = c.checkin_time.strftime('%Y-%m-%d %H:%M')
+        if c.checkout_time:
+            checkout_time_str = c.checkout_time.strftime('%Y-%m-%d %H:%M')
+        if c.checkout_time and c.checkin_time:
+            duration = (c.checkout_time - c.checkin_time).total_seconds() / 3600
+            emp_stats[key]["total_hours"] += duration
+        
+        emp_stats[key]["checkins"].append({
+            "checkin_time": checkin_time_str,
+            "checkout_time": checkout_time_str,
+            "duration": round(duration, 1)
+        })
+    
+    for key in emp_stats:
+        emp_stats[key]["checkins"].sort(key=lambda x: x["checkin_time"] or '')
+    
+    items = list(emp_stats.values())
+    items.sort(key=lambda x: x["checkin_count"], reverse=True)
+    
+    total_checkins = sum(x["checkin_count"] for x in items)
+    total_hours = sum(x["total_hours"] for x in items)
+    avg_hours = total_hours / len(items) if items else 0
+    
+    return {
+        "stats": {
+            "total_checkins": total_checkins,
+            "total_hours": round(total_hours, 1),
+            "avg_hours": round(avg_hours, 1),
+            "emp_count": len(items)
+        },
+        "items": items
+    }

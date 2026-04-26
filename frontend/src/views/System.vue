@@ -49,6 +49,17 @@
             <el-form-item>
               <el-button type="primary" @click="loadLogs">查询</el-button>
             </el-form-item>
+            <el-form-item>
+              <el-button @click="exportLogs">导出日志</el-button>
+            </el-form-item>
+            <el-form-item>
+              <el-select v-model="manualCleanupMonths" placeholder="清理月份" style="width:120px">
+                <el-option v-for="n in [1,2,3,4,5,6]" :key="n" :label="n + ' 月'" :value="n"></el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button @click="manualCleanup" type="primary">执行清理</el-button>
+            </el-form-item>
           </el-form>
 
           <el-table :data="logs" border stripe>
@@ -132,6 +143,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const activeTab = ref('shifts')
 const shiftTypes = ref([])
 const logs = ref([])
+const manualCleanupMonths = ref(3)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const searchLog = reactive({ operation: '' })
@@ -161,6 +173,32 @@ async function loadLogs() {
     logs.value = res.data.items
   } catch (e) {
     console.error(e)
+  }
+}
+
+async function exportLogs() {
+  try {
+    const res = await api.get('/logs/export', { params: searchLog, responseType: 'blob' })
+    const blob = new Blob([res.data], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `operation_logs_${new Date().toISOString().slice(0,10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function manualCleanup() {
+  try {
+    const res = await api.post('/logs/cleanup', { months: manualCleanupMonths.value })
+    ElMessage.success(`清理完成，删除 ${res.data.deleted} 条日志`)
+  } catch (e) {
+    ElMessage.error('清理失败')
   }
 }
 

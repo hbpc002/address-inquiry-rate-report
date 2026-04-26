@@ -13,6 +13,7 @@ from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
 from app.schemas.daily_report import DailyReportResponse, DailyReportListResponse
 from app.core.security import get_current_user
+from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/reports", tags=["考勤报表"])
 
@@ -451,7 +452,8 @@ def export_report(
             ])
         filename = f"monthly_report_{year_month}.csv"
 
-    output.seek(0)
+        output.seek(0)
+    log_operation(db, current_user["id"], "export_report", "reports", None, {"export_type": type, "schedule_date": schedule_date})
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",

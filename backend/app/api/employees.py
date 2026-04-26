@@ -11,6 +11,7 @@ from app.schemas.employee import (
     EmployeeListResponse
 )
 from app.core.security import get_current_user
+from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/employees", tags=["员工管理"])
 
@@ -61,6 +62,7 @@ def create_employee(
     db.add(db_employee)
     db.commit()
     db.refresh(db_employee)
+    log_operation(db, current_user["id"], "create_employee", "employees", db_employee.id, {"emp_no": employee.emp_no, "name": employee.name})
     return {"id": db_employee.id}
 
 
@@ -93,6 +95,7 @@ def delete_employee(
 
     db_employee.status = "离职"
     db.commit()
+    log_operation(db, current_user["id"], "delete_employee", "employees", employee_id, {"emp_no": db_employee.emp_no, "name": db_employee.name})
     return {"message": "删除成功"}
 
 
@@ -125,6 +128,8 @@ def import_employees(
     current_user: dict = Depends(get_current_user)
 ):
     """导入员工信息Excel"""
+    if current_user.get("role") not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="仅管理员或经理可导入员工")
     contents = file.file.read()
     try:
         xlsx = pd.ExcelFile(io.BytesIO(contents))
@@ -173,6 +178,7 @@ def import_employees(
             created += 1
     
     db.commit()
+    log_operation(db, current_user["id"], "import_employees", "employees", None, {"created": created, "updated": updated, "skipped": skipped})
     return {
         "message": "导入完成",
         "created": created,
