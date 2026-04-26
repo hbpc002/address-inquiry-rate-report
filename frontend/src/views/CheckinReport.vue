@@ -60,6 +60,34 @@
         </el-col>
       </el-row>
 
+      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
+        <el-col :span="12">
+          <el-card shadow="hover">
+            <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center">
+              <span style="font-size: 14px; color: #606266">员工工时排名</span>
+              <el-radio-group v-model="chartType" size="small">
+                <el-radio-button value="bar">柱状图</el-radio-button>
+                <el-radio-button value="line">折线图</el-radio-button>
+              </el-radio-group>
+            </div>
+            <Echart :options="hoursChartOptions" :height="280" />
+          </el-card>
+        </el-col>
+        <el-col :span="12">
+          <el-card shadow="hover">
+            <Echart :options="checkinCountOptions" :height="300" />
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
+        <el-col :span="24">
+          <el-card shadow="hover">
+            <Echart :options="deptHoursOptions" :height="300" />
+          </el-card>
+        </el-col>
+      </el-row>
+
       <el-table :data="tableData" border stripe show-summary>
         <el-table-column prop="emp_no" label="账号" width="100" />
         <el-table-column prop="name" label="用户名" width="100" />
@@ -89,9 +117,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
+import Echart from '../components/Echart.vue'
+import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions } from '../utils/echarts'
 
 const tableData = ref([])
 const teams = ref([])
@@ -111,6 +141,35 @@ const stats = reactive({
   emp_count: 0,
   total_hours: 0,
   avg_hours: 0
+})
+
+const chartType = ref('bar')
+
+const hoursChartOptions = computed(() => {
+  if (!tableData.value.length) return {}
+  const data = [...tableData.value].sort((a, b) => b.total_hours - a.total_hours).slice(0, 10)
+  if (chartType.value === 'line') {
+    return createLineOptions(data.map(d => d.name), data.map(d => d.total_hours.toFixed(1)), '员工工时排名', '姓名', '工时(h)')
+  }
+  return createBarOptions(data.map(d => d.name), data.map(d => d.total_hours.toFixed(1)), '员工工时排名', '姓名', '工时(h)')
+})
+
+const checkinCountOptions = computed(() => {
+  if (!tableData.value.length) return {}
+  const data = [...tableData.value].sort((a, b) => b.checkin_count - a.checkin_count).slice(0, 10)
+  return createHorizontalBarOptions(data.map(d => d.name), data.map(d => d.checkin_count), '', '姓名', '签入次数')
+})
+
+const deptHoursOptions = computed(() => {
+  if (!tableData.value.length) return {}
+  const deptMap = {}
+  tableData.value.forEach(d => {
+    if (!deptMap[d.dept]) deptMap[d.dept] = 0
+    deptMap[d.dept] += d.total_hours
+  })
+  const data = Object.entries(deptMap).map(([name, value]) => ({ name, value: Math.round(value) }))
+    .sort((a, b) => b.value - a.value).slice(0, 8)
+  return createPieOptions(data, '部门工时分布')
 })
 
 function handleTypeChange() {

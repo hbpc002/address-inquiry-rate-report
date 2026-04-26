@@ -78,6 +78,14 @@
               </template>
             </el-table-column>
           </el-table>
+
+          <el-pagination
+            v-model:current-page="logPagination.page"
+            v-model:page-size="logPagination.limit"
+            :total="logPagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadLogs"
+          />
         </el-card>
       </el-tab-pane>
 
@@ -148,6 +156,7 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const searchLog = reactive({ operation: '' })
 const selectedTables = ref([])
+const logPagination = reactive({ page: 1, limit: 20, total: 0 })
 const form = reactive({
   id: null,
   shift_name: '',
@@ -169,8 +178,9 @@ async function loadShiftTypes() {
 
 async function loadLogs() {
   try {
-    const res = await api.get('/logs', { params: searchLog })
+    const res = await api.get('/logs', { params: { ...searchLog, page: logPagination.page, limit: logPagination.limit } })
     logs.value = res.data.items
+    logPagination.total = res.data.total
   } catch (e) {
     console.error(e)
   }
