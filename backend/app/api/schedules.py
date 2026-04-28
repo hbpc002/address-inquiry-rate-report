@@ -45,27 +45,20 @@ def parse_shift_from_cell(cell_value: str) -> Optional[dict]:
         "name": shift_name,
         "work_hours": work_hours,
         "is_night": is_night,
-        "start_time": times[0][0],
-        "end_time": times[0][1]
+        "time_segments": [{"start": times[0][0], "end": times[0][1]}] + [{"start": t[0], "end": t[1]} for t in times[1:]]
     }
 
 def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
     shift = db.query(ShiftType).filter(ShiftType.shift_name == shift_info["name"]).first()
     if shift:
-        shift.start_time = shift_info.get("start_time", shift.start_time)
-        shift.end_time = shift_info.get("end_time", shift.end_time)
-        shift.start_time2 = shift_info.get("start_time2")
-        shift.end_time2 = shift_info.get("end_time2")
+        shift.time_segments = shift_info.get("time_segments", shift.time_segments)
         shift.work_hours = shift_info.get("work_hours", shift.work_hours)
         shift.is_night = shift_info.get("is_night", shift.is_night)
         db.flush()
         return shift
     shift = ShiftType(
         shift_name=shift_info["name"],
-        start_time=shift_info.get("start_time", "08:00"),
-        end_time=shift_info.get("end_time", "18:00"),
-        start_time2=shift_info.get("start_time2"),
-        end_time2=shift_info.get("end_time2"),
+        time_segments=shift_info.get("time_segments", [{"start": "08:00", "end": "18:00"}]),
         work_hours=shift_info.get("work_hours", 8.0),
         color="#409EFF" if not shift_info.get("is_night") else "#909399",
         is_night=shift_info.get("is_night", False)
@@ -143,16 +136,9 @@ def parse_shift_from_header(header_value) -> Optional[dict]:
     shift_info = {
         "name": shift_name,
         "work_hours": work_hours,
-        "is_night": is_night
+        "is_night": is_night,
+        "time_segments": [{"start": t[0], "end": t[1]} for t in times]
     }
-    shift_info["start_time"] = times[0][0]
-    shift_info["end_time"] = times[0][1]
-    if len(times) >= 2:
-        shift_info["start_time2"] = times[1][0]
-        shift_info["end_time2"] = times[1][1]
-    if len(times) >= 3:
-        shift_info["start_time3"] = times[2][0]
-        shift_info["end_time3"] = times[2][1]
     return shift_info
 
 @router.get("", response_model=ScheduleListResponse)

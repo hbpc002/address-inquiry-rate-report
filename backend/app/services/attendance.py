@@ -1,12 +1,24 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, extract
 from datetime import datetime, date, timedelta, time
+import json
 from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
 from app.models.employee import Employee
 from app.models.checkin import Checkin
 from app.models.daily_report import DailyReport
 from app.models.monthly_report import MonthlyReport
+
+
+def get_time_segments(shift: ShiftType) -> list:
+    if not shift.time_segments:
+        return []
+    if isinstance(shift.time_segments, str):
+        try:
+            return json.loads(shift.time_segments)
+        except:
+            return []
+    return shift.time_segments
 
 
 def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
@@ -58,9 +70,11 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
             return False
         ci_h, ci_m = c.checkin_time.hour, c.checkin_time.minute
         co_h, co_m = c.checkout_time.hour, c.checkout_time.minute
-        seg1 = shift.start_time and shift.end_time and in_segment(ci_h, ci_m, co_h, co_m, shift.start_time, shift.end_time)
-        seg2 = shift.start_time2 and shift.end_time2 and in_segment(ci_h, ci_m, co_h, co_m, shift.start_time2, shift.end_time2)
-        return seg1 or seg2
+        segments = get_time_segments(shift)
+        for seg in segments:
+            if in_segment(ci_h, ci_m, co_h, co_m, seg["start"], seg["end"]):
+                return True
+        return False
 
     if schedule.schedule_type in ["请假", "公休", "加班"]:
         return {
@@ -93,26 +107,22 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
     late_minutes = 0
     early_minutes = 0
 
-    if shift and shift.start_time:
-        shift_start = datetime.strptime(shift.start_time, '%H:%M').time()
+    segments = get_time_segments(shift) if shift else []
+    if segments:
+        first_seg = segments[0]
+        shift_start = datetime.strptime(first_seg["start"], '%H:%M').time()
         if first_checkin.checkin_time.time() > shift_start:
             late_minutes = (datetime.combine(schedule_date, first_checkin.checkin_time.time()) -
                           datetime.combine(schedule_date, shift_start)).seconds // 60
 
-    if shift and shift.end_time:
-        seg1_early = None
-        if shift.start_time and shift.end_time:
-            seg1_end = datetime.strptime(shift.end_time, '%H:%M').time()
-            if last_checkout and last_checkout.checkout_time.time() < seg1_end:
-                seg1_early = (datetime.combine(schedule_date, seg1_end) -
-                            datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
-        seg2_early = None
-        if shift.start_time2 and shift.end_time2:
-            seg2_end = datetime.strptime(shift.end_time2, '%H:%M').time()
-            if last_checkout and last_checkout.checkout_time.time() < seg2_end:
-                seg2_early = (datetime.combine(schedule_date, seg2_end) -
-                            datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
-        early_minutes = min(x for x in [seg1_early, seg2_early] if x is not None) if (seg1_early is not None or seg2_early is not None) else 0
+        early_minutes_list = []
+        for seg in segments:
+            seg_end = datetime.strptime(seg["end"], '%H:%M').time()
+            if last_checkout and last_checkout.checkout_time.time() < seg_end:
+                early = (datetime.combine(schedule_date, seg_end) -
+                        datetime.combine(schedule_date, last_checkout.checkout_time.time())).seconds // 60
+                early_minutes_list.append(early)
+        early_minutes = min(early_minutes_list) if early_minutes_list else 0
 
     actual_hours = 0
     for c in valid:
@@ -170,11 +180,12 @@ def save_daily_report(db: Session, emp_id: int, schedule_date: date):
         scheduled_start = None
         scheduled_end = None
         if shift:
-            if shift.start_time:
-                parts = shift.start_time.split(':')
+            segments = get_time_segments(shift)
+            if segments:
+                first_seg = segments[0]
+                parts = first_seg["start"].split(':')
                 scheduled_start = time(int(parts[0]), int(parts[1]))
-            if shift.end_time:
-                parts = shift.end_time.split(':')
+                parts = first_seg["end"].split(':')
                 scheduled_end = time(int(parts[0]), int(parts[1]))
         report = DailyReport(
             emp_id=emp_id,
