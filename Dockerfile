@@ -32,9 +32,10 @@ COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 
 RUN cat > /entrypoint.sh << 'ENTRYPOINT_EOF'
 #!/bin/sh
-cd /app/backend
+cd /app
 python -c "import app.models.database; from app.models import *; app.models.database.Base.metadata.create_all(bind=app.models.database.engine)"
-exec gunicorn -w 4 -b 0.0.0.0:8000 app.main:app
+gunicorn -w 4 -b 0.0.0.0:8000 app.main:app &
+nginx -g 'daemon off;'
 ENTRYPOINT_EOF
 RUN chmod +x /entrypoint.sh
 
@@ -76,4 +77,6 @@ EOF
 
 EXPOSE 80 443
 
+# 启动顺序：先启动后端gunicorn，再启动nginx
+CMD /entrypoint.sh & nginx -g 'daemon off;'
 ENTRYPOINT ["/entrypoint.sh"]
