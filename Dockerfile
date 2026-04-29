@@ -27,11 +27,13 @@ RUN mkdir -p /etc/nginx/ssl && openssl req -x509 -nodes -days 365 -newkey rsa:20
 COPY --from=backend-builder /app /app/backend
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 
-RUN echo '#!/bin/sh\n\
-cd /app/backend && \
-python -c "import app.models.database; from app.models import *; app.models.database.Base.metadata.create_all(bind=app.models.database.engine)" && \
-exec gunicorn -w 4 -b 0.0.0.0:8000 app.main:app' > /entrypoint.sh && \
-chmod +x /entrypoint.sh
+RUN cat > /entrypoint.sh << 'ENTRYPOINT_EOF'
+#!/bin/sh
+cd /app/backend
+python -c "import app.models.database; from app.models import *; app.models.database.Base.metadata.create_all(bind=app.models.database.engine)"
+exec gunicorn -w 4 -b 0.0.0.0:8000 app.main:app
+ENTRYPOINT_EOF
+RUN chmod +x /entrypoint.sh
 
 RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
 server {
