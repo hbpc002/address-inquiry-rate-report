@@ -16,15 +16,18 @@ RUN npm install
 COPY frontend/ ./
 RUN npm run build
 
-FROM nginx:alpine
+# 从 alpine 构建后端，因为 nginx:alpine 太小没有 python
+FROM python:3.11-slim as final
 
-RUN apk add --no-cache openssl
+COPY --from=backend-builder /app /
+RUN pip install --no-cache-dir gunicorn
+
+RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /etc/nginx/ssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/server.key -out /etc/nginx/ssl/server.crt \
     -subj "/C=CN/ST=Guangxi/L=Nanning/O=HBPC/OU=CustomerService/CN=schedule.hbpc.com"
 
-COPY --from=backend-builder /app /app/backend
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 
 RUN cat > /entrypoint.sh << 'ENTRYPOINT_EOF'
