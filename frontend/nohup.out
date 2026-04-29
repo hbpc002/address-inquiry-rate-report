@@ -472,3 +472,78 @@ AggregateError [ECONNREFUSED]:
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: http://192.168.68.62:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 158 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.68.141:5173/
+8:39:43 AM [vite] hmr update /src/views/CheckinReport.vue
+8:39:46 AM [vite] hmr update /src/views/CheckinReport.vue
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 158 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.68.141:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 654 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.248:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 175 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.248:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 170 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.248:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 178 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.248:5173/
+9:44:57 AM [vite] hmr update /src/views/Login.vue
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 180 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.248:5173/
+
+> schedule-report-frontend@1.0.0 dev
+> vite --host
+
+
+  VITE v5.4.21  ready in 644 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://192.168.64.220:5173/
