@@ -77,7 +77,7 @@ export function createHorizontalBarOptions(yData, xData, title, yName = '', xNam
   return {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    grid: { left: '12%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: { type: 'value', name: xName },
     yAxis: { type: 'category', data: yData, name: yName },
     series: [{ type: 'bar', data: xData, itemStyle: { color: CHART_COLORS[2] }, label: { show: true, position: 'right' } }]

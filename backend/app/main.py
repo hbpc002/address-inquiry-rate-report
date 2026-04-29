@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.models.database import init_db
 from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users
 from app.models.database import SessionLocal
 import asyncio
+import traceback
 from datetime import datetime, timedelta
 from app.models.operation_log import OperationLog
 try:
@@ -26,6 +28,16 @@ app = FastAPI(
         {"name": "考勤报表", "description": "考勤报表查询"},
         {"name": "用户管理", "description": "系统用户管理"},
     ]
+)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    error_trace = traceback.format_exc()
+    print(f"全局异常: {error_trace}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务器内部错误: {str(exc)}"
+    }
 )
 
 app.add_middleware(

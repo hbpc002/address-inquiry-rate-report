@@ -67,10 +67,20 @@ def import_checkins(
 
     text = content.decode(encoding)
     reader = csv.DictReader(io.StringIO(text))
+    
     count = 0
     skipped = 0
-
-    for row in reader:
+    
+    rows = list(reader)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CSV文件为空")
+    
+    required_fields = ['账号', '工号', '用户名', '姓名', '签入时间', '签到时间']
+    has_required = any(any(f in row for f in required_fields) for row in rows[:1])
+    if not has_required:
+        raise HTTPException(status_code=400, detail="CSV文件格式错误：缺少必要字段")
+    
+    for row in rows:
         try:
             dept = row.get('所属部门全路径', '') or row.get('归属部门', '') or ''
             dept = str(dept).strip()
@@ -152,6 +162,33 @@ def import_checkins(
             if checkins_exist:
                 save_daily_report(db, emp.id, schedule.schedule_date)
 
+    # 更新员工工号：签到记录导入后，将 TEMP_ 开头的工号更新为真实工号
+    updated_count = 0
+    try:
+        temp_employees = db.query(Employee).filter(Employee.emp_no.like('TEMP_%')).all()
+        for emp in temp_employees:
+            checkin_with_real_no = db.query(Checkin).filter(
+                Checkin.name == emp.name,
+                ~Checkin.emp_no.like('TEMP_%')
+            ).first()
+            if checkin_with_real_no:
+                # 检查真实工号是否已被使用
+                existing = db.query(Employee).filter(
+                    Employee.emp_no == checkin_with_real_no.emp_no,
+                    Employee.id != emp.id
+                ).first()
+                if existing:
+                    continue
+                emp.emp_no = checkin_with_real_no.emp_no
+                updated_count += 1
+
+        if updated_count > 0:
+            db.commit()
+            log_operation(db, current_user["id"], "sync_emp_no", "employees", None, {"updated_count": updated_count})
+    except Exception as e:
+        db.rollback()
+        pass
+
     return ImportCheckinResponse(count=count, batch=batch)
 
 
@@ -189,15 +226,16 @@ def get_checkin_report(
     year_month: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    dept: Optional[str] = None,
     team: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """签入签出报表"""
     from datetime import timedelta
     
-    query = db.query(Checkin)
+    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no)
     
     if date:
         query = query.filter(func.date(Checkin.checkin_time) == date)
@@ -220,24 +258,28 @@ def get_checkin_report(
     else:
         query = query.filter(func.date(Checkin.checkin_time) == datetime.now().strftime("%Y-%m-%d"))
     
-    if dept:
-        query = query.filter(Checkin.dept.contains(dept))
-    
-    checkins = query.all()
-    
     if team:
         emp_nos = db.query(Employee.emp_no).filter(Employee.team == team).all()
         emp_nos = [e[0] for e in emp_nos]
         checkins = [c for c in checkins if c.emp_no in emp_nos]
+    else:
+        checkins = query.all()
+    
+    if name:
+        checkins = [c for c in checkins if name.lower() in c.name.lower()]
+    if emp_no:
+        checkins = [c for c in checkins if emp_no.lower() in c.emp_no.lower()]
     
     emp_stats = {}
     for c in checkins:
         key = c.emp_no
         if key not in emp_stats:
+            emp = db.query(Employee).filter(Employee.emp_no == key).first()
             emp_stats[key] = {
                 "emp_no": c.emp_no,
                 "name": c.name,
                 "dept": c.dept,
+                "team": emp.team if emp else '',
                 "checkin_count": 0,
                 "total_hours": 0.0,
                 "checkins": []

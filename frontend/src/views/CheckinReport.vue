@@ -28,8 +28,11 @@
         <el-form-item v-if="searchForm.type === 'range'" label="结束日期">
           <el-date-picker v-model="searchForm.end_date" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
-        <el-form-item label="所属部门">
-          <el-input v-model="searchForm.dept" placeholder="部门关键词" clearable />
+        <el-form-item label="姓名">
+          <el-input v-model="searchForm.name" placeholder="请输入姓名" clearable style="width: 120px" />
+        </el-form-item>
+        <el-form-item label="工号">
+          <el-input v-model="searchForm.emp_no" placeholder="请输入工号" clearable style="width: 120px" />
         </el-form-item>
         <el-form-item label="班组">
           <el-select v-model="searchForm.team" placeholder="全部班组" clearable filterable>
@@ -88,10 +91,11 @@
         </el-col>
       </el-row>
 
-      <el-table :data="tableData" border stripe show-summary>
+      <el-table :data="paginatedData" border stripe show-summary>
         <el-table-column prop="emp_no" label="账号" width="100" />
         <el-table-column prop="name" label="用户名" width="100" />
         <el-table-column prop="dept" label="所属部门" min-width="150" />
+        <el-table-column prop="team" label="班组" width="100" />
         <el-table-column prop="checkin_count" label="签入次数" width="80" sortable />
         <el-table-column prop="total_hours" label="工作时长" width="80" sortable>
           <template #default="{ row }">
@@ -112,6 +116,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <el-pagination
+        v-if="tableData.length > 0"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="tableData.length"
+        layout="total, sizes, prev, pager, next, jumper"
+        style="margin-top: 15px; justify-content: flex-end"
+      />
     </el-card>
   </div>
 </template>
@@ -125,6 +139,14 @@ import { createPieOptions, createBarOptions, createLineOptions, createHorizontal
 
 const tableData = ref([])
 const teams = ref([])
+const currentPage = ref(1)
+const pageSize = ref(20)
+
+const paginatedData = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return tableData.value.slice(start, end)
+})
 
 const searchForm = reactive({
   type: 'day',
@@ -132,7 +154,8 @@ const searchForm = reactive({
   month: '',
   start_date: '',
   end_date: '',
-  dept: '',
+  name: '',
+  emp_no: '',
   team: ''
 })
 
@@ -162,14 +185,15 @@ const checkinCountOptions = computed(() => {
 
 const deptHoursOptions = computed(() => {
   if (!tableData.value.length) return {}
-  const deptMap = {}
+  const teamMap = {}
   tableData.value.forEach(d => {
-    if (!deptMap[d.dept]) deptMap[d.dept] = 0
-    deptMap[d.dept] += d.total_hours
+    const team = d.team || '未知班组'
+    if (!teamMap[team]) teamMap[team] = 0
+    teamMap[team] += d.total_hours
   })
-  const data = Object.entries(deptMap).map(([name, value]) => ({ name, value: Math.round(value) }))
+  const data = Object.entries(teamMap).map(([name, value]) => ({ name, value: Math.round(value) }))
     .sort((a, b) => b.value - a.value).slice(0, 8)
-  return createPieOptions(data, '部门工时分布')
+  return createPieOptions(data, '班组工时分布')
 })
 
 function handleTypeChange() {
@@ -216,7 +240,8 @@ async function loadData() {
       params.end_date = searchForm.end_date
     }
     
-    if (searchForm.dept) params.dept = searchForm.dept
+    if (searchForm.name) params.name = searchForm.name
+    if (searchForm.emp_no) params.emp_no = searchForm.emp_no
     if (searchForm.team) params.team = searchForm.team
     
     const res = await api.get('/checkins/report', { params })

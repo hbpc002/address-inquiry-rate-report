@@ -143,6 +143,8 @@ def parse_shift_from_header(header_value) -> Optional[dict]:
 
 @router.get("", response_model=ScheduleListResponse)
 def get_schedules(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     schedule_date: Optional[date] = None,
     emp_id: Optional[int] = None,
     team: Optional[str] = None,
@@ -156,7 +158,9 @@ def get_schedules(
         query = query.filter(Schedule.emp_id == emp_id)
     if team:
         query = query.filter(Employee.team == team)
-    items = query.order_by(Schedule.schedule_date, Employee.name).all()
+    
+    total = query.count()
+    items = query.order_by(Schedule.schedule_date.desc(), Employee.name).offset((page-1)*limit).limit(limit).all()
     
     result_items = []
     for s in items:
@@ -287,38 +291,58 @@ def import_schedule_excel(
     current_user: dict = Depends(get_current_user)
 ):
     """从排班Excel导入员工和排班（支持多个sheet：组长、组员、新人）"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if current_user.get("role") not in ["admin", "manager"]:
         raise HTTPException(status_code=403, detail="仅管理员或经理可导入排班")
     
     contents = file.file.read()
+    logger.info(f"收到文件，大小: {len(contents)}")
+    
+    if not contents:
+        raise HTTPException(status_code=400, detail="文件为空")
+    
+    # 解析Excel
     try:
         xlsx = pd.ExcelFile(io.BytesIO(contents))
         sheet_names = xlsx.sheet_names
+        logger.info(f"解析成功: {sheet_names}")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"无法解析Excel文件: {str(e)}")
-
+        try:
+            xlsx = pd.ExcelFile(io.BytesIO(contents), engine='openpyxl')
+            sheet_names = xlsx.sheet_names
+        except Exception as e2:
+            logger.error(f"Excel解析失败: {e2}")
+            raise HTTPException(status_code=400, detail=f"Excel解析失败: {str(e2)}")
+    
+    if not sheet_names:
+        raise HTTPException(status_code=400, detail="Excel文件中没有sheet")
+    
+    # 过滤有效sheet
+    valid_sheets = [sn for sn in sheet_names 
+                 if not any(kw in sn for kw in ['工时', '人员分组', '人员'])
+                 and any(kw in sn for kw in ['组长', '组员', '新人'])]
+    
+    if not valid_sheets:
+        raise HTTPException(status_code=400, detail=f"未找到有效sheet，现有: {sheet_names}")
+    
+    # 员工映射
     emp_map = {}
-    existing_employees = db.query(Employee).all()
-    for e in existing_employees:
+    for e in db.query(Employee).all():
         emp_map[e.emp_no] = {"name": e.name, "emp_id": e.id}
-
+    
     created_employees = 0
     created_schedules = 0
     created_shifts = 0
     skipped_no_match = 0
-
-    for sheet_name in sheet_names:
-        skip = False
-        for kw in ['工时', '人员分组', '人员']:
-            if kw in sheet_name:
-                skip = True
-                break
-        if skip:
-            continue
-        if '组长' not in sheet_name and '组员' not in sheet_name and '新人' not in sheet_name:
-            continue
-
+    
+    for sheet_name in valid_sheets:
         df = pd.read_excel(xlsx, sheet_name=sheet_name)
+        
+        if df.empty:
+            continue
+            
         cols = df.columns.tolist()
 
         shift_definitions = {}
