@@ -65,28 +65,3 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Build and push combined image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Print image URLs
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "========================================="
-          echo "Docker 镜像构建完成!"
-          echo "========================================="
-          echo "Backend:  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ github.sha }}"
-          echo "          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest"
-          echo "Frontend: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.sha }}"
-          echo "          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest"
-          echo "Combined: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          echo "          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
