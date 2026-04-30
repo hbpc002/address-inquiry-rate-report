@@ -22,10 +22,10 @@ def init_default_data():
             print("Created admin user")
 
         shift_types = [
-            {"shift_name": "行政班", "start_time": "09:00", "end_time": "18:00", "work_hours": 8.0, "color": "#409EFF", "is_night": False},
-            {"shift_name": "早班", "start_time": "08:00", "end_time": "16:00", "work_hours": 8.0, "color": "#67C23A", "is_night": False},
-            {"shift_name": "中班", "start_time": "16:00", "end_time": "24:00", "work_hours": 8.0, "color": "#E6A23C", "is_night": False},
-            {"shift_name": "晚班", "start_time": "24:00", "end_time": "08:00", "work_hours": 8.0, "color": "#909399", "is_night": True},
+            {"shift_name": "行政班", "time_segments": [{"start": "09:00", "end": "18:00"}], "work_hours": 8.0, "color": "#409EFF", "is_night": False},
+            {"shift_name": "早班", "time_segments": [{"start": "08:00", "end": "16:00"}], "work_hours": 8.0, "color": "#67C23A", "is_night": False},
+            {"shift_name": "中班", "time_segments": [{"start": "16:00", "end": "24:00"}], "work_hours": 8.0, "color": "#E6A23C", "is_night": False},
+            {"shift_name": "晚班", "time_segments": [{"start": "24:00", "end": "08:00"}], "work_hours": 8.0, "color": "#909399", "is_night": True},
         ]
 
         for st in shift_types:
