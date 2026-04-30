@@ -18,3 +18,25 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _init_default_data()
+
+
+def _init_default_data():
+    from app.models import User
+    from app.core.security import get_password_hash
+
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.username == "admin").first():
+            admin = User(
+                username="admin",
+                password_hash=get_password_hash("admin123"),
+                display_name="管理员",
+                role="admin",
+                is_active=True
+            )
+            db.add(admin)
+            db.commit()
+            print("Created admin user")
+    finally:
+        db.close()
