@@ -11,10 +11,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    allowedHosts: ['5173.app.cloudstudio.work', '80.app.cloudstudio.work'],
+    allowedHosts: ['.app.cloudstudio.work', 'localhost'],
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:8000',
         changeOrigin: true
       }
     }
