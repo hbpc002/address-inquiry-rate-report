@@ -167,7 +167,7 @@ function getStatusType(status) {
 
 async function loadStats() {
   try {
-    const res = await api.get('/stats')
+    const res = await api.get('/system/stats')
     stats.value = res.data
   } catch (e) {
     stats.value = { employeeCount: 0, todayAttendance: 0, todayLate: 0, todayAbsent: 0 }
@@ -176,7 +176,7 @@ async function loadStats() {
 
 async function loadDepts() {
   try {
-    const res = await api.get('/api/departments')
+    const res = await api.get('/system/departments')
     depts.value = res.data || []
   } catch (e) {
     depts.value = []
@@ -185,7 +185,7 @@ async function loadDepts() {
 
 async function loadTeams() {
   try {
-    const res = await api.get('/api/teams')
+    const res = await api.get('/system/teams')
     teams.value = res.data || []
   } catch (e) {
     teams.value = []
