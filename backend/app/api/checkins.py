@@ -258,12 +258,12 @@ def get_checkin_report(
     else:
         query = query.filter(func.date(Checkin.checkin_time) == datetime.now().strftime("%Y-%m-%d"))
     
+    checkins = query.all()
+
     if team:
         emp_nos = db.query(Employee.emp_no).filter(Employee.team == team).all()
         emp_nos = [e[0] for e in emp_nos]
         checkins = [c for c in checkins if c.emp_no in emp_nos]
-    else:
-        checkins = query.all()
     
     if name:
         checkins = [c for c in checkins if name.lower() in c.name.lower()]

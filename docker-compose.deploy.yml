@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  # 前端+后端（nginx反向代理）
+  web:
+    image: ghcr.io/hbpc002/address-inquiry-rate-report:latest
+    container_name: schedule-report
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./schedule.db:/app/backend/schedule.db
+    restart: unless-stopped
+
+  # 可选：分离的 PostgreSQL
+  # db:
+  #   image: postgres:15
+  #   container_name: schedule-db
+  #   environment:
+  #     - POSTGRES_USER=schedule_user
+  #     - POSTGRES_PASSWORD=your_secure_password
+  #     - POSTGRES_DB=schedule_db
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   restart: unless-stopped
