@@ -2,28 +2,22 @@ version: '3.8'
 
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/hbpc002/address-inquiry-rate-report-frontend:latest
+    container_name: schedule-web
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      - DATABASE_URL=sqlite:///./schedule.db
-    volumes:
-      - ./schedule.db:/app/backend/schedule.db
+    depends_on:
+      - api
     restart: unless-stopped
 
-  # 如果需要分离的数据库
-  # db:
-  #   image: postgres:15
-  #   environment:
-  #     - POSTGRES_USER=schedule_user
-  #     - POSTGRES_PASSWORD=schedule_pass
-  #     - POSTGRES_DB=schedule_db
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
-  #   restart: unless-stopped
-
-# volumes:
-#   pgdata:
+  api:
+    image: ghcr.io/hbpc002/address-inquiry-rate-report-backend:latest
+    container_name: schedule-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./schedule.db:/app/schedule.db
+    environment:
+      - DATABASE_URL=sqlite:///./schedule.db
+    restart: unless-stopped
