@@ -56,3 +56,42 @@ def test_init_db_not_duplicate_admin():
         assert admin_count == 1
     finally:
         db.close()
+
+
+def test_migration_adds_missing_columns():
+    """测试数据库迁移：添加缺失的列"""
+    from sqlalchemy import inspect as sa_inspect, text
+
+    # 创建一个只有基础列的旧版 users 表
+    with engine.connect() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS users"))
+        conn.execute(text("""
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                username VARCHAR(50) UNIQUE,
+                password_hash VARCHAR(255),
+                display_name VARCHAR(50),
+                role VARCHAR(20) DEFAULT 'user',
+                is_active BOOLEAN DEFAULT 1,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+        """))
+        conn.commit()
+
+    # 运行迁移
+    init_db()
+
+    # 检查 permissions 列是否已添加
+    inspector = sa_inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('users')]
+    assert 'permissions' in columns
+
+    # 检查 admin 用户是否创建
+    db = SessionLocal()
+    try:
+        admin = db.query(User).filter(User.username == "admin").first()
+        assert admin is not None
+        assert admin.permissions == '{}'  # 默认值
+    finally:
+        db.close()
