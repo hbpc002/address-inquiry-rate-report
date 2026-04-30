@@ -35,7 +35,7 @@
           <el-input v-model="searchForm.emp_no" placeholder="请输入工号" clearable style="width: 120px" />
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team" placeholder="全部班组" clearable filterable>
+          <el-select v-model="searchForm.team" placeholder="全部班组" clearable filterable style="width: 140px">
             <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
           </el-select>
         </el-form-item>
@@ -78,6 +78,7 @@
         </el-col>
         <el-col :span="12">
           <el-card shadow="hover">
+            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">员工签入次数排名</div>
             <Echart :options="checkinCountOptions" :height="300" />
           </el-card>
         </el-col>
@@ -179,8 +180,8 @@ const hoursChartOptions = computed(() => {
 
 const checkinCountOptions = computed(() => {
   if (!tableData.value.length) return {}
-  const data = [...tableData.value].sort((a, b) => b.checkin_count - a.checkin_count).slice(0, 10)
-  return createHorizontalBarOptions(data.map(d => d.name), data.map(d => d.checkin_count), '', '姓名', '签入次数')
+  const data = [...tableData.value].sort((a, b) => a.checkin_count - b.checkin_count).slice(-10)
+  return createHorizontalBarOptions(data.map(d => d.name), data.map(d => d.checkin_count), '员工签入次数排名', '姓名', '签入次数')
 })
 
 const deptHoursOptions = computed(() => {
