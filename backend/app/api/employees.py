@@ -10,7 +10,7 @@ from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     EmployeeListResponse
 )
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/employees", tags=["员工管理"])
@@ -128,8 +128,7 @@ def import_employees(
     current_user: dict = Depends(get_current_user)
 ):
     """导入员工信息Excel"""
-    if current_user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="仅管理员或经理可导入员工")
+    require_permission(current_user, "upload_employee")
     contents = file.file.read()
     try:
         xlsx = pd.ExcelFile(io.BytesIO(contents))

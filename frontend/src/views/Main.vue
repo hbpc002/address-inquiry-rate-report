@@ -33,7 +33,7 @@
           <el-icon><DataAnalysis /></el-icon>
           <span>考勤报表</span>
         </el-menu-item>
-        <el-menu-item index="/system">
+        <el-menu-item v-if="userStore.user?.role === 'admin'" index="/system">
           <el-icon><Setting /></el-icon>
           <span>系统管理</span>
         </el-menu-item>
@@ -47,6 +47,7 @@
       <el-header>
         <div class="header-right">
           <span>{{ userStore.user?.username }}</span>
+          <el-button type="primary" link @click="showChangePwd = true">修改密码</el-button>
           <el-button type="danger" link @click="handleLogout">登出</el-button>
         </div>
       </el-header>
@@ -55,23 +56,60 @@
       </el-main>
     </el-container>
   </el-container>
+
+  <el-dialog v-model="showChangePwd" title="修改密码" width="400px">
+    <el-form :model="pwdForm" label-width="80px">
+      <el-form-item label="原密码">
+        <el-input v-model="pwdForm.oldPassword" type="password" show-password />
+      </el-form-item>
+      <el-form-item label="新密码">
+        <el-input v-model="pwdForm.newPassword" type="password" show-password />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showChangePwd = false">取消</el-button>
+      <el-button type="primary" :loading="changing" @click="handleChangePwd">确定</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
 const activeMenu = computed(() => route.path)
+const showChangePwd = ref(false)
+const changing = ref(false)
+const pwdForm = ref({ oldPassword: '', newPassword: '' })
 
 function handleLogout() {
   userStore.logout()
   router.push('/login')
+}
+
+async function handleChangePwd() {
+  if (!pwdForm.value.oldPassword || !pwdForm.value.newPassword) {
+    ElMessage.warning('请填写完整')
+    return
+  }
+  changing.value = true
+  try {
+    await userStore.changePassword(pwdForm.value.oldPassword, pwdForm.value.newPassword)
+    ElMessage.success('密码修改成功')
+    showChangePwd.value = false
+    pwdForm.value = { oldPassword: '', newPassword: '' }
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '修改失败')
+  } finally {
+    changing.value = false
+  }
 }
 </script>
 

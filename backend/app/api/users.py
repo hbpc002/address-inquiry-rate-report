@@ -6,9 +6,9 @@ from app.models.database import get_db
 from app.models.user import User
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse,
-    UserListResponse
+    UserListResponse, ChangePasswordRequest, SetPermissionsRequest
 )
-from app.core.security import get_current_user, get_password_hash
+from app.core.security import get_current_user, get_password_hash, verify_password
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/users", tags=["用户管理"])
@@ -90,10 +90,11 @@ def update_user(
     if user_id == current_user["id"] and user.role and user.role != "admin":
         raise HTTPException(status_code=400, detail="不能取消自己的管理员权限")
 
-    for key, value in user.model_dump(exclude_unset=True).items():
+    update_data = user.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
         setattr(db_user, key, value)
     db.commit()
-    log_operation(db, current_user["id"], "update_user", "users", user_id, {"fields": list(user.model_dump(exclude_unset=True).keys())})
+    log_operation(db, current_user["id"], "update_user", "users", user_id, {"fields": list(update_data.keys())})
     return {"id": db_user.id}
 
 
@@ -143,3 +144,48 @@ def reset_password(
     db.commit()
     log_operation(db, current_user["id"], "reset_password", "users", user_id, {"username": db_user.username})
     return {"message": "密码重置成功"}
+
+
+@router.post("/me/change-password", response_model=dict)
+def change_password(
+    body: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """用户自己修改密码"""
+    db_user = db.query(User).filter(User.id == current_user["id"]).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    if not verify_password(body.old_password, db_user.password_hash):
+        raise HTTPException(status_code=400, detail="原密码错误")
+
+    if len(body.new_password) < 3:
+        raise HTTPException(status_code=400, detail="新密码长度至少3位")
+
+    db_user.password_hash = get_password_hash(body.new_password)
+    db.commit()
+    log_operation(db, current_user["id"], "change_password", "users", db_user.id, {"username": db_user.username})
+    return {"message": "密码修改成功"}
+
+
+@router.post("/{user_id}/set-permissions", response_model=dict)
+def set_permissions(
+    user_id: int,
+    body: SetPermissionsRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """管理员设置用户权限"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="仅管理员可设置权限")
+
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    import json
+    db_user.permissions = json.dumps(body.permissions, ensure_ascii=False)
+    db.commit()
+    log_operation(db, current_user["id"], "set_permissions", "users", user_id, {"permissions": body.permissions})
+    return {"message": "权限设置成功"}

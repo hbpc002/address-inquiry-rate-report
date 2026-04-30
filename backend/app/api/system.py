@@ -18,8 +18,7 @@ try:
 except Exception:
     _DB_CONFIG = False
     _AUTO_CONFIG = {'enabled': True, 'retention_days': 90}
-from app.core.security import get_current_user
-from typing import Optional
+from app.core.security import get_current_user, require_permission
 
 router = APIRouter(prefix="/api", tags=["系统管理"])
 
@@ -158,6 +157,8 @@ def clear_data(
     current_user: dict = Depends(get_current_user)
 ):
     """清空指定表的数据"""
+    require_permission(current_user, "clear_data")
+    
     table_map = {
         "employees": Employee,
         "schedules": Schedule,

@@ -16,7 +16,7 @@ from app.schemas.schedule import (
     ScheduleCreate, ScheduleUpdate, ScheduleResponse, ScheduleListResponse,
     BatchScheduleRequest, SwapScheduleRequest
 )
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/schedules", tags=["排班管理"])
@@ -294,8 +294,7 @@ def import_schedule_excel(
     import logging
     logger = logging.getLogger(__name__)
     
-    if current_user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="仅管理员或经理可导入排班")
+    require_permission(current_user, "upload_schedule")
     
     contents = file.file.read()
     logger.info(f"收到文件，大小: {len(contents)}")

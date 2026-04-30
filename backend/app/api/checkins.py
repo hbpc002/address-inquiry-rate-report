@@ -14,7 +14,7 @@ from app.models.schedule import Schedule
 from app.models.daily_report import DailyReport
 from app.utils.logger import log_operation
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_permission
 from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/checkins", tags=["签到记录"])
@@ -53,8 +53,7 @@ def import_checkins(
     current_user: dict = Depends(get_current_user)
 ):
     """导入签到记录，只取目标部门的员工"""
-    if current_user.get("role") not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="仅管理员或经理可导入签到记录")
+    require_permission(current_user, "upload_checkin")
     
     batch = str(uuid.uuid4())[:8]
     content = file.file.read()

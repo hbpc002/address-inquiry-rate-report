@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>签到记录</span>
-          <el-button type="primary" @click="dialogVisible = true">导入签到</el-button>
+          <el-button v-if="userStore.hasPermission('upload_checkin')" type="primary" @click="dialogVisible = true">导入签到</el-button>
         </div>
       </template>
 
@@ -52,7 +52,7 @@
       />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" title="导入签到记录" width="400px">
+    <el-dialog v-if="userStore.hasPermission('upload_checkin')" v-model="dialogVisible" title="导入签到记录" width="400px">
       <el-upload
         ref="upload"
         :auto-upload="false"
@@ -75,9 +75,10 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { api } from '../stores/user'
+import { api, useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+const userStore = useUserStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const uploading = ref(false)

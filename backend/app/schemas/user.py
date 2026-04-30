@@ -16,11 +16,13 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     display_name: Optional[str] = None
     role: Optional[str] = None
+    permissions: Optional[str] = None
     is_active: Optional[bool] = None
 
 
 class UserResponse(UserBase):
     id: int
+    permissions: Optional[str] = "{}"
     is_active: bool
     created_at: datetime
 
@@ -42,3 +44,12 @@ class TokenResponse(BaseModel):
 class UserListResponse(BaseModel):
     items: list[UserResponse]
     total: int
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class SetPermissionsRequest(BaseModel):
+    permissions: dict

@@ -46,7 +46,26 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  return { token, user, isLoggedIn, login, logout, fetchCurrentUser }
+  async function changePassword(oldPassword, newPassword) {
+    const res = await api.post('/users/me/change-password', {
+      old_password: oldPassword,
+      new_password: newPassword
+    })
+    return res.data
+  }
+
+  function hasPermission(permKey) {
+    if (!user.value) return false
+    if (user.value.role === 'admin') return true
+    try {
+      const permissions = JSON.parse(user.value.permissions || '{}')
+      return permissions[permKey] === true
+    } catch {
+      return false
+    }
+  }
+
+  return { token, user, isLoggedIn, login, logout, fetchCurrentUser, changePassword, hasPermission }
 })
 
 export { api }

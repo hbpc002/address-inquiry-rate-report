@@ -5,7 +5,7 @@
         <div class="card-header">
           <span>员工管理</span>
           <el-space>
-            <el-button type="success" @click="importVisible = true">导入员工</el-button>
+            <el-button v-if="userStore.hasPermission('upload_employee')" type="success" @click="importVisible = true">导入员工</el-button>
             <el-button type="primary" @click="handleAdd">新增员工</el-button>
           </el-space>
         </div>
@@ -92,7 +92,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="importVisible" title="导入员工" width="500px">
+    <el-dialog v-if="userStore.hasPermission('upload_employee')" v-model="importVisible" title="导入员工" width="500px">
       <el-upload
         ref="upload"
         :auto-upload="false"
@@ -119,8 +119,10 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+const userStore = useUserStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const importVisible = ref(false)
@@ -130,7 +132,7 @@ const searchForm = reactive({ search: '', team: '', dept: '' })
 const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员' })
 const teams = ref([])
 const departments = ref([])
-const pagination = reactive({ page: 1, limit: 20, total: 0 })
+const pagination = reactive({ page:1, limit: 20, total: 0 })
 const importFile = ref(null)
 
 async function loadData() {

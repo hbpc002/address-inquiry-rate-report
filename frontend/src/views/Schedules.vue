@@ -5,7 +5,7 @@
         <div class="card-header">
           <span>排班管理</span>
           <el-space>
-            <el-button type="success" @click="dialogType = 'import'; importVisible = true">导入排班</el-button>
+            <el-button v-if="userStore.hasPermission('upload_schedule')" type="success" @click="dialogType = 'import'; importVisible = true">导入排班</el-button>
             <el-button type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
             <el-button type="warning" @click="dialogType = 'batch'; dialogVisible = true">批量排班</el-button>
           </el-space>
@@ -61,7 +61,7 @@
     </el-card>
 
     <!-- 导入排班对话框 -->
-    <el-dialog v-model="importVisible" title="导入排班" width="500px">
+    <el-dialog v-if="userStore.hasPermission('upload_schedule')" v-model="importVisible" title="导入排班" width="500px">
       <el-upload
         ref="upload"
         :auto-upload="false"
@@ -133,8 +133,10 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+const userStore = useUserStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const importVisible = ref(false)

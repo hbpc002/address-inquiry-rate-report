@@ -25,7 +25,7 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe>
+       <el-table :data="tableData" border stripe>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="display_name" label="显示名" width="120" />
         <el-table-column prop="role" label="角色" width="100">
@@ -33,6 +33,17 @@
             <el-tag :type="row.role === 'admin' ? 'danger' : row.role === 'manager' ? 'warning' : 'success'">
               {{ row.role === 'admin' ? '管理员' : row.role === 'manager' ? '经理' : '普通用户' }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="权限" width="200">
+          <template #default="{ row }">
+            <el-tag v-if="row.role === 'admin'" type="danger">全部</el-tag>
+            <template v-else>
+              <el-tag v-for="(val, key) in parsePermissions(row.permissions)" :key="key" size="small" style="margin-right: 4px">
+                {{ permLabel(key) }}
+              </el-tag>
+              <span v-if="!row.permissions || Object.keys(parsePermissions(row.permissions)).length === 0">无</span>
+            </template>
           </template>
         </el-table-column>
         <el-table-column prop="is_active" label="状态" width="80">
@@ -63,7 +74,7 @@
       />
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="450px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="用户名">
           <el-input v-model="form.username" :disabled="isEdit" />
@@ -75,11 +86,19 @@
           <el-input v-model="form.display_name" />
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.role">
+          <el-select v-model="form.role" @change="handleRoleChange">
             <el-option label="普通用户" value="user" />
             <el-option label="经理" value="manager" />
             <el-option label="管理员" value="admin" />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.role !== 'admin'" label="权限">
+          <el-checkbox-group v-model="form.permissions">
+            <el-checkbox label="upload_employee">上传员工</el-checkbox>
+            <el-checkbox label="upload_schedule">上传排班</el-checkbox>
+            <el-checkbox label="upload_checkin">上传签到</el-checkbox>
+            <el-checkbox label="clear_data">清除数据</el-checkbox>
+          </el-checkbox-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -99,8 +118,33 @@ const tableData = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const searchForm = reactive({ search: '', role: '' })
-const form = reactive({ username: '', password: '', display_name: '', role: 'user' })
+const form = reactive({ id: null, username: '', password: '', display_name: '', role: 'user', permissions: [] })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
+
+const permLabels = {
+  upload_employee: '上传员工',
+  upload_schedule: '上传排班',
+  upload_checkin: '上传签到',
+  clear_data: '清除数据'
+}
+
+function parsePermissions(permissions) {
+  try {
+    return JSON.parse(permissions || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function permLabel(key) {
+  return permLabels[key] || key
+}
+
+function handleRoleChange(role) {
+  if (role === 'admin') {
+    form.permissions = []
+  }
+}
 
 async function loadData() {
   try {
@@ -114,24 +158,30 @@ async function loadData() {
 }
 
 function handleAdd() {
-  Object.assign(form, { username: '', password: '', display_name: '', role: 'user' })
+  Object.assign(form, { id: null, username: '', password: '', display_name: '', role: 'user', permissions: [] })
   isEdit.value = false
   dialogVisible.value = true
 }
 
 function handleEdit(row) {
-  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, role: row.role })
+  const perms = parsePermissions(row.permissions)
+  const permKeys = Object.keys(perms).filter(k => perms[k] === true)
+  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, role: row.role, permissions: permKeys })
   isEdit.value = true
   dialogVisible.value = true
 }
 
 async function handleSubmit() {
   try {
+    const permObj = {}
+    if (form.role !== 'admin') {
+      form.permissions.forEach(p => { permObj[p] = true })
+    }
     if (isEdit.value) {
-      await api.put(`/users/${form.id}`, { display_name: form.display_name, role: form.role })
+      await api.put(`/users/${form.id}`, { display_name: form.display_name, role: form.role, permissions: JSON.stringify(permObj) })
       ElMessage.success('更新成功')
     } else {
-      await api.post('/users', form)
+      await api.post('/users', { ...form, permissions: JSON.stringify(permObj) })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false

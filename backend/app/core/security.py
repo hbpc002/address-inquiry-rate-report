@@ -69,7 +69,7 @@ def get_user_from_token(token: str, db: Session) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户不存在",
         )
-    return {"id": user.id, "username": user.username, "role": user.role, "display_name": user.display_name}
+    return {"id": user.id, "username": user.username, "role": user.role, "permissions": user.permissions, "display_name": user.display_name}
 
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
@@ -84,3 +84,25 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> d
     
     token = auth_header.replace("Bearer ", "")
     return get_user_from_token(token, db)
+
+
+def check_permission(user: dict, permission: str) -> bool:
+    """检查用户是否有指定权限"""
+    import json
+    if user.get("role") == "admin":
+        return True
+    permissions_str = user.get("permissions", "{}")
+    try:
+        permissions = json.loads(permissions_str) if permissions_str else {}
+    except:
+        permissions = {}
+    return permissions.get(permission, False) is True
+
+
+def require_permission(user: dict, permission: str):
+    """要求用户有指定权限，否则抛出403"""
+    if not check_permission(user, permission):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="权限不足"
+        )
