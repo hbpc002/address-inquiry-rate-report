@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 读取版本号
-VERSION=$(cat VERSION)
+# 自动生成版本号: 1.0.日期.提交数
+VERSION="1.0.$(date +%Y%m%d).$(git rev-list --count HEAD)"
 REGISTRY="ghcr.io/hbpc002"
 
 echo "Building version: $VERSION"
