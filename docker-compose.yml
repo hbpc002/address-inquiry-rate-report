@@ -16,8 +16,22 @@ services:
     container_name: schedule-api
     ports:
       - "8000:8000"
-    volumes:
-      - ./schedule.db:/app/schedule.db
+    depends_on:
+      - db
     environment:
-      - DATABASE_URL=sqlite:///./schedule.db
+      - DATABASE_URL=postgresql://postgres:admin123@kf@db:5432/schedule
     restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: schedule-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=admin123@kf
+      - POSTGRES_DB=schedule
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

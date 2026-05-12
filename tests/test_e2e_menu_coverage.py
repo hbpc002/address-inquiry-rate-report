@@ -52,9 +52,9 @@ def setup_function():
                     display_name=TEST_USER['display_name'], role=TEST_USER['role'])
         db.add_all([admin, manager, user])
 
-        shift = ShiftType(shift_name='早班', start_time='08:00', end_time='18:00', work_hours=8.0,
+        shift = ShiftType(shift_name='早班', time_segments=[{"start": "08:00", "end": "18:00"}], work_hours=8.0,
                          color='#409EFF', is_active=True)
-        shift_night = ShiftType(shift_name='晚班', start_time='20:00', end_time='06:00',
+        shift_night = ShiftType(shift_name='晚班', time_segments=[{"start": "20:00", "end": "06:00"}],
                                 work_hours=10.0, color='#909399', is_active=True, is_night=True)
         db.add_all([shift, shift_night])
         db.commit()
@@ -196,7 +196,7 @@ def test_employee_teams_aggregation():
 # ========= Shift Types Menu =========
 def test_shift_type_crud():
     db = SessionLocal()
-    new_shift = ShiftType(shift_name='中班', start_time='12:00', end_time='22:00',
+    new_shift = ShiftType(shift_name='中班', time_segments=[{"start": "12:00", "end": "22:00"}],
                           work_hours=10.0, color='#67C23A', is_active=True)
     db.add(new_shift)
     db.commit()

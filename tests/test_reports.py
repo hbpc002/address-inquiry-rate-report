@@ -29,7 +29,7 @@ def setup_function(func):
         db.add(admin)
         
         # Create shift type
-        shift = ShiftType(shift_name='早班', start_time='08:00', end_time='18:00', work_hours=8.0, color='#409EFF', is_active=True)
+        shift = ShiftType(shift_name='早班', time_segments=[{"start": "08:00", "end": "18:00"}], work_hours=8.0, color='#409EFF', is_active=True)
         db.add(shift)
         db.commit()
         db.refresh(shift)
