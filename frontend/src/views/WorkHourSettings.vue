@@ -138,8 +138,9 @@ async function loadData() {
         edit_overtime: threshold ? threshold.overtime_ratio : t.overtime_ratio,
         edit_undertime: threshold ? threshold.undertime_ratio : t.undertime_ratio,
         id: threshold ? threshold.id : null
-    }))
-    availableTeams.value = res.data
+      }
+    })
+    availableTeams.value = teamsRes.data
   } catch (e) {
     ElMessage.error('加载失败')
   }
