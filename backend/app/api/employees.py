@@ -23,6 +23,7 @@ def get_employees(
     team: Optional[str] = None,
     dept: Optional[str] = None,
     status: Optional[str] = None,
+    role: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
@@ -32,6 +33,8 @@ def get_employees(
         query = query.filter(Employee.team == team)
     if dept:
         query = query.filter(Employee.dept == dept)
+    if role:
+        query = query.filter(Employee.role == role)
     if status:
         query = query.filter(Employee.status == status)
     if search:
@@ -119,6 +122,17 @@ def get_teams(
         Employee.status == "在职"
     ).group_by(Employee.team).all()
     return [{"team": r[0], "count": r[1]} for r in results if r[0]]
+
+
+@router.get("/roles", response_model=list)
+def get_roles(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    results = db.query(Employee.role, func.count(Employee.id)).filter(
+        Employee.status == "在职"
+    ).group_by(Employee.role).all()
+    return [{"role": r[0], "count": r[1]} for r in results if r[0]]
 
 
 @router.post("/import", response_model=dict)

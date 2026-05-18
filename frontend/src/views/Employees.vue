@@ -16,13 +16,18 @@
           <el-input v-model="searchForm.search" placeholder="工号/姓名" clearable />
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team" placeholder="请选择" clearable>
+          <el-select v-model="searchForm.team" placeholder="请选择" clearable style="width:160px">
             <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
           </el-select>
         </el-form-item>
         <el-form-item label="部门">
-          <el-select v-model="searchForm.dept" placeholder="请选择" clearable>
+          <el-select v-model="searchForm.dept" placeholder="请选择" clearable style="width:160px">
             <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="岗位">
+          <el-select v-model="searchForm.role" placeholder="请选择" clearable style="width:160px">
+            <el-option v-for="r in roles" :key="r.role" :label="r.role" :value="r.role" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -128,10 +133,11 @@ const dialogVisible = ref(false)
 const importVisible = ref(false)
 const uploading = ref(false)
 const isEdit = ref(false)
-const searchForm = reactive({ search: '', team: '', dept: '' })
+const searchForm = reactive({ search: '', team: '', dept: '', role: '' })
 const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员' })
 const teams = ref([])
 const departments = ref([])
+const roles = ref([])
 const pagination = reactive({ page:1, limit: 20, total: 0 })
 const importFile = ref(null)
 
@@ -152,9 +158,14 @@ async function loadData() {
 
 async function loadFilters() {
   try {
-    const [tRes, dRes] = await Promise.all([api.get('/employees/teams'), api.get('/employees/departments')])
+    const [tRes, dRes, rRes] = await Promise.all([
+      api.get('/employees/teams'),
+      api.get('/employees/departments'),
+      api.get('/employees/roles')
+    ])
     teams.value = tRes.data
     departments.value = dRes.data
+    roles.value = rRes.data
   } catch (e) {
     console.error(e)
   }
@@ -205,6 +216,7 @@ function resetForm() {
   searchForm.search = ''
   searchForm.team = ''
   searchForm.dept = ''
+  searchForm.role = ''
   loadData()
 }
 
