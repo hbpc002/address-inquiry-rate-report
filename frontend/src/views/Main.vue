@@ -29,6 +29,10 @@
           <el-icon><Tickets /></el-icon>
           <span>签入签出报表</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.user?.role === 'admin'" index="/work-hour-settings">
+          <el-icon><Warning /></el-icon>
+          <span>工时预警设置</span>
+        </el-menu-item>
         <el-menu-item index="/reports">
           <el-icon><DataAnalysis /></el-icon>
           <span>考勤报表</span>
@@ -77,7 +81,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()

@@ -7,6 +7,7 @@ from app.models.checkin import Checkin
 from app.models.daily_report import DailyReport
 from app.models.monthly_report import MonthlyReport
 from app.models.operation_log import OperationLog
+from app.models.work_hour_threshold import WorkHourThreshold
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "DailyReport",
     "MonthlyReport",
     "OperationLog",
+    "WorkHourThreshold",
 ]

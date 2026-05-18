@@ -45,20 +45,42 @@
       </el-form>
 
       <el-row :gutter="20" class="stats-row">
-        <el-col :span="6">
+        <el-col :span="4">
           <el-statistic title="签入人次" :value="stats.total_checkins" />
         </el-col>
-        <el-col :span="6">
+        <el-col :span="4">
           <el-statistic title="总人数" :value="stats.emp_count" />
         </el-col>
-        <el-col :span="6">
+        <el-col :span="4">
           <el-statistic title="总时长" :value="stats.total_hours" :precision="1">
             <template #suffix>小时</template>
           </el-statistic>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="4">
           <el-statistic title="平均时长" :value="stats.avg_hours" :precision="1">
             <template #suffix>小时</template>
+          </el-statistic>
+        </el-col>
+        <el-col :span="4">
+          <el-statistic title="超时人数" :value="stats.overtime_count">
+            <template #suffix>
+              <el-tooltip v-if="stats.overtime_count > 0" :content="overtimeNames.join(', ')" placement="top">
+                <el-button type="warning" link @click="toggleFilter('overtime')">
+                  {{ filterType === 'overtime' ? '已筛选' : '点击筛选' }}
+                </el-button>
+              </el-tooltip>
+            </template>
+          </el-statistic>
+        </el-col>
+        <el-col :span="4">
+          <el-statistic title="过短人数" :value="stats.undertime_count">
+            <template #suffix>
+              <el-tooltip v-if="stats.undertime_count > 0" :content="undertimeNames.join(', ')" placement="top">
+                <el-button type="warning" link @click="toggleFilter('undertime')">
+                  {{ filterType === 'undertime' ? '已筛选' : '点击筛选' }}
+                </el-button>
+              </el-tooltip>
+            </template>
           </el-statistic>
         </el-col>
       </el-row>
@@ -67,19 +89,19 @@
         <el-col :span="12">
           <el-card shadow="hover">
             <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center">
-              <span style="font-size: 14px; color: #606266">员工工时排名</span>
+              <span style="font-size: 14px; color: #606266">员工工时排名（点击员工筛选）</span>
               <el-radio-group v-model="chartType" size="small">
                 <el-radio-button value="bar">柱状图</el-radio-button>
                 <el-radio-button value="line">折线图</el-radio-button>
               </el-radio-group>
             </div>
-            <Echart :options="hoursChartOptions" :height="280" />
+            <Echart :options="hoursChartOptions" :height="280" @click="handleHoursChartClick" />
           </el-card>
         </el-col>
         <el-col :span="12">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">员工签入次数排名</div>
-            <Echart :options="checkinCountOptions" :height="300" />
+            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">员工签入次数排名（点击员工筛选）</div>
+            <Echart :options="checkinCountOptions" :height="300" @click="handleCheckinChartClick" />
           </el-card>
         </el-col>
       </el-row>
@@ -87,7 +109,8 @@
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
         <el-col :span="24">
           <el-card shadow="hover">
-            <Echart :options="deptHoursOptions" :height="300" />
+            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组工时分布（点击班组筛选）</div>
+            <Echart :options="deptHoursOptions" :height="300" @click="handleTeamChartClick" />
           </el-card>
         </el-col>
       </el-row>
@@ -103,7 +126,15 @@
             {{ row.total_hours.toFixed(1) }}
           </template>
         </el-table-column>
-        <el-table-column label="签入明细" min-width="400">
+        <el-table-column prop="hour_status_text" label="工时状态" width="120">
+          <template #default="{ row }">
+            <el-tag v-if="row.hour_status === 'overtime'" type="danger" size="small">超时</el-tag>
+            <el-tag v-else-if="row.hour_status === 'undertime'" type="warning" size="small">过短</el-tag>
+            <el-tag v-else-if="row.hour_status === 'normal'" type="success" size="small">正常</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="签入明细" min-width="350">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
               <div v-for="(c, idx) in row.checkins" :key="idx" style="display: inline-block; margin: 2px 8px 2px 0;">
@@ -144,9 +175,19 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 
 const paginatedData = computed(() => {
+  let data = tableData.value
+  if (filterType.value === 'overtime') {
+    data = data.filter(d => d.hour_status === 'overtime')
+  } else if (filterType.value === 'undertime') {
+    data = data.filter(d => d.hour_status === 'undertime')
+  } else if (filterType.value === 'name') {
+    data = data.filter(d => d.name === filterValue.value)
+  } else if (filterType.value === 'team') {
+    data = data.filter(d => d.team === filterValue.value)
+  }
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
-  return tableData.value.slice(start, end)
+  return data.slice(start, end)
 })
 
 const searchForm = reactive({
@@ -164,7 +205,20 @@ const stats = reactive({
   total_checkins: 0,
   emp_count: 0,
   total_hours: 0,
-  avg_hours: 0
+  avg_hours: 0,
+  overtime_count: 0,
+  undertime_count: 0
+})
+
+const filterType = ref('')
+const filterValue = ref('')
+
+const overtimeNames = computed(() => {
+  return tableData.value.filter(d => d.hour_status === 'overtime').map(d => d.name).slice(0, 5)
+})
+
+const undertimeNames = computed(() => {
+  return tableData.value.filter(d => d.hour_status === 'undertime').map(d => d.name).slice(0, 5)
 })
 
 const chartType = ref('bar')
@@ -196,6 +250,56 @@ const deptHoursOptions = computed(() => {
     .sort((a, b) => b.value - a.value).slice(0, 8)
   return createPieOptions(data, '班组工时分布')
 })
+
+function toggleFilter(type) {
+  if (filterType.value === type) {
+    filterType.value = ''
+    filterValue.value = ''
+  } else {
+    filterType.value = type
+    filterValue.value = ''
+  }
+  currentPage.value = 1
+}
+
+function clearFilter() {
+  filterType.value = ''
+  filterValue.value = ''
+  currentPage.value = 1
+}
+
+function handleHoursChartClick(params) {
+  const name = params.name
+  if (filterType.value === 'name' && filterValue.value === name) {
+    clearFilter()
+  } else {
+    filterType.value = 'name'
+    filterValue.value = name
+    currentPage.value = 1
+  }
+}
+
+function handleCheckinChartClick(params) {
+  const name = params.name
+  if (filterType.value === 'name' && filterValue.value === name) {
+    clearFilter()
+  } else {
+    filterType.value = 'name'
+    filterValue.value = name
+    currentPage.value = 1
+  }
+}
+
+function handleTeamChartClick(params) {
+  const team = params.name
+  if (filterType.value === 'team' && filterValue.value === team) {
+    clearFilter()
+  } else {
+    filterType.value = 'team'
+    filterValue.value = team
+    currentPage.value = 1
+  }
+}
 
 function handleTypeChange() {
   const today = new Date().toISOString().slice(0, 10)
@@ -251,6 +355,10 @@ async function loadData() {
     stats.emp_count = res.data.stats.emp_count
     stats.total_hours = res.data.stats.total_hours
     stats.avg_hours = res.data.stats.avg_hours
+    stats.overtime_count = res.data.stats.overtime_count || 0
+    stats.undertime_count = res.data.stats.undertime_count || 0
+    filterType.value = ''
+    filterValue.value = ''
     tableData.value = res.data.items || []
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))

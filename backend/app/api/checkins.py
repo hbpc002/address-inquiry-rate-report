@@ -12,6 +12,7 @@ from app.models.checkin import Checkin
 from app.models.employee import Employee
 from app.models.schedule import Schedule
 from app.models.daily_report import DailyReport
+from app.models.work_hour_threshold import WorkHourThreshold
 from app.utils.logger import log_operation
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
 from app.core.security import get_current_user, require_permission
@@ -302,9 +303,59 @@ def get_checkin_report(
             "checkout_time": checkout_time_str,
             "duration": round(duration, 1)
         })
+        if emp:
+            emp_stats[key]["role"] = emp.role
     
     for key in emp_stats:
         emp_stats[key]["checkins"].sort(key=lambda x: x["checkin_time"] or '')
+    
+    thresholds = db.query(WorkHourThreshold).all()
+    threshold_map = {t.team: {"overtime": t.overtime_ratio, "undertime": t.undertime_ratio} for t in thresholds}
+    
+    team_hours = {}
+    for item in emp_stats.values():
+        team = item.get("team") or "未知班组"
+        role = item.get("role", "")
+        if role not in ["组长", "师傅"]:
+            if team not in team_hours:
+                team_hours[team] = []
+            team_hours[team].append(item["total_hours"])
+    
+    team_avg = {}
+    for team, hours in team_hours.items():
+        team_avg[team] = sum(hours) / len(hours) if hours else 0
+    
+    overtime_count = 0
+    undertime_count = 0
+    
+    for item in emp_stats.values():
+        team = item.get("team") or "未知班组"
+        role = item.get("role", "")
+        
+        if role in ["组长", "师傅"]:
+            item["hour_status"] = "normal"
+            item["hour_status_text"] = "-"
+        else:
+            avg = team_avg.get(team, 0)
+            if avg > 0:
+                ratio = item["total_hours"] / avg
+                overtime_ratio = threshold_map.get(team, {}).get("overtime", 1.2)
+                undertime_ratio = threshold_map.get(team, {}).get("undertime", 0.8)
+                
+                if ratio >= overtime_ratio:
+                    item["hour_status"] = "overtime"
+                    item["hour_status_text"] = f"超时 ({ratio*100:.0f}%)"
+                    overtime_count += 1
+                elif ratio <= undertime_ratio:
+                    item["hour_status"] = "undertime"
+                    item["hour_status_text"] = f"过短 ({ratio*100:.0f}%)"
+                    undertime_count += 1
+                else:
+                    item["hour_status"] = "normal"
+                    item["hour_status_text"] = f"正常 ({ratio*100:.0f}%)"
+            else:
+                item["hour_status"] = "normal"
+                item["hour_status_text"] = "-"
     
     items = list(emp_stats.values())
     items.sort(key=lambda x: x["checkin_count"], reverse=True)
@@ -318,7 +369,9 @@ def get_checkin_report(
             "total_checkins": total_checkins,
             "total_hours": round(total_hours, 1),
             "avg_hours": round(avg_hours, 1),
-            "emp_count": len(items)
+            "emp_count": len(items),
+            "overtime_count": overtime_count,
+            "undertime_count": undertime_count
         },
         "items": items
     }

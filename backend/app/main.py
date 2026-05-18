@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.models.database import init_db
-from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users
+from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds
 from app.models.database import SessionLocal
 import asyncio
 import traceback
@@ -27,6 +27,7 @@ app = FastAPI(
         {"name": "签到记录", "description": "签到记录导入"},
         {"name": "考勤报表", "description": "考勤报表查询"},
         {"name": "用户管理", "description": "系统用户管理"},
+        {"name": "工时预警阈值", "description": "工时预警阈值配置"},
     ]
 )
 
@@ -56,6 +57,7 @@ app.include_router(checkins.router)
 app.include_router(reports.router)
 app.include_router(system.router)
 app.include_router(users.router)
+app.include_router(work_hour_thresholds.router)
 
 
 @app.on_event("startup")

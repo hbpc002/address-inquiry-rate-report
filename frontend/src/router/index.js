@@ -38,6 +38,11 @@ const routes = [
         component: () => import('../views/CheckinReport.vue')
       },
       {
+        path: 'work-hour-settings',
+        name: 'WorkHourSettings',
+        component: () => import('../views/WorkHourSettings.vue')
+      },
+      {
         path: 'reports',
         name: 'Reports',
         component: () => import('../views/Reports.vue')
