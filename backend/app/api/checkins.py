@@ -145,18 +145,18 @@ def import_checkins(
     db.commit()
     log_operation(db, current_user["id"], "import_checkins", "checkins", None, {"batch": batch, "count": count})
 
-    checkin_names = db.query(Checkin.name).filter(Checkin.import_batch == batch).distinct().all()
-    checkin_names = [n[0] for n in checkin_names]
+    checkin_emp_nos = db.query(Checkin.emp_no).filter(Checkin.import_batch == batch).distinct().all()
+    checkin_emp_nos = [n[0] for n in checkin_emp_nos if n[0]]
     
     emp_with_schedule = db.query(Employee).join(Schedule).filter(
-        Employee.name.in_(checkin_names)
+        Employee.emp_no.in_(checkin_emp_nos)
     ).all()
 
     for emp in emp_with_schedule:
         schedules = db.query(Schedule).filter(Schedule.emp_id == emp.id).all()
         for schedule in schedules:
             checkins_exist = db.query(Checkin).filter(
-                Checkin.name == emp.name,
+                Checkin.emp_no == emp.emp_no,
                 func.date(Checkin.checkin_time) == schedule.schedule_date
             ).first()
             if checkins_exist:
@@ -234,42 +234,55 @@ def get_checkin_report(
 ):
     """签入签出报表"""
     from datetime import timedelta
-    
-    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no)
-    
+
+    # Step 1: Determine date range
     if date:
-        query = query.filter(func.date(Checkin.checkin_time) == date)
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+        query_start = d
+        query_end = d
     elif year_month:
-        start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d")
+        query_start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
         if year_month == datetime.now().strftime("%Y-%m"):
-            end = datetime.now()
+            query_end = datetime.now().date()
         else:
-            next_month = start.replace(day=28) + timedelta(days=4)
-            end = next_month.replace(day=1) - timedelta(days=1)
-        query = query.filter(
-            func.date(Checkin.checkin_time) >= start.date(),
-            func.date(Checkin.checkin_time) <= end.date()
-        )
+            next_month = (query_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            query_end = next_month - timedelta(days=1)
     elif start_date and end_date:
-        query = query.filter(
-            func.date(Checkin.checkin_time) >= start_date,
-            func.date(Checkin.checkin_time) <= end_date
-        )
+        query_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        query_end = datetime.strptime(end_date, "%Y-%m-%d").date()
     else:
-        query = query.filter(func.date(Checkin.checkin_time) == datetime.now().strftime("%Y-%m-%d"))
-    
+        query_start = datetime.now().date()
+        query_end = query_start
+
+    # Step 2: Query checkins (LEFT JOIN so unmatched emp_no doesn't drop records)
+    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no, isouter=True)
+    query = query.filter(
+        func.date(Checkin.checkin_time) >= query_start,
+        func.date(Checkin.checkin_time) <= query_end
+    )
+
     checkins = query.all()
 
     if team:
         emp_nos = db.query(Employee.emp_no).filter(Employee.team == team).all()
         emp_nos = [e[0] for e in emp_nos]
         checkins = [c for c in checkins if c.emp_no in emp_nos]
-    
+
     if name:
         checkins = [c for c in checkins if name.lower() in c.name.lower()]
     if emp_no:
         checkins = [c for c in checkins if emp_no.lower() in c.emp_no.lower()]
-    
+
+    # Step 3: Get scheduled_hours from DailyReport for the same date range
+    scheduled_data = db.query(
+        Employee.emp_no,
+        func.sum(DailyReport.scheduled_hours)
+    ).join(Employee, DailyReport.emp_id == Employee.id).filter(
+        DailyReport.schedule_date >= query_start,
+        DailyReport.schedule_date <= query_end
+    ).group_by(Employee.emp_no).all()
+    scheduled_map = {emp_no: float(total or 0) for emp_no, total in scheduled_data}
+
     emp_stats = {}
     for c in checkins:
         key = c.emp_no
@@ -282,14 +295,15 @@ def get_checkin_report(
                 "team": emp.team if emp else '',
                 "checkin_count": 0,
                 "total_hours": 0.0,
+                "scheduled_hours": scheduled_map.get(key, 0),
                 "checkins": []
             }
         emp_stats[key]["checkin_count"] += 1
-        
+
         checkin_time_str = None
         checkout_time_str = None
         duration = 0.0
-        
+
         if c.checkin_time:
             checkin_time_str = c.checkin_time.strftime('%Y-%m-%d %H:%M')
         if c.checkout_time:
@@ -297,7 +311,7 @@ def get_checkin_report(
         if c.checkout_time and c.checkin_time:
             duration = (c.checkout_time - c.checkin_time).total_seconds() / 3600
             emp_stats[key]["total_hours"] += duration
-        
+
         emp_stats[key]["checkins"].append({
             "checkin_time": checkin_time_str,
             "checkout_time": checkout_time_str,
@@ -305,13 +319,14 @@ def get_checkin_report(
         })
         if emp:
             emp_stats[key]["role"] = emp.role
-    
+
     for key in emp_stats:
         emp_stats[key]["checkins"].sort(key=lambda x: x["checkin_time"] or '')
-    
+
     thresholds = db.query(WorkHourThreshold).all()
     threshold_map = {t.team: {"overtime": t.overtime_ratio, "undertime": t.undertime_ratio} for t in thresholds}
-    
+
+    # Build team median fallback (for employees without schedule data)
     team_hours = {}
     for item in emp_stats.values():
         team = item.get("team") or "未知班组"
@@ -320,42 +335,51 @@ def get_checkin_report(
             if team not in team_hours:
                 team_hours[team] = []
             team_hours[team].append(item["total_hours"])
-    
-    team_avg = {}
+
+    team_median = {}
     for team, hours in team_hours.items():
-        team_avg[team] = sum(hours) / len(hours) if hours else 0
-    
+        if hours:
+            sorted_hours = sorted(hours)
+            n = len(sorted_hours)
+            if n % 2 == 1:
+                team_median[team] = sorted_hours[n // 2]
+            else:
+                team_median[team] = (sorted_hours[n // 2 - 1] + sorted_hours[n // 2]) / 2
+        else:
+            team_median[team] = 0
+
     overtime_count = 0
     undertime_count = 0
-    
+
     for item in emp_stats.values():
         team = item.get("team") or "未知班组"
         role = item.get("role", "")
-        
+
         if role in ["组长", "师傅"]:
             item["hour_status"] = "normal"
             item["hour_status_text"] = "-"
         else:
-            avg = team_avg.get(team, 0)
-            if avg > 0:
-                ratio = item["total_hours"] / avg
-                overtime_ratio = threshold_map.get(team, {}).get("overtime", 1.2)
-                undertime_ratio = threshold_map.get(team, {}).get("undertime", 0.8)
-                
-                if ratio >= overtime_ratio:
-                    item["hour_status"] = "overtime"
-                    item["hour_status_text"] = f"超时 ({ratio*100:.0f}%)"
-                    overtime_count += 1
-                elif ratio <= undertime_ratio:
-                    item["hour_status"] = "undertime"
-                    item["hour_status_text"] = f"过短 ({ratio*100:.0f}%)"
-                    undertime_count += 1
-                else:
-                    item["hour_status"] = "normal"
-                    item["hour_status_text"] = f"正常 ({ratio*100:.0f}%)"
+            scheduled = item.get("scheduled_hours", 0)
+            if scheduled > 0:
+                ratio = item["total_hours"] / scheduled
+            else:
+                median = team_median.get(team, 0)
+                ratio = item["total_hours"] / median if median > 0 else 0
+
+            overtime_ratio = threshold_map.get(team, {}).get("overtime", 1.2)
+            undertime_ratio = threshold_map.get(team, {}).get("undertime", 0.8)
+
+            if ratio >= overtime_ratio:
+                item["hour_status"] = "overtime"
+                item["hour_status_text"] = f"超时 ({ratio*100:.0f}%)"
+                overtime_count += 1
+            elif 0 < ratio <= undertime_ratio:
+                item["hour_status"] = "undertime"
+                item["hour_status_text"] = f"过短 ({ratio*100:.0f}%)"
+                undertime_count += 1
             else:
                 item["hour_status"] = "normal"
-                item["hour_status_text"] = "-"
+                item["hour_status_text"] = f"正常 ({ratio*100:.0f}%)"
     
     items = list(emp_stats.values())
     items.sort(key=lambda x: x["checkin_count"], reverse=True)

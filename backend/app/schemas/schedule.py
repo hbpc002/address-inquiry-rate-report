@@ -28,6 +28,12 @@ class ScheduleResponse(ScheduleBase):
     created_by: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    name: Optional[str] = None
+    emp_no: Optional[str] = None
+    team: Optional[str] = None
+    shift_name: Optional[str] = None
+    shift_time: Optional[str] = None
+    work_hours: Optional[float] = None
 
     class Config:
         from_attributes = True

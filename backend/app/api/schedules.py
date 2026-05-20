@@ -18,6 +18,7 @@ from app.schemas.schedule import (
 )
 from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
+from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/schedules", tags=["排班管理"])
 
@@ -141,6 +142,18 @@ def parse_shift_from_header(header_value) -> Optional[dict]:
     }
     return shift_info
 
+def _format_shift_time(time_segments: list) -> str:
+    if not time_segments:
+        return ""
+    parts = []
+    for seg in time_segments:
+        start = seg.get("start", "")
+        end = seg.get("end", "")
+        if start and end:
+            parts.append(f"{start}-{end}")
+    return ", ".join(parts)
+
+
 @router.get("", response_model=ScheduleListResponse)
 def get_schedules(
     page: int = Query(1, ge=1),
@@ -148,6 +161,10 @@ def get_schedules(
     schedule_date: Optional[date] = None,
     emp_id: Optional[int] = None,
     team: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    shift_type_id: Optional[int] = None,
+    schedule_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -158,6 +175,14 @@ def get_schedules(
         query = query.filter(Schedule.emp_id == emp_id)
     if team:
         query = query.filter(Employee.team == team)
+    if name:
+        query = query.filter(Employee.name.ilike(f"%{name}%"))
+    if emp_no:
+        query = query.filter(Employee.emp_no.ilike(f"%{emp_no}%"))
+    if shift_type_id:
+        query = query.filter(Schedule.shift_type_id == shift_type_id)
+    if schedule_type:
+        query = query.filter(Schedule.schedule_type == schedule_type)
     
     total = query.count()
     items = query.order_by(Schedule.schedule_date.desc(), Employee.name).offset((page-1)*limit).limit(limit).all()
@@ -177,9 +202,11 @@ def get_schedules(
             "name": emp.name if emp else None,
             "emp_no": emp.emp_no if emp else None,
             "team": emp.team if emp else None,
-            "shift_name": shift.shift_name if shift else None
+            "shift_name": shift.shift_name if shift else None,
+            "shift_time": _format_shift_time(shift.time_segments) if shift else None,
+            "work_hours": float(shift.work_hours) if shift else None
         })
-    return ScheduleListResponse(items=result_items, total=len(result_items))
+    return ScheduleListResponse(items=result_items, total=total)
 
 @router.post("", response_model=dict)
 def create_schedule(
@@ -204,6 +231,7 @@ def create_schedule(
     db.commit()
     db.refresh(db_schedule)
     log_operation(db, current_user["id"], "create_schedule", "schedules", db_schedule.id, {"emp_id": schedule.emp_id, "schedule_date": str(schedule.schedule_date)})
+    save_daily_report(db, schedule.emp_id, schedule.schedule_date)
     return {"id": db_schedule.id}
 
 @router.put("/{schedule_id}", response_model=dict)
@@ -219,6 +247,7 @@ def update_schedule(
     for key, value in schedule.model_dump(exclude_unset=True).items():
         setattr(db_schedule, key, value)
     db.commit()
+    save_daily_report(db, db_schedule.emp_id, db_schedule.schedule_date)
     return {"id": db_schedule.id}
 
 @router.delete("/{schedule_id}", response_model=dict)
@@ -230,8 +259,11 @@ def delete_schedule(
     db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="排班记录不存在")
+    emp_id = db_schedule.emp_id
+    schedule_date = db_schedule.schedule_date
     db.delete(db_schedule)
     db.commit()
+    save_daily_report(db, emp_id, schedule_date)
     log_operation(db, current_user["id"], "delete_schedule", "schedules", schedule_id)
     return {"message": "删除成功"}
 
@@ -261,6 +293,8 @@ def batch_schedule(
             db.add(db_schedule)
         success_count += 1
     db.commit()
+    for emp_id in request.emp_ids:
+        save_daily_report(db, emp_id, request.schedule_date)
     return {"success_count": success_count}
 
 @router.post("/swap", response_model=dict)
@@ -281,6 +315,8 @@ def swap_schedule(
     schedule_a.schedule_type = "换班"
     schedule_b.schedule_type = "换班"
     db.commit()
+    save_daily_report(db, schedule_a.emp_id, schedule_a.schedule_date)
+    save_daily_report(db, schedule_b.emp_id, schedule_b.schedule_date)
     log_operation(db, current_user["id"], "swap_schedule", "schedules", None, {"schedule_a_id": request.schedule_a_id, "schedule_b_id": request.schedule_b_id})
     return {"message": "换班成功"}
 

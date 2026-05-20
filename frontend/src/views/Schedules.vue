@@ -14,15 +14,35 @@
 
       <el-form inline>
         <el-form-item label="日期">
-          <el-date-picker v-model="searchForm.date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" />
+          <el-date-picker v-model="searchForm.date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" clearable />
+        </el-form-item>
+        <el-form-item label="姓名">
+          <el-input v-model="searchForm.name" placeholder="请输入姓名" clearable style="width: 120px" />
+        </el-form-item>
+        <el-form-item label="工号">
+          <el-input v-model="searchForm.emp_no" placeholder="请输入工号" clearable style="width: 120px" />
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team" placeholder="请选择" clearable>
+          <el-select v-model="searchForm.team" placeholder="全部" clearable style="width: 110px">
             <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班次">
+          <el-select v-model="searchForm.shift_type_id" placeholder="全部" clearable style="width: 110px">
+            <el-option v-for="s in shiftTypes" :key="s.id" :label="s.shift_name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="searchForm.schedule_type" placeholder="全部" clearable style="width: 100px">
+            <el-option label="正常" value="正常" />
+            <el-option label="请假" value="请假" />
+            <el-option label="公休" value="公休" />
+            <el-option label="加班" value="加班" />
           </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button @click="resetSearch">重置</el-button>
         </el-form-item>
       </el-form>
 
@@ -31,7 +51,14 @@
         <el-table-column prop="name" label="姓名" width="100" />
         <el-table-column prop="emp_no" label="工号" width="120" />
         <el-table-column prop="team" label="班组" width="100" />
-        <el-table-column prop="shift_name" label="班次" width="120" />
+        <el-table-column label="班次" width="180">
+          <template #default="{ row }">
+            <span v-if="row.shift_name">{{ row.shift_name }}</span>
+            <span v-if="row.shift_time" style="color: #909399; margin-left: 4px">({{ row.shift_time }})</span>
+            <span v-if="!row.shift_name && !row.shift_time">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="work_hours" label="工时" width="60" />
         <el-table-column prop="schedule_type" label="排班类型" width="100">
           <template #default="{ row }">
             <el-tag>{{ row.schedule_type }}</el-tag>
@@ -145,7 +172,7 @@ const dialogType = ref('add')
 const teams = ref([])
 const employees = ref([])
 const shiftTypes = ref([])
-const searchForm = reactive({ date: '', team: '' })
+const searchForm = reactive({ date: '', name: '', emp_no: '', team: '', shift_type_id: null, schedule_type: '' })
 const form = reactive({ emp_id: null, schedule_date: '', shift_type_id: null, schedule_type: '正常', notes: '' })
 const batchForm = reactive({ emp_ids: [], schedule_date: '', shift_type_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
@@ -153,13 +180,30 @@ const importFile = ref(null)
 
 async function loadData() {
   try {
-    const params = { ...searchForm }
+    const params = { page: pagination.page, limit: pagination.limit }
+    if (searchForm.date) params.schedule_date = searchForm.date
+    if (searchForm.name) params.name = searchForm.name
+    if (searchForm.emp_no) params.emp_no = searchForm.emp_no
+    if (searchForm.team) params.team = searchForm.team
+    if (searchForm.shift_type_id) params.shift_type_id = searchForm.shift_type_id
+    if (searchForm.schedule_type) params.schedule_type = searchForm.schedule_type
     const res = await api.get('/schedules', { params })
     tableData.value = res.data.items
     pagination.total = res.data.total
   } catch (e) {
     ElMessage.error('加载失败')
   }
+}
+
+function resetSearch() {
+  searchForm.date = ''
+  searchForm.name = ''
+  searchForm.emp_no = ''
+  searchForm.team = ''
+  searchForm.shift_type_id = null
+  searchForm.schedule_type = ''
+  pagination.page = 1
+  loadData()
 }
 
 async function loadOptions() {
