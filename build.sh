@@ -1,13 +1,17 @@
 #!/bin/bash
 
-# 自动生成版本号: 1.0.日期.提交数
-VERSION="1.0.$(date +%Y%m%d).$(git rev-list --count HEAD)"
+DATE=$(date +%Y%m%d)
+COUNTER=0
 REGISTRY="ghcr.io/hbpc002"
 
-echo "Building version: $VERSION"
+increment() {
+  COUNTER=$((COUNTER + 1))
+  echo "1.0.${DATE}.${COUNTER}"
+}
 
 # 构建后端镜像
-echo "Building backend..."
+VERSION=$(increment)
+echo "Building backend version: $VERSION"
 docker build -t ${REGISTRY}/address-inquiry-rate-report-backend:latest \
               -t ${REGISTRY}/address-inquiry-rate-report-backend:${VERSION} \
               -f backend/Dockerfile .
@@ -17,7 +21,8 @@ docker push ${REGISTRY}/address-inquiry-rate-report-backend:latest
 docker push ${REGISTRY}/address-inquiry-rate-report-backend:${VERSION}
 
 # 构建前端镜像
-echo "Building frontend..."
+VERSION=$(increment)
+echo "Building frontend version: $VERSION"
 docker build -t ${REGISTRY}/address-inquiry-rate-report-frontend:latest \
               -t ${REGISTRY}/address-inquiry-rate-report-frontend:${VERSION} \
               -f frontend/Dockerfile .
@@ -26,4 +31,4 @@ echo "Pushing frontend..."
 docker push ${REGISTRY}/address-inquiry-rate-report-frontend:latest
 docker push ${REGISTRY}/address-inquiry-rate-report-frontend:${VERSION}
 
-echo "Done! Version $VERSION pushed successfully."
+echo "Done!"
