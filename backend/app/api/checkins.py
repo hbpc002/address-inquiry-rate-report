@@ -263,6 +263,9 @@ def get_checkin_report(
 
     checkins = query.all()
 
+    # 只取目标部门的数据
+    checkins = [c for c in checkins if c.dept and c.dept.startswith(TARGET_DEPT)]
+
     if team:
         emp_nos = db.query(Employee.emp_no).filter(Employee.team == team).all()
         emp_nos = [e[0] for e in emp_nos]
