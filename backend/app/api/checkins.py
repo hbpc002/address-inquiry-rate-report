@@ -21,7 +21,7 @@ from app.services.attendance import save_daily_report
 router = APIRouter(prefix="/api/checkins", tags=["签到记录"])
 
 # 只取这个部门的数据
-TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心"
+TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
 
 
 @router.get("", response_model=CheckinListResponse)
