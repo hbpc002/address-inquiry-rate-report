@@ -37,12 +37,20 @@ export const CHART_COLORS = [
 export function createPieOptions(data, title, colors = CHART_COLORS) {
   return {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    tooltip: {
+      trigger: 'item',
+      formatter: (params) => {
+        let extra = ''
+        if (params.data.peopleCount !== undefined) extra += `人数: ${params.data.peopleCount}\n`
+        if (params.data.avgHours !== undefined) extra += `人均工时: ${params.data.avgHours}h\n`
+        return `${params.name}\n工时: ${params.value} (${params.percent}%)\n${extra}`
+      }
+    },
     legend: { orient: 'horizontal', bottom: 0 },
     series: [{
       type: 'pie',
       radius: '60%',
-      data: data.map((item, i) => ({ value: item.value, name: item.name, itemStyle: { color: colors[i % colors.length] } })),
+      data: data.map((item, i) => ({ ...item, itemStyle: { color: colors[i % colors.length] } })),
       emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } },
       label: { formatter: '{b}: {c}' }
     }]

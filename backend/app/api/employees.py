@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 import pandas as pd
 import io
+import csv
 from app.models.database import get_db
 from app.models.employee import Employee
 from app.schemas.employee import (
@@ -198,3 +200,35 @@ def import_employees(
         "updated": updated,
         "skipped": skipped
     }
+
+
+@router.get("/export")
+def export_employees(
+    team: Optional[str] = None,
+    dept: Optional[str] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    query = db.query(Employee)
+    if team:
+        query = query.filter(Employee.team == team)
+    if dept:
+        query = query.filter(Employee.dept == dept)
+    if status:
+        query = query.filter(Employee.status == status)
+
+    items = query.order_by(Employee.emp_no).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["工号", "姓名", "班组", "部门", "岗位", "状态"])
+    for emp in items:
+        writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", emp.role, emp.status])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employees.csv"}
+    )

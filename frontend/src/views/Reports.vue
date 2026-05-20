@@ -5,6 +5,7 @@
         <div class="card-header">
           <span>考勤报表</span>
           <el-space>
+            <el-button type="warning" @click="handleRecalculate">重算考勤</el-button>
             <el-button type="success" @click="handleExport">导出报表</el-button>
           </el-space>
         </div>
@@ -15,6 +16,12 @@
           <el-form inline>
             <el-form-item label="日期">
               <el-date-picker v-model="searchDaily.schedule_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
+            </el-form-item>
+            <el-form-item label="姓名">
+              <el-input v-model="searchDaily.name" placeholder="姓名" clearable style="width:120px" />
+            </el-form-item>
+            <el-form-item label="工号">
+              <el-input v-model="searchDaily.emp_no" placeholder="工号" clearable style="width:120px" />
             </el-form-item>
             <el-form-item label="部门">
               <el-select v-model="searchDaily.dept" placeholder="全部部门" clearable filterable>
@@ -80,22 +87,23 @@
           </el-row>
 
           <el-table :data="dailyData" border stripe show-summary>
-            <el-table-column prop="schedule_date" label="日期" width="120" />
-            <el-table-column prop="emp_no" label="工号" width="100" />
+            <el-table-column prop="schedule_date" label="日期" width="110" />
+            <el-table-column prop="emp_no" label="工号" width="110" />
             <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="team" label="班组" width="100" />
-            <el-table-column prop="dept" label="部门" width="120" />
-            <el-table-column prop="schedule_type" label="排班类型" width="80" />
-            <el-table-column prop="scheduled_start" label="计划开始" width="80" />
-            <el-table-column prop="scheduled_end" label="计划结束" width="80" />
-            <el-table-column prop="actual_checkin" label="实际签到" width="160">
+            <el-table-column prop="team" label="班组" width="110" />
+            <el-table-column prop="dept" label="部门" min-width="130" />
+            <el-table-column prop="schedule_type" label="排班类型" width="90" />
+            <el-table-column prop="scheduled_hours" label="排班工时" width="90" />
+            <el-table-column prop="scheduled_start" label="计划开始" width="90" />
+            <el-table-column prop="scheduled_end" label="计划结束" width="90" />
+            <el-table-column prop="actual_checkin" label="实际签到" width="170">
               <template #default="{ row }">
                 <span :class="{'text-warning': row.late_minutes > 0}">
                   {{ row.actual_checkin?.slice(0, 19) || '-' }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="actual_checkout" label="实际签退" width="160">
+            <el-table-column prop="actual_checkout" label="实际签退" width="170">
               <template #default="{ row }">
                 <span :class="{'text-warning': row.early_minutes > 0}">
                   {{ row.actual_checkout?.slice(0, 19) || '-' }}
@@ -107,16 +115,31 @@
                 <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="late_minutes" label="迟到(分)" width="80" />
-            <el-table-column prop="early_minutes" label="早退(分)" width="80" />
-            <el-table-column prop="actual_hours" label="实际工时" width="80" />
+            <el-table-column prop="late_minutes" label="迟到(分)" width="85" />
+            <el-table-column prop="early_minutes" label="早退(分)" width="85" />
+            <el-table-column prop="actual_hours" label="实际工时" width="85" />
           </el-table>
+          <el-pagination
+            v-if="dailyPagination.total > dailyPagination.limit"
+            v-model:current-page="dailyPagination.page"
+            v-model:page-size="dailyPagination.limit"
+            :total="dailyPagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadDaily"
+            style="margin-top: 15px"
+          />
         </el-tab-pane>
 
         <el-tab-pane label="月度汇总" name="month">
           <el-form inline>
             <el-form-item label="月份">
               <el-date-picker v-model="searchMonthly.year_month" type="month" value-format="YYYY-MM" placeholder="选择月份" />
+            </el-form-item>
+            <el-form-item label="姓名">
+              <el-input v-model="searchMonthly.name" placeholder="姓名" clearable style="width:120px" />
+            </el-form-item>
+            <el-form-item label="工号">
+              <el-input v-model="searchMonthly.emp_no" placeholder="工号" clearable style="width:120px" />
             </el-form-item>
             <el-form-item label="部门">
               <el-select v-model="searchMonthly.dept" placeholder="全部部门" clearable filterable>
@@ -176,37 +199,46 @@
           </el-row>
 
           <el-table :data="monthlyData" border stripe show-summary>
-            <el-table-column prop="emp_no" label="工号" width="100" />
+            <el-table-column prop="emp_no" label="工号" width="110" />
             <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="team" label="班组" width="100" />
-            <el-table-column prop="dept" label="部门" width="120" />
+            <el-table-column prop="team" label="班组" width="110" />
+            <el-table-column prop="dept" label="部门" min-width="130" />
             <el-table-column prop="scheduled_hours" label="计划工时" width="90" sortable />
             <el-table-column prop="actual_hours" label="实际工时" width="90" sortable />
-            <el-table-column prop="overtime_hours" label="加班" width="70" sortable>
+            <el-table-column prop="overtime_hours" label="加班" width="75" sortable>
               <template #default="{ row }">
                 <span :class="{'text-success': row.overtime_hours > 0}">{{ row.overtime_hours }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="owed_hours" label="欠时" width="70" sortable>
+            <el-table-column prop="owed_hours" label="欠时" width="75" sortable>
               <template #default="{ row }">
                 <span :class="{'text-danger': row.owed_hours > 0}">{{ row.owed_hours }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="normal_days" label="正常" width="60" sortable />
-            <el-table-column prop="late_days" label="迟到" width="60" sortable>
+            <el-table-column prop="normal_days" label="正常" width="65" sortable />
+            <el-table-column prop="late_days" label="迟到" width="65" sortable>
               <template #default="{ row }">
                 <span :class="{'text-warning': row.late_days > 0}">{{ row.late_days }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="early_days" label="早退" width="60" sortable />
-            <el-table-column prop="absent_days" label="缺勤" width="60" sortable>
+            <el-table-column prop="early_days" label="早退" width="65" sortable />
+            <el-table-column prop="absent_days" label="缺勤" width="65" sortable>
               <template #default="{ row }">
                 <span :class="{'text-danger': row.absent_days > 0}">{{ row.absent_days }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="leave_days" label="请假" width="60" />
-            <el-table-column prop="timeoff_days" label="公休" width="60" />
+            <el-table-column prop="leave_days" label="请假" width="65" />
+            <el-table-column prop="timeoff_days" label="公休" width="65" />
           </el-table>
+          <el-pagination
+            v-if="monthlyPagination.total > monthlyPagination.limit"
+            v-model:current-page="monthlyPagination.page"
+            v-model:page-size="monthlyPagination.limit"
+            :total="monthlyPagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadMonthly"
+            style="margin-top: 15px"
+          />
         </el-tab-pane>
 
         <el-tab-pane label="自定义时间段" name="daterange">
@@ -216,6 +248,12 @@
             </el-form-item>
             <el-form-item label="结束日期">
               <el-date-picker v-model="searchRange.end_date" type="date" value-format="YYYY-MM-DD" />
+            </el-form-item>
+            <el-form-item label="姓名">
+              <el-input v-model="searchRange.name" placeholder="姓名" clearable style="width:120px" />
+            </el-form-item>
+            <el-form-item label="工号">
+              <el-input v-model="searchRange.emp_no" placeholder="工号" clearable style="width:120px" />
             </el-form-item>
             <el-form-item label="部门">
               <el-select v-model="searchRange.dept" placeholder="全部部门" clearable filterable>
@@ -276,38 +314,47 @@
           </el-row>
 
           <el-table :data="rangeData" border stripe show-summary>
-            <el-table-column prop="emp_no" label="工号" width="100" />
+            <el-table-column prop="emp_no" label="工号" width="110" />
             <el-table-column prop="name" label="姓名" width="100" />
-            <el-table-column prop="team" label="班组" width="100" />
-            <el-table-column prop="dept" label="部门" width="120" />
+            <el-table-column prop="team" label="班组" width="110" />
+            <el-table-column prop="dept" label="部门" min-width="130" />
             <el-table-column prop="scheduled_hours" label="计划工时" width="90" sortable />
             <el-table-column prop="actual_hours" label="实际工时" width="90" sortable />
-            <el-table-column prop="overtime_hours" label="加班" width="70" sortable>
+            <el-table-column prop="overtime_hours" label="加班" width="75" sortable>
               <template #default="{ row }">
                 <span :class="{'text-success': row.overtime_hours > 0}">{{ row.overtime_hours }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="owed_hours" label="欠时" width="70" sortable>
+            <el-table-column prop="owed_hours" label="欠时" width="75" sortable>
               <template #default="{ row }">
                 <span :class="{'text-danger': row.owed_hours > 0}">{{ row.owed_hours }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="normal_days" label="正常" width="60" sortable />
-            <el-table-column prop="late_days" label="迟到" width="60" sortable>
+            <el-table-column prop="normal_days" label="正常" width="65" sortable />
+            <el-table-column prop="late_days" label="迟到" width="65" sortable>
               <template #default="{ row }">
                 <span :class="{'text-warning': row.late_days > 0}">{{ row.late_days }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="early_days" label="早退" width="60" sortable />
-            <el-table-column prop="absent_days" label="缺勤" width="60" sortable>
+            <el-table-column prop="early_days" label="早退" width="65" sortable />
+            <el-table-column prop="absent_days" label="缺勤" width="65" sortable>
               <template #default="{ row }">
                 <span :class="{'text-danger': row.absent_days > 0}">{{ row.absent_days }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="leave_days" label="请假" width="60" />
-            <el-table-column prop="timeoff_days" label="公休" width="60" />
-            <el-table-column prop="work_days" label="出勤天数" width="80" sortable />
+            <el-table-column prop="leave_days" label="请假" width="65" />
+            <el-table-column prop="timeoff_days" label="公休" width="65" />
+            <el-table-column prop="work_days" label="出勤天数" width="85" sortable />
           </el-table>
+          <el-pagination
+            v-if="rangePagination.total > rangePagination.limit"
+            v-model:current-page="rangePagination.page"
+            v-model:page-size="rangePagination.limit"
+            :total="rangePagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadRange"
+            style="margin-top: 15px"
+          />
         </el-tab-pane>
 
         <el-tab-pane label="班组排名" name="ranking">
@@ -377,6 +424,21 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="recalculateDialogVisible" title="重算考勤" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="开始日期">
+          <el-date-picker v-model="recalculateRange.start" type="date" value-format="YYYY-MM-DD" placeholder="选择开始日期" />
+        </el-form-item>
+        <el-form-item label="结束日期">
+          <el-date-picker v-model="recalculateRange.end" type="date" value-format="YYYY-MM-DD" placeholder="选择结束日期" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="recalculateDialogVisible = false">取消</el-button>
+        <el-button type="warning" :loading="recalculating" @click="confirmRecalculate">开始重算</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="detailDialogVisible" :title="detailTitle" width="800px">
       <el-table :data="detailData" border stripe max-height="400" v-if="detailData.length">
         <el-table-column prop="emp_no" label="工号" width="100" />
@@ -428,13 +490,21 @@ const dailyStats = reactive({ total: 0, attend: 0, normal: 0, late: 0, absent: 0
 const monthlyStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
 const rangeStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
 
-const searchDaily = reactive({ schedule_date: '', dept: '', team: '', status: '' })
-const searchMonthly = reactive({ year_month: '', dept: '', team: '' })
-const searchRange = reactive({ start_date: '', end_date: '', dept: '', team: '', status: '' })
+const dailyPagination = reactive({ page: 1, limit: 20, total: 0 })
+const monthlyPagination = reactive({ page: 1, limit: 20, total: 0 })
+const rangePagination = reactive({ page: 1, limit: 20, total: 0 })
+
+const searchDaily = reactive({ schedule_date: '', name: '', emp_no: '', dept: '', team: '', status: '' })
+const searchMonthly = reactive({ year_month: '', name: '', emp_no: '', dept: '', team: '' })
+const searchRange = reactive({ start_date: '', end_date: '', name: '', emp_no: '', dept: '', team: '', status: '' })
 const searchRank = reactive({ year_month: '' })
 
 const exportDialogVisible = ref(false)
 const exportForm = reactive({ type: 'month', schedule_date: '', year_month: '', dateRange: [], team: '' })
+
+const recalculateDialogVisible = ref(false)
+const recalculating = ref(false)
+const recalculateRange = reactive({ start: '', end: '' })
 
 const currentChartType = ref('bar')
 const detailDialogVisible = ref(false)
@@ -544,12 +614,13 @@ function calcRangeStats(data) {
 }
 
 async function loadDaily() {
-  if (!searchDaily.date) {
-    searchDaily.date = new Date().toISOString().slice(0, 10)
+  if (!searchDaily.schedule_date) {
+    searchDaily.schedule_date = new Date().toISOString().slice(0, 10)
   }
   try {
-    const res = await api.get('/reports/daily', { params: searchDaily })
+    const res = await api.get('/reports/daily', { params: { ...searchDaily, page: dailyPagination.page, limit: dailyPagination.limit } })
     dailyData.value = res.data.items || []
+    dailyPagination.total = res.data.total || 0
     calcDailyStats(dailyData.value)
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
@@ -561,8 +632,9 @@ async function loadMonthly() {
     searchMonthly.year_month = new Date().toISOString().slice(0, 7)
   }
   try {
-    const res = await api.get('/reports/month-summary', { params: searchMonthly })
-    monthlyData.value = res.data || []
+    const res = await api.get('/reports/month-summary', { params: { ...searchMonthly, page: monthlyPagination.page, limit: monthlyPagination.limit } })
+    monthlyData.value = res.data.items || []
+    monthlyPagination.total = res.data.total || 0
     calcMonthlyStats(monthlyData.value)
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
@@ -575,8 +647,9 @@ async function loadRange() {
     return
   }
   try {
-    const res = await api.get('/reports/date-range', { params: searchRange })
+    const res = await api.get('/reports/date-range', { params: { ...searchRange, page: rangePagination.page, limit: rangePagination.limit } })
     rangeData.value = res.data.items || []
+    rangePagination.total = res.data.total || 0
     calcRangeStats(rangeData.value)
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
@@ -615,16 +688,22 @@ async function loadDepts() {
 
 function resetDaily() {
   searchDaily.schedule_date = new Date().toISOString().slice(0, 10)
+  searchDaily.name = ''
+  searchDaily.emp_no = ''
   searchDaily.dept = ''
   searchDaily.team = ''
   searchDaily.status = ''
+  dailyPagination.page = 1
   loadDaily()
 }
 
 function resetMonthly() {
   searchMonthly.year_month = new Date().toISOString().slice(0, 7)
+  searchMonthly.name = ''
+  searchMonthly.emp_no = ''
   searchMonthly.dept = ''
   searchMonthly.team = ''
+  monthlyPagination.page = 1
   loadMonthly()
 }
 
@@ -632,9 +711,12 @@ function resetRange() {
   const now = new Date()
   searchRange.start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
   searchRange.end_date = now.toISOString().slice(0, 10)
+  searchRange.name = ''
+  searchRange.emp_no = ''
   searchRange.dept = ''
   searchRange.team = ''
   searchRange.status = ''
+  rangePagination.page = 1
   loadRange()
 }
 
@@ -663,6 +745,33 @@ function confirmExport() {
   window.open(url, '_blank')
   exportDialogVisible.value = false
   ElMessage.success('导出成功')
+}
+
+function handleRecalculate() {
+  recalculateRange.start = ''
+  recalculateRange.end = ''
+  recalculateDialogVisible.value = true
+}
+
+async function confirmRecalculate() {
+  if (!recalculateRange.start || !recalculateRange.end) {
+    ElMessage.warning('请选择开始和结束日期')
+    return
+  }
+  recalculating.value = true
+  try {
+    await api.post('/reports/recalculate', null, {
+      params: { start_date: recalculateRange.start, end_date: recalculateRange.end }
+    })
+    ElMessage.success('重算完成')
+    recalculateDialogVisible.value = false
+    loadDaily()
+    loadMonthly()
+  } catch (e) {
+    ElMessage.error('重算失败: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    recalculating.value = false
+  }
 }
 
 function handleDailyChartClick(params) {

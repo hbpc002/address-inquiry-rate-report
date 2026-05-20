@@ -34,7 +34,7 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
     
     checkins = db.query(Checkin).filter(
         and_(
-            Checkin.name == employee.name,
+            Checkin.emp_no == employee.emp_no,
             func.date(Checkin.checkin_time) == schedule_date
         )
     ).all()
@@ -60,10 +60,11 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         e = time_to_minutes(seg_end)
         ci = c_in_h * 60 + c_in_m
         co = c_out_h * 60 + c_out_m
-        if e > s:
-            return s <= ci and co <= e
-        else:
-            return ci >= s or co <= e
+        if e < s:
+            e += 1440
+        if co < ci:
+            co += 1440
+        return ci < e and co > s
 
     def checkin_in_shifts(c: Checkin) -> bool:
         if not c.checkout_time or not shift:
@@ -126,7 +127,23 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
 
     actual_hours = 0
     for c in valid:
-        actual_hours += (c.checkout_time - c.checkin_time).seconds / 3600
+        ci = c.checkin_time
+        co = c.checkout_time
+        ci_m = ci.hour * 60 + ci.minute
+        co_m = co.hour * 60 + co.minute
+        if co.date() > ci.date():
+            co_m += 1440
+        overlap = 0
+        for seg in segments:
+            s = time_to_minutes(seg["start"])
+            e = time_to_minutes(seg["end"])
+            if e < s:
+                e += 1440
+            o_start = max(ci_m, s)
+            o_end = min(co_m, e)
+            if o_end > o_start:
+                overlap += o_end - o_start
+        actual_hours += overlap / 60.0
 
     overtime_hours = max(0, actual_hours - float(scheduled_hours)) if scheduled_hours else 0
 
@@ -174,6 +191,19 @@ def save_daily_report(db: Session, emp_id: int, schedule_date: date):
         existing.overtime_hours = result["overtime_hours"]
         existing.actual_checkin = result.get("actual_checkin")
         existing.actual_checkout = result.get("actual_checkout")
+        existing.shift_type_id = result.get("shift_type_id")
+        existing.schedule_type = result.get("schedule_type")
+        existing.scheduled_hours = result["scheduled_hours"]
+        if result.get("shift_type_id"):
+            shift = db.query(ShiftType).filter(ShiftType.id == result["shift_type_id"]).first()
+            if shift:
+                segments = get_time_segments(shift)
+                if segments:
+                    first_seg = segments[0]
+                    parts = first_seg["start"].split(':')
+                    existing.scheduled_start = time(int(parts[0]), int(parts[1]))
+                    parts = first_seg["end"].split(':')
+                    existing.scheduled_end = time(int(parts[0]), int(parts[1]))
         existing.calculated_at = datetime.now()
     else:
         shift = db.query(ShiftType).filter(ShiftType.id == result.get("shift_type_id")).first() if result.get("shift_type_id") else None

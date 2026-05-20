@@ -14,6 +14,7 @@ from app.models.shift_type import ShiftType
 from app.schemas.daily_report import DailyReportResponse, DailyReportListResponse
 from app.core.security import get_current_user
 from app.utils.logger import log_operation
+from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/reports", tags=["考勤报表"])
 
@@ -24,6 +25,10 @@ def get_daily_reports(
     team: Optional[str] = None,
     dept: Optional[str] = None,
     status: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -38,8 +43,13 @@ def get_daily_reports(
         query = query.filter(Employee.dept == dept)
     if status:
         query = query.filter(DailyReport.status == status)
+    if name:
+        query = query.filter(Employee.name.ilike(f"%{name}%"))
+    if emp_no:
+        query = query.filter(Employee.emp_no.ilike(f"%{emp_no}%"))
 
-    items = query.order_by(Employee.name).all()
+    total = query.count()
+    items = query.order_by(Employee.name).offset((page-1)*limit).limit(limit).all()
 
     result_items = []
     for item in items:
@@ -68,7 +78,7 @@ def get_daily_reports(
                 calculated_at=item.calculated_at
             ))
 
-    return DailyReportListResponse(items=result_items, total=len(result_items))
+    return DailyReportListResponse(items=result_items, total=total)
 
 
 @router.get("/date-range", response_model=dict)
@@ -78,6 +88,10 @@ def get_reports_by_date_range(
     team: Optional[str] = None,
     dept: Optional[str] = None,
     status: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -85,20 +99,24 @@ def get_reports_by_date_range(
     start = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
     
-    query = db.query(DailyReport).join(Employee)
-    query = query.filter(and_(
+    report_query = db.query(DailyReport).join(Employee)
+    report_query = report_query.filter(and_(
         DailyReport.schedule_date >= start,
         DailyReport.schedule_date <= end
     ))
     
     if team:
-        query = query.filter(Employee.team == team)
+        report_query = report_query.filter(Employee.team == team)
     if dept:
-        query = query.filter(Employee.dept == dept)
+        report_query = report_query.filter(Employee.dept == dept)
     if status:
-        query = query.filter(DailyReport.status == status)
+        report_query = report_query.filter(DailyReport.status == status)
+    if name:
+        report_query = report_query.filter(Employee.name.ilike(f"%{name}%"))
+    if emp_no:
+        report_query = report_query.filter(Employee.emp_no.ilike(f"%{emp_no}%"))
     
-    items = query.order_by(DailyReport.schedule_date, Employee.name).all()
+    items = report_query.order_by(DailyReport.schedule_date, Employee.name).all()
     
     # 按员工汇总
     emp_summary = {}
@@ -133,18 +151,18 @@ def get_reports_by_date_range(
         summary["overtime_hours"] += float(item.overtime_hours or 0)
         summary["work_days"] += 1
         
-        status = item.status
-        if status == "正常":
+        s = item.status
+        if s == "正常":
             summary["normal_days"] += 1
-        elif status == "迟到":
+        elif s == "迟到":
             summary["late_days"] += 1
-        elif status == "早退":
+        elif s == "早退":
             summary["early_days"] += 1
-        elif status == "缺勤":
+        elif s == "缺勤":
             summary["absent_days"] += 1
-        elif status == "请假":
+        elif s == "请假":
             summary["leave_days"] += 1
-        elif status == "公休":
+        elif s == "公休":
             summary["timeoff_days"] += 1
     
     # 计算欠时
@@ -152,9 +170,14 @@ def get_reports_by_date_range(
         s = emp_summary[emp_key]
         s["owed_hours"] = max(0, s["scheduled_hours"] - s["actual_hours"] - s["overtime_hours"])
     
+    summary_list = list(emp_summary.values())
+    summary_list.sort(key=lambda x: x["name"])
+    total = len(summary_list)
+    summary_list = summary_list[(page-1)*limit:page*limit]
+    
     return {
-        "items": list(emp_summary.values()),
-        "total": len(emp_summary),
+        "items": summary_list,
+        "total": total,
         "start_date": start_date,
         "end_date": end_date,
         "days": (end - start).days + 1
@@ -166,6 +189,8 @@ def get_month_reports(
     year_month: str = Query(...),
     team: Optional[str] = None,
     dept: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -183,31 +208,43 @@ def get_month_reports(
     if dept:
         query = query.filter(Employee.dept == dept)
 
-    items = query.order_by(Employee.name).all()
+    total = query.count()
+    items = query.order_by(Employee.name).offset((page-1)*limit).limit(limit).all()
     return DailyReportListResponse(
         items=[DailyReportResponse.model_validate(i) for i in items],
-        total=len(items)
+        total=total
     )
 
 
-@router.get("/month-summary", response_model=list)
+@router.get("/month-summary", response_model=dict)
 def get_month_summary(
     year_month: str = Query(...),
     team: Optional[str] = None,
     dept: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     year, month = map(int, year_month.split('-'))
 
-    employees = db.query(Employee).filter(Employee.status == "在职")
+    emp_query = db.query(Employee).filter(Employee.status == "在职")
     if team:
-        employees = employees.filter(Employee.team == team)
+        emp_query = emp_query.filter(Employee.team == team)
     if dept:
-        employees = employees.filter(Employee.dept == dept)
+        emp_query = emp_query.filter(Employee.dept == dept)
+    if name:
+        emp_query = emp_query.filter(Employee.name.ilike(f"%{name}%"))
+    if emp_no:
+        emp_query = emp_query.filter(Employee.emp_no.ilike(f"%{emp_no}%"))
+
+    total = emp_query.count()
+    employees = emp_query.order_by(Employee.name).offset((page-1)*limit).limit(limit).all()
 
     result = []
-    for emp in employees.all():
+    for emp in employees:
         daily_reports = db.query(DailyReport).filter(
             and_(
                 DailyReport.emp_id == emp.id,
@@ -255,7 +292,7 @@ def get_month_summary(
             "timeoff_days": len([r for r in daily_reports if r.status == "公休"])
         })
 
-    return result
+    return {"items": result, "total": total}
 
 
 @router.get("/team-ranking", response_model=list)
@@ -459,3 +496,57 @@ def export_report(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.post("/recalculate", response_model=dict)
+def recalculate_attendance(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """重算指定日期范围内的考勤报表"""
+    start = datetime.strptime(start_date, '%Y-%m-%d').date()
+    end = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+    schedules = db.query(Schedule).filter(
+        and_(
+            Schedule.schedule_date >= start,
+            Schedule.schedule_date <= end
+        )
+    ).all()
+
+    processed = set()
+    count = 0
+    for s in schedules:
+        key = (s.emp_id, s.schedule_date.isoformat())
+        if key not in processed:
+            processed.add(key)
+            save_daily_report(db, s.emp_id, s.schedule_date)
+            count += 1
+
+    # 也处理有签到但无排班的员工（标记为"未排班"）
+    from app.models.checkin import Checkin
+    checkin_data = db.query(
+        func.date(Checkin.checkin_time).label('d'),
+        Checkin.emp_no
+    ).filter(
+        func.date(Checkin.checkin_time) >= start,
+        func.date(Checkin.checkin_time) <= end,
+        Checkin.emp_no.isnot(None),
+        Checkin.emp_no != ''
+    ).distinct().all()
+
+    emp_no_cache = {e.emp_no: e.id for e in db.query(Employee).all()}
+    for cd in checkin_data:
+        emp_id = emp_no_cache.get(cd[1])
+        if emp_id:
+            key = (emp_id, cd[0])
+            if key not in processed:
+                processed.add(key)
+                save_daily_report(db, emp_id, cd[0])
+                count += 1
+
+    db.commit()
+    log_operation(db, current_user["id"], "recalculate_attendance", "reports", None, {"start_date": start_date, "end_date": end_date, "count": count})
+    return {"message": f"重算完成，共处理{count}条记录", "count": count}

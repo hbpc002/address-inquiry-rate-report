@@ -241,12 +241,22 @@ const checkinCountOptions = computed(() => {
 const deptHoursOptions = computed(() => {
   if (!tableData.value.length) return {}
   const teamMap = {}
+  const peopleMap = {}
   tableData.value.forEach(d => {
     const team = d.team || '未知班组'
-    if (!teamMap[team]) teamMap[team] = 0
+    if (!teamMap[team]) {
+      teamMap[team] = 0
+      peopleMap[team] = new Set()
+    }
     teamMap[team] += d.total_hours
+    peopleMap[team].add(d.name)
   })
-  const data = Object.entries(teamMap).map(([name, value]) => ({ name, value: Math.round(value) }))
+  const data = Object.entries(teamMap).map(([name, value]) => ({
+    name,
+    value: Math.round(value),
+    peopleCount: peopleMap[name].size,
+    avgHours: (value / peopleMap[name].size).toFixed(1)
+  }))
     .sort((a, b) => b.value - a.value).slice(0, 8)
   return createPieOptions(data, '班组工时分布')
 })

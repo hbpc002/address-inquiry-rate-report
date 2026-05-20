@@ -5,6 +5,7 @@
         <div class="card-header">
           <span>员工管理</span>
           <el-space>
+            <el-button @click="handleExport">导出员工</el-button>
             <el-button v-if="userStore.hasPermission('upload_employee')" type="success" @click="importVisible = true">导入员工</el-button>
             <el-button type="primary" @click="handleAdd">新增员工</el-button>
           </el-space>
@@ -175,6 +176,14 @@ function handleAdd() {
   Object.assign(form, { emp_no: '', name: '', team: '', dept: '', role: '组员' })
   isEdit.value = false
   dialogVisible.value = true
+}
+
+function handleExport() {
+  const params = new URLSearchParams()
+  if (searchForm.team) params.append('team', searchForm.team)
+  if (searchForm.dept) params.append('dept', searchForm.dept)
+  const url = `${import.meta.env.VITE_API_BASE_URL || '/api'}/employees/export?${params}`
+  window.open(url, '_blank')
 }
 
 function handleEdit(row) {
