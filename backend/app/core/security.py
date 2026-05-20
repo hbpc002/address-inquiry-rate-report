@@ -106,3 +106,12 @@ def require_permission(user: dict, permission: str):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="权限不足"
         )
+
+
+def require_role(user: dict, allowed_roles: list):
+    """要求用户角色在允许列表中，否则抛出403"""
+    if user.get("role") not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="权限不足"
+        )

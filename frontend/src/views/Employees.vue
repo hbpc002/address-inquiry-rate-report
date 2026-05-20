@@ -7,7 +7,7 @@
           <el-space>
             <el-button @click="handleExport">导出员工</el-button>
             <el-button v-if="userStore.hasPermission('upload_employee')" type="success" @click="importVisible = true">导入员工</el-button>
-            <el-button type="primary" @click="handleAdd">新增员工</el-button>
+            <el-button v-if="userStore.canEdit()" type="primary" @click="handleAdd">新增员工</el-button>
           </el-space>
         </div>
       </template>
@@ -55,8 +55,8 @@
         </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

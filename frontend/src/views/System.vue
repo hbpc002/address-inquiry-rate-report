@@ -6,7 +6,7 @@
           <template #header>
             <div class="card-header">
               <span>班次类型管理</span>
-              <el-button type="primary" @click="handleAddShift">新增班次</el-button>
+              <el-button v-if="userStore.canEdit()" type="primary" @click="handleAddShift">新增班次</el-button>
             </div>
           </template>
 
@@ -32,8 +32,8 @@
             </el-table-column>
             <el-table-column label="操作" width="150">
               <template #default="{ row }">
-                <el-button type="primary" link @click="handleEditShift(row)">编辑</el-button>
-                <el-button type="danger" link @click="handleDeleteShift(row)">删除</el-button>
+                <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEditShift(row)">编辑</el-button>
+                <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDeleteShift(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -146,7 +146,10 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
+const userStore = useUserStore()
 
 const activeTab = ref('shifts')
 const shiftTypes = ref([])

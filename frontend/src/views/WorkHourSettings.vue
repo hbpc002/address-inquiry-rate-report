@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>工时预警阈值设置</span>
-          <el-button type="primary" @click="handleAdd">新增阈值</el-button>
+          <el-button v-if="userStore.canEdit()" type="primary" @click="handleAdd">新增阈值</el-button>
         </div>
       </template>
 
@@ -67,8 +67,8 @@
               <el-button link @click="handleCancel(row)">取消</el-button>
             </template>
             <template v-else>
-              <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-              <el-button type="danger" link @click="handleDelete(row)" v-if="row.has_threshold">删除</el-button>
+              <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-button v-if="userStore.canEdit() && row.has_threshold" type="danger" link @click="handleDelete(row)">删除</el-button>
             </template>
           </template>
         </el-table-column>
@@ -105,7 +105,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
 import { ElMessage } from 'element-plus'
+
+const userStore = useUserStore()
 
 const tableData = ref([])
 const dialogVisible = ref(false)

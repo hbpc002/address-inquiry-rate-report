@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>用户管理</span>
-          <el-button type="primary" @click="handleAdd">新增用户</el-button>
+          <el-button v-if="userStore.user?.role === 'admin'" type="primary" @click="handleAdd">新增用户</el-button>
         </div>
       </template>
 
@@ -58,9 +58,9 @@
         </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="warning" link @click="handleResetPwd(row)">重置密码</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">禁用</el-button>
+            <el-button v-if="userStore.user?.role === 'admin'" type="primary" link @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="userStore.user?.role === 'admin'" type="warning" link @click="handleResetPwd(row)">重置密码</el-button>
+            <el-button v-if="userStore.user?.role === 'admin'" type="danger" link @click="handleDelete(row)">禁用</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -112,7 +112,10 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
+const userStore = useUserStore()
 
 const tableData = ref([])
 const dialogVisible = ref(false)

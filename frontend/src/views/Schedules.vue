@@ -6,8 +6,8 @@
           <span>排班管理</span>
           <el-space>
             <el-button v-if="userStore.hasPermission('upload_schedule')" type="success" @click="dialogType = 'import'; importVisible = true">导入排班</el-button>
-            <el-button type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
-            <el-button type="warning" @click="dialogType = 'batch'; dialogVisible = true">批量排班</el-button>
+            <el-button v-if="userStore.canEdit()" type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
+            <el-button v-if="userStore.canEdit()" type="warning" @click="dialogType = 'batch'; dialogVisible = true">批量排班</el-button>
           </el-space>
         </div>
       </template>
@@ -72,8 +72,8 @@
         </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

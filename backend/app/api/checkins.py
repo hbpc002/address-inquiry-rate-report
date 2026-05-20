@@ -15,7 +15,7 @@ from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.utils.logger import log_operation
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
-from app.core.security import get_current_user, require_permission
+from app.core.security import get_current_user, require_permission, require_role
 from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/checkins", tags=["签到记录"])
@@ -198,6 +198,7 @@ def delete_checkin(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     checkin = db.query(Checkin).filter(Checkin.id == checkin_id).first()
     if not checkin:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -214,6 +215,7 @@ def delete_batch(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     count = db.query(Checkin).filter(Checkin.import_batch == batch).delete()
     db.commit()
     log_operation(db, current_user["id"], "delete_batch", "checkins", None, {"batch": batch, "count": count})

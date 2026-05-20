@@ -38,7 +38,7 @@
         <el-table-column prop="import_batch" label="批次号" width="100" />
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

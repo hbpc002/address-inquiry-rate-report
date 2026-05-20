@@ -76,7 +76,12 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  return { token, user, isLoggedIn, login, logout, fetchCurrentUser, changePassword, hasPermission }
+  function canEdit() {
+    if (!user.value) return false
+    return user.value.role === 'admin' || user.value.role === 'manager'
+  }
+
+  return { token, user, isLoggedIn, login, logout, fetchCurrentUser, changePassword, hasPermission, canEdit }
 })
 
 export { api }

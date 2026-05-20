@@ -16,7 +16,7 @@ from app.schemas.schedule import (
     ScheduleCreate, ScheduleUpdate, ScheduleResponse, ScheduleListResponse,
     BatchScheduleRequest, SwapScheduleRequest
 )
-from app.core.security import get_current_user, require_permission
+from app.core.security import get_current_user, require_permission, require_role
 from app.utils.logger import log_operation
 from app.services.attendance import save_daily_report
 
@@ -214,6 +214,7 @@ def create_schedule(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     existing = db.query(Schedule).filter(
         and_(
             Schedule.emp_id == schedule.emp_id,
@@ -241,6 +242,7 @@ def update_schedule(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="排班记录不存在")
@@ -256,6 +258,7 @@ def delete_schedule(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="排班记录不存在")
@@ -273,6 +276,7 @@ def batch_schedule(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     success_count = 0
     for emp_id in request.emp_ids:
         existing = db.query(Schedule).filter(
@@ -303,6 +307,7 @@ def swap_schedule(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_role(current_user, ["admin", "manager"])
     schedule_a = db.query(Schedule).filter(Schedule.id == request.schedule_a_id).first()
     schedule_b = db.query(Schedule).filter(Schedule.id == request.schedule_b_id).first()
     if not schedule_a or not schedule_b:
