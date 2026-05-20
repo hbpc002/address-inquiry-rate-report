@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.0.$(date +%Y%m%d).$(git rev-list --count HEAD)"
+VERSION="1.0.$(date +%Y%m%d).$(date +%H%M%S)"
 REGISTRY="ghcr.io/hbpc002"
 
 echo "Building version: $VERSION"

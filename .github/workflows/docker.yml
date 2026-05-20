@@ -25,9 +25,7 @@ jobs:
       - name: Generate version
         id: version
         run: |
-          DATE=$(date +%Y%m%d)
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-          VERSION="1.0.${DATE}.${COMMIT_COUNT}"
+          VERSION="1.0.$(date +%Y%m%d).${GITHUB_RUN_NUMBER}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
