@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 from datetime import date, datetime
 
 
@@ -28,6 +28,7 @@ class DailyReportResponse(BaseModel):
     late_minutes: int
     early_minutes: int
     overtime_hours: float
+    segment_details: Optional[Any] = None
     calculated_at: datetime
 
     class Config:

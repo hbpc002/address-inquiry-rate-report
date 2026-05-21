@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, DateTime, DECIMAL, Time, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, DateTime, DECIMAL, Time, JSON, ForeignKey
 from sqlalchemy.sql import func
 from app.models.database import Base
 
@@ -21,4 +21,5 @@ class DailyReport(Base):
     late_minutes = Column(Integer, default=0)
     early_minutes = Column(Integer, default=0)
     overtime_hours = Column(DECIMAL(4, 1), default=0)
+    segment_details = Column(JSON)
     calculated_at = Column(DateTime, server_default=func.now())

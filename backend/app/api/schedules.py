@@ -39,23 +39,27 @@ def parse_shift_from_cell(cell_value: str) -> Optional[dict]:
     times = re.findall(time_pattern, cell_normalized)
     if not times:
         return None
-    hours_match = re.search(r'（?(\d+\.?\d*)H', cell)
+    # 去重：去除备注中重复的时间段（如 "（下午14:30-18:00到南分学习）"）
+    seen = set()
+    unique_times = []
+    for t in times:
+        key = (t[0], t[1])
+        if key not in seen:
+            seen.add(key)
+            unique_times.append(t)
+    hours_match = re.search(r'[（(](\d+\.?\d*)\s*H?\s*[)）]', cell)
     work_hours = float(hours_match.group(1)) if hours_match else 8.0
     is_night = '晚' in shift_name
     return {
         "name": shift_name,
         "work_hours": work_hours,
         "is_night": is_night,
-        "time_segments": [{"start": times[0][0], "end": times[0][1]}] + [{"start": t[0], "end": t[1]} for t in times[1:]]
+        "time_segments": [{"start": t[0], "end": t[1]} for t in unique_times]
     }
 
 def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
     shift = db.query(ShiftType).filter(ShiftType.shift_name == shift_info["name"]).first()
     if shift:
-        shift.time_segments = shift_info.get("time_segments", shift.time_segments)
-        shift.work_hours = shift_info.get("work_hours", shift.work_hours)
-        shift.is_night = shift_info.get("is_night", shift.is_night)
-        db.flush()
         return shift
     shift = ShiftType(
         shift_name=shift_info["name"],
@@ -131,14 +135,21 @@ def parse_shift_from_header(header_value) -> Optional[dict]:
     times = re.findall(time_pattern, header_normalized)
     if not times:
         return None
-    hours_match = re.search(r'（?(\d+\.?\d*)H', header)
+    seen = set()
+    unique_times = []
+    for t in times:
+        key = (t[0], t[1])
+        if key not in seen:
+            seen.add(key)
+            unique_times.append(t)
+    hours_match = re.search(r'[（(](\d+\.?\d*)\s*H?\s*[)）]', header)
     work_hours = float(hours_match.group(1)) if hours_match else 8.0
     is_night = '晚' in shift_name
     shift_info = {
         "name": shift_name,
         "work_hours": work_hours,
         "is_night": is_night,
-        "time_segments": [{"start": t[0], "end": t[1]} for t in times]
+        "time_segments": [{"start": t[0], "end": t[1]} for t in unique_times]
     }
     return shift_info
 
@@ -191,6 +202,9 @@ def get_schedules(
     for s in items:
         emp = db.query(Employee).filter(Employee.id == s.emp_id).first()
         shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first() if s.shift_type_id else None
+        shift_name = s.shift_name or (shift.shift_name if shift else None)
+        time_segments = s.time_segments or (shift.time_segments if shift else [])
+        work_hours = float(s.work_hours) if s.work_hours is not None else (float(shift.work_hours) if shift else None)
         result_items.append({
             "id": s.id,
             "emp_id": s.emp_id,
@@ -202,9 +216,10 @@ def get_schedules(
             "name": emp.name if emp else None,
             "emp_no": emp.emp_no if emp else None,
             "team": emp.team if emp else None,
-            "shift_name": shift.shift_name if shift else None,
-            "shift_time": _format_shift_time(shift.time_segments) if shift else None,
-            "work_hours": float(shift.work_hours) if shift else None
+            "shift_name": shift_name,
+            "shift_time": _format_shift_time(time_segments),
+            "time_segments": time_segments,
+            "work_hours": work_hours
         })
     return ScheduleListResponse(items=result_items, total=total)
 
@@ -324,6 +339,28 @@ def swap_schedule(
     save_daily_report(db, schedule_b.emp_id, schedule_b.schedule_date)
     log_operation(db, current_user["id"], "swap_schedule", "schedules", None, {"schedule_a_id": request.schedule_a_id, "schedule_b_id": request.schedule_b_id})
     return {"message": "换班成功"}
+
+@router.delete("/batch", response_model=dict)
+def batch_delete_schedules(
+    ids: list[int] = Query(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_role(current_user, ["admin", "manager"])
+    if not ids:
+        raise HTTPException(status_code=400, detail="请选择要删除的排班记录")
+    schedules = db.query(Schedule).filter(Schedule.id.in_(ids)).all()
+    if not schedules:
+        raise HTTPException(status_code=404, detail="未找到排班记录")
+    affected = set()
+    for s in schedules:
+        affected.add((s.emp_id, s.schedule_date))
+        db.delete(s)
+    db.commit()
+    for emp_id, schedule_date in affected:
+        save_daily_report(db, emp_id, schedule_date)
+    log_operation(db, current_user["id"], "batch_delete_schedules", "schedules", None, {"ids": ids, "count": len(schedules)})
+    return {"message": f"批量删除成功，共删除{len(schedules)}条", "count": len(schedules)}
 
 @router.post("/import", response_model=dict)
 def import_schedule_excel(
@@ -482,6 +519,10 @@ def import_schedule_excel(
                         emp_id=emp.id,
                         schedule_date=schedule_date,
                         shift_type_id=shift.id,
+                        shift_name=shift_info["name"],
+                        time_segments=shift_info.get("time_segments"),
+                        work_hours=shift_info.get("work_hours"),
+                        is_night=shift_info.get("is_night", False),
                         schedule_type='正常',
                         created_by=current_user["id"]
                     )

@@ -44,16 +44,13 @@ def _migrate_db():
 
     db = SessionLocal()
     try:
-        # 检查 users 表是否存在
         inspector = sa_inspect(engine)
         tables = inspector.get_table_names()
 
         if 'users' not in tables:
-            return  # 表不存在，create_all 会处理
+            return
 
         existing_columns = [col['name'] for col in inspector.get_columns('users')]
-
-        # User 模型的字段映射
         column_defaults = {
             'id': 'INTEGER',
             'username': 'VARCHAR(50)',
@@ -65,7 +62,6 @@ def _migrate_db():
             'created_at': 'DATETIME',
             'updated_at': 'DATETIME'
         }
-
         for col_name, col_def in column_defaults.items():
             if col_name not in existing_columns:
                 sql = f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
@@ -74,6 +70,35 @@ def _migrate_db():
                     print(f"Added column {col_name} to users")
                 except Exception as e:
                     print(f"Failed to add column {col_name}: {e}")
+
+        # 迁移 schedules 表：添加班次信息字段
+        if 'schedules' in tables:
+            schedule_cols = {col['name'] for col in inspector.get_columns('schedules')}
+            schedule_migrations = [
+                ('shift_name', 'VARCHAR(50)'),
+                ('time_segments', 'JSON' if 'postgresql' in str(engine.url) else 'TEXT'),
+                ('work_hours', 'DECIMAL(4,1)'),
+                ('is_night', 'BOOLEAN DEFAULT FALSE'),
+            ]
+            for col_name, col_def in schedule_migrations:
+                if col_name not in schedule_cols:
+                    sql = f"ALTER TABLE schedules ADD COLUMN {col_name} {col_def}"
+                    try:
+                        db.execute(text(sql))
+                        print(f"Added column {col_name} to schedules")
+                    except Exception as e:
+                        print(f"Failed to add column {col_name}: {e}")
+
+        # 迁移 daily_reports 表：添加分段考勤详情字段
+        if 'daily_reports' in tables:
+            report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}
+            if 'segment_details' not in report_cols:
+                col_def = 'JSON' if 'postgresql' in str(engine.url) else 'TEXT'
+                try:
+                    db.execute(text(f"ALTER TABLE daily_reports ADD COLUMN segment_details {col_def}"))
+                    print("Added column segment_details to daily_reports")
+                except Exception as e:
+                    print(f"Failed to add column segment_details: {e}")
 
         db.commit()
     except Exception as e:

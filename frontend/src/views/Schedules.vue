@@ -46,16 +46,27 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="tableData" border stripe>
+      <el-space style="margin-bottom: 12px">
+        <el-button v-if="userStore.canEdit()" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">
+          批量删除 ({{ selectedIds.length }})
+        </el-button>
+      </el-space>
+      <el-table :data="tableData" border stripe :row-class-name="segmentRowClass" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="40" :selectable="row => row._isFirst" />
         <el-table-column prop="schedule_date" label="日期" width="120" />
         <el-table-column prop="name" label="姓名" width="100" />
         <el-table-column prop="emp_no" label="工号" width="120" />
         <el-table-column prop="team" label="班组" width="100" />
-        <el-table-column label="班次" width="180">
+        <el-table-column label="班次" width="220">
           <template #default="{ row }">
-            <span v-if="row.shift_name">{{ row.shift_name }}</span>
-            <span v-if="row.shift_time" style="color: #909399; margin-left: 4px">({{ row.shift_time }})</span>
-            <span v-if="!row.shift_name && !row.shift_time">-</span>
+            <div v-if="row.shift_name">
+              <span>{{ row.shift_name }}</span>
+              <span style="color: #909399; margin-left: 4px">({{ row._displayShiftTime || row.shift_time }})</span>
+              <el-tag v-if="row._totalSegments > 1" size="small" type="info" style="margin-left: 6px">
+                {{ row._segmentIndex + 1 }}/{{ row._totalSegments }}
+              </el-tag>
+            </div>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="work_hours" label="工时" width="60" />
@@ -72,8 +83,10 @@
         </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
+            <template v-if="row._isFirst">
+              <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -177,8 +190,10 @@ const form = reactive({ emp_id: null, schedule_date: '', shift_type_id: null, sc
 const batchForm = reactive({ emp_ids: [], schedule_date: '', shift_type_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const importFile = ref(null)
+const selectedIds = ref([])
 
 async function loadData() {
+  selectedIds.value = []
   try {
     const params = { page: pagination.page, limit: pagination.limit }
     if (searchForm.date) params.schedule_date = searchForm.date
@@ -188,11 +203,33 @@ async function loadData() {
     if (searchForm.shift_type_id) params.shift_type_id = searchForm.shift_type_id
     if (searchForm.schedule_type) params.schedule_type = searchForm.schedule_type
     const res = await api.get('/schedules', { params })
-    tableData.value = res.data.items
+    // 展开多段班次为多行显示
+    const expanded = []
+    for (const item of res.data.items) {
+      const segments = item.time_segments || []
+      if (segments.length <= 1) {
+        expanded.push({ ...item, _segmentIndex: 0, _totalSegments: 1, _isFirst: true, _displayShiftTime: item.shift_time })
+      } else {
+        segments.forEach((seg, i) => {
+          expanded.push({
+            ...item,
+            _segmentIndex: i,
+            _totalSegments: segments.length,
+            _isFirst: i === 0,
+            _displayShiftTime: `${seg.start}-${seg.end}`
+          })
+        })
+      }
+    }
+    tableData.value = expanded
     pagination.total = res.data.total
   } catch (e) {
     ElMessage.error('加载失败')
   }
+}
+
+function segmentRowClass({ row }) {
+  return row._segmentIndex > 0 ? 'segment-sub-row' : ''
 }
 
 function resetSearch() {
@@ -282,6 +319,31 @@ async function handleDelete(row) {
   }
 }
 
+function handleSelectionChange(rows) {
+  const ids = new Set()
+  for (const row of rows) {
+    if (row._isFirst) {
+      ids.add(row.id)
+    }
+  }
+  selectedIds.value = [...ids]
+}
+
+async function handleBatchDelete() {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定要删除选中的 ${selectedIds.value.length} 条排班记录吗？`, '提示', { type: 'warning' })
+    const res = await api.delete('/schedules/batch', { params: { ids: selectedIds.value } })
+    ElMessage.success(res.data.message)
+    selectedIds.value = []
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.response?.data?.detail || '批量删除失败')
+    }
+  }
+}
+
 onMounted(() => {
   loadData()
   loadOptions()
@@ -293,5 +355,14 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+</style>
+
+<style>
+.el-table .segment-sub-row td {
+  background-color: #fafafa !important;
+}
+.el-table .segment-sub-row:hover td {
+  background-color: #f0f9ff !important;
 }
 </style>

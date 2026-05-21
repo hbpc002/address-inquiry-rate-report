@@ -275,22 +275,44 @@
         </el-col>
       </el-row>
 
-      <el-table :data="detailRecords" border stripe style="margin-top: 20px" max-height="300">
+      <el-table :data="detailRecords" border stripe style="margin-top: 20px" max-height="300" :row-class-name="detailSegmentRowClass">
         <el-table-column prop="schedule_date" label="日期" width="120" />
-        <el-table-column prop="status" label="状态" width="80">
+        <el-table-column label="时段" width="60">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
+            <el-tag v-if="row._totalSegments > 1" size="small" type="info">{{ row._segLabel }}</el-tag>
+            <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="scheduled_start" label="计划开始" width="80" />
-        <el-table-column prop="actual_checkin" label="实际签到" width="160">
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            {{ row.actual_checkin?.slice(0, 19) || '-' }}
+            <el-tag :type="getStatusType(row._displayStatus || row.status)">{{ row._displayStatus || row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="late_minutes" label="迟到(分)" width="80" />
-        <el-table-column prop="scheduled_hours" label="计划工时" width="80" />
-        <el-table-column prop="actual_hours" label="实际工时" width="80" />
+        <el-table-column label="计划时间" width="150">
+          <template #default="{ row }">
+            {{ row._displayScheduledStart || row.scheduled_start }} - {{ row._displayScheduledEnd || row.scheduled_end }}
+          </template>
+        </el-table-column>
+        <el-table-column label="实际签到" width="160">
+          <template #default="{ row }">
+            {{ row._displayCheckin || row.actual_checkin?.slice(0, 19) || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="迟到(分)" width="80">
+          <template #default="{ row }">
+            {{ row._displayLate ?? row.late_minutes }}
+          </template>
+        </el-table-column>
+        <el-table-column label="计划工时" width="80">
+          <template #default="{ row }">
+            {{ row.scheduled_hours }}
+          </template>
+        </el-table-column>
+        <el-table-column label="实际工时" width="80">
+          <template #default="{ row }">
+            {{ row._displayActualHours ?? row.actual_hours }}
+          </template>
+        </el-table-column>
         <el-table-column prop="overtime_hours" label="加班" width="60" />
       </el-table>
     </el-dialog>
@@ -522,12 +544,38 @@ async function showEmpDetail(row) {
   }
   try {
     const res = await api.get('/reports/daily', { params })
-    detailRecords.value = res.data.items || []
+    const items = res.data.items || []
+    const expanded = []
+    for (const item of items) {
+      const segs = item.segment_details || []
+      if (segs.length <= 1) {
+        expanded.push({ ...item, _totalSegments: 1, _segLabel: '', _displayScheduledStart: null, _displayScheduledEnd: null, _displayCheckin: null, _displayLate: null, _displayActualHours: null, _displayStatus: null })
+      } else {
+        segs.forEach((seg, i) => {
+          expanded.push({
+            ...item,
+            _totalSegments: segs.length,
+            _segLabel: `${i + 1}/${segs.length}`,
+            _displayScheduledStart: seg.start,
+            _displayScheduledEnd: seg.end,
+            _displayCheckin: seg.actual_checkin ? seg.actual_checkin.slice(0, 19) : '-',
+            _displayLate: seg.late_minutes,
+            _displayActualHours: seg.actual_hours,
+            _displayStatus: seg.status
+          })
+        })
+      }
+    }
+    detailRecords.value = expanded
     detailDialogVisible.value = true
   } catch (e) {
     detailRecords.value = []
     detailDialogVisible.value = true
   }
+}
+
+function detailSegmentRowClass({ row }) {
+  return row._totalSegments > 1 ? 'segment-sub-row' : ''
 }
 
 function openAdjustDialog(row) {

@@ -75,6 +75,7 @@ def get_daily_reports(
                 late_minutes=item.late_minutes,
                 early_minutes=item.early_minutes,
                 overtime_hours=float(item.overtime_hours or 0),
+                segment_details=item.segment_details,
                 calculated_at=item.calculated_at
             ))
 
@@ -262,13 +263,13 @@ def get_month_summary(
         ).all()
         
         scheduled = 0
-        shift_cache = {}
         for s in schedules:
-            if s.shift_type_id not in shift_cache:
-                shift_cache[s.shift_type_id] = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
-            shift = shift_cache[s.shift_type_id]
-            if shift:
-                scheduled += float(shift.work_hours or 0)
+            work_hours = float(s.work_hours) if s.work_hours is not None else None
+            if work_hours is None and s.shift_type_id:
+                shift = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+                if shift:
+                    work_hours = float(shift.work_hours or 0)
+            scheduled += work_hours or 0
         
         actual = sum(float(r.actual_hours or 0) for r in daily_reports)
         overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)
@@ -328,11 +329,14 @@ def get_team_ranking(
         shift_cache = {}
         total_scheduled = 0
         for s in schedules:
-            if s.shift_type_id not in shift_cache:
-                shift_cache[s.shift_type_id] = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
-            shift = shift_cache[s.shift_type_id]
-            if shift:
-                total_scheduled += float(shift.work_hours or 0)
+            work_hours = float(s.work_hours) if s.work_hours is not None else None
+            if work_hours is None and s.shift_type_id:
+                if s.shift_type_id not in shift_cache:
+                    shift_cache[s.shift_type_id] = db.query(ShiftType).filter(ShiftType.id == s.shift_type_id).first()
+                shift = shift_cache[s.shift_type_id]
+                if shift:
+                    work_hours = float(shift.work_hours or 0)
+            total_scheduled += work_hours or 0
         
         total_actual = sum(float(r.actual_hours or 0) for r in daily_reports)
         total_overtime = sum(float(r.overtime_hours or 0) for r in daily_reports)

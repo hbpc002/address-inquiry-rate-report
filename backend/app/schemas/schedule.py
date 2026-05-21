@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 from datetime import date, datetime
 
 
@@ -33,6 +33,7 @@ class ScheduleResponse(ScheduleBase):
     team: Optional[str] = None
     shift_name: Optional[str] = None
     shift_time: Optional[str] = None
+    time_segments: Optional[Any] = None
     work_hours: Optional[float] = None
 
     class Config:
