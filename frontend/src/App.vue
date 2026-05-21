@@ -3,6 +3,15 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
+
+onMounted(() => {
+  const userStore = useUserStore()
+  if (userStore.isLoggedIn) {
+    userStore.fetchCurrentUser()
+  }
+})
 </script>
 
 <style>
