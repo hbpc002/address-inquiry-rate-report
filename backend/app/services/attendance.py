@@ -43,6 +43,13 @@ def get_time_segments(shift: ShiftType) -> list:
 
 
 def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
+    # 读取迟到早退阈值
+    from app.models.attendance_config import AttendanceConfig
+    def _get_config(key: str, default: str) -> int:
+        row = db.query(AttendanceConfig).filter(AttendanceConfig.key == key).first()
+        return int(row.value) if row else int(default)
+    late_threshold = _get_config("late_threshold_minutes", "30")
+    early_threshold = _get_config("early_leave_threshold_minutes", "30")
     schedule = db.query(Schedule).filter(
         and_(
             Schedule.emp_id == emp_id,
@@ -245,9 +252,9 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
                 e_mins = seg_ranges[idx][1]
                 if seg_last_effective_co[idx] is not None and seg_last_effective_co[idx] < e_mins:
                     seg_early = e_mins - seg_last_effective_co[idx]
-                if seg_late > 0:
+                if seg_late > late_threshold:
                     seg_status = "迟到"
-                elif seg_early > 0:
+                elif seg_early > early_threshold:
                     seg_status = "早退"
             else:
                 seg_status = "缺勤"
@@ -287,9 +294,9 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
 
     overtime_hours = max(0, actual_hours - float(scheduled_hours)) if scheduled_hours else 0
 
-    if late_minutes > 0:
+    if late_minutes > late_threshold:
         status = "迟到"
-    elif early_minutes > 0:
+    elif early_minutes > early_threshold:
         status = "早退"
     else:
         status = "正常"
@@ -307,158 +314,6 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         "schedule_type": schedule.schedule_type,
         "time_segments": segments,
         "segment_details": segment_details
-    }
-
-    def time_to_minutes(t: str) -> int:
-        h, m = map(int, t.split(':'))
-        return h * 60 + m
-
-    def in_segment(c_in_h: int, c_in_m: int, c_out_h: int, c_out_m: int, seg_start: str, seg_end: str) -> bool:
-        s = time_to_minutes(seg_start)
-        e = time_to_minutes(seg_end)
-        ci = c_in_h * 60 + c_in_m
-        co = c_out_h * 60 + c_out_m
-        if e < s:
-            e += 1440
-        if co < ci:
-            co += 1440
-        return ci < e and co > s
-
-    def checkin_in_shifts(c: Checkin) -> bool:
-        if not c.checkout_time or not shift_info:
-            return False
-        ci_h, ci_m = c.checkin_time.hour, c.checkin_time.minute
-        co_h, co_m = c.checkout_time.hour, c.checkout_time.minute
-        segments = shift_info["time_segments"]
-        for seg in segments:
-            if in_segment(ci_h, ci_m, co_h, co_m, seg["start"], seg["end"]):
-                return True
-        return False
-
-    if schedule.schedule_type in ["请假", "公休", "加班"]:
-        return {
-            "status": schedule.schedule_type,
-            "late_minutes": 0,
-            "early_minutes": 0,
-            "actual_hours": 0,
-            "scheduled_hours": shift_info["work_hours"] if shift_info else 0,
-            "overtime_hours": 0,
-            "schedule_type": schedule.schedule_type
-        }
-
-    valid = [c for c in checkins if checkin_in_shifts(c)]
-
-    if not valid:
-        return {
-            "status": "缺勤",
-            "late_minutes": 0,
-            "early_minutes": 0,
-            "actual_hours": 0,
-            "scheduled_hours": shift_info["work_hours"] if shift_info else 0,
-            "overtime_hours": 0
-        }
-
-    scheduled_hours = shift_info["work_hours"] if shift_info else 0
-
-    first_checkin = min(valid, key=lambda x: x.checkin_time) if valid else None
-    last_checkout = max((c for c in valid if c.checkout_time), key=lambda x: x.checkout_time) if any(c.checkout_time for c in valid) else None
-
-    late_minutes = 0
-    early_minutes = 0
-
-    segments = shift_info["time_segments"] if shift_info else []
-    if segments:
-        def _checkin_range(c):
-            ci = c.checkin_time.hour * 60 + c.checkin_time.minute
-            co = c.checkout_time.hour * 60 + c.checkout_time.minute
-            if c.checkout_time.date() > c.checkin_time.date():
-                co += 1440
-            return ci, co
-
-        seg_ranges = []
-        for seg in segments:
-            s = time_to_minutes(seg["start"])
-            e = time_to_minutes(seg["end"])
-            if e <= s:
-                e += 1440
-            seg_ranges.append((s, e))
-
-        n = len(segments)
-        seg_has_checkin = [False] * n
-        seg_last_effective_co = [None] * n
-        seg_first_ci = [None] * n
-
-        for c in valid:
-            ci_m, co_m = _checkin_range(c)
-            for idx, (s, e) in enumerate(seg_ranges):
-                if ci_m < e and co_m > s:
-                    seg_has_checkin[idx] = True
-                    effective_co = min(co_m, e)
-                    if seg_last_effective_co[idx] is None or effective_co > seg_last_effective_co[idx]:
-                        seg_last_effective_co[idx] = effective_co
-                    if seg_first_ci[idx] is None or ci_m < seg_first_ci[idx]:
-                        seg_first_ci[idx] = ci_m
-
-        first_attended_idx = -1
-        for idx in range(n):
-            if seg_has_checkin[idx]:
-                first_attended_idx = idx
-                break
-
-        if first_attended_idx >= 0:
-            seg_start_mins = seg_ranges[first_attended_idx][0]
-            if seg_first_ci[first_attended_idx] is not None and seg_first_ci[first_attended_idx] > seg_start_mins:
-                late_minutes = seg_first_ci[first_attended_idx] - seg_start_mins
-
-        early_minutes_list = []
-        for idx in range(n):
-            if seg_has_checkin[idx] and seg_last_effective_co[idx] is not None:
-                seg_end_mins = seg_ranges[idx][1]
-                if seg_last_effective_co[idx] < seg_end_mins:
-                    early_minutes_list.append(seg_end_mins - seg_last_effective_co[idx])
-        early_minutes = min(early_minutes_list) if early_minutes_list else 0
-
-    actual_hours = 0
-    for c in valid:
-        ci = c.checkin_time
-        co = c.checkout_time
-        ci_m = ci.hour * 60 + ci.minute
-        co_m = co.hour * 60 + co.minute
-        if co.date() > ci.date():
-            co_m += 1440
-        overlap = 0
-        for seg in segments:
-            s = time_to_minutes(seg["start"])
-            e = time_to_minutes(seg["end"])
-            if e < s:
-                e += 1440
-            o_start = max(ci_m, s)
-            o_end = min(co_m, e)
-            if o_end > o_start:
-                overlap += o_end - o_start
-        actual_hours += overlap / 60.0
-
-    overtime_hours = max(0, actual_hours - float(scheduled_hours)) if scheduled_hours else 0
-
-    if late_minutes > 0:
-        status = "迟到"
-    elif early_minutes > 0:
-        status = "早退"
-    else:
-        status = "正常"
-
-    return {
-        "status": status,
-        "late_minutes": late_minutes,
-        "early_minutes": early_minutes,
-        "actual_hours": round(actual_hours, 1),
-        "scheduled_hours": scheduled_hours,
-        "overtime_hours": round(overtime_hours, 1),
-        "actual_checkin": first_checkin.checkin_time,
-        "actual_checkout": last_checkout.checkout_time if last_checkout else None,
-        "shift_type_id": schedule.shift_type_id,
-        "schedule_type": schedule.schedule_type,
-        "time_segments": segments
     }
 
 

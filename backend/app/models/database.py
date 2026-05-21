@@ -31,6 +31,8 @@ def init_db():
     from app.models.daily_report import DailyReport
     from app.models.monthly_report import MonthlyReport
     from app.models.operation_log import OperationLog
+    from app.models.work_hour_threshold import WorkHourThreshold
+    from app.models.attendance_config import AttendanceConfig
 
     Base.metadata.create_all(bind=engine)
     _migrate_db()

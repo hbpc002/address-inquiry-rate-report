@@ -1,5 +1,25 @@
 <template>
   <div class="work-hour-settings">
+    <el-card style="margin-bottom: 16px">
+      <template #header>
+        <div class="card-header">
+          <span>迟到早退阈值设置</span>
+          <el-button v-if="userStore.canEdit()" type="primary" :loading="configSaving" @click="handleSaveConfig">保存配置</el-button>
+        </div>
+      </template>
+
+      <el-form :model="configForm" label-width="160px" inline>
+        <el-form-item label="迟到阈值（分钟）">
+          <el-input-number v-model="configForm.late_threshold_minutes" :min="1" :max="240" :step="5" />
+          <span style="margin-left: 8px; color: #909399; font-size: 13px">超过此分钟数视为迟到</span>
+        </el-form-item>
+        <el-form-item label="早退阈值（分钟）">
+          <el-input-number v-model="configForm.early_leave_threshold_minutes" :min="1" :max="240" :step="5" />
+          <span style="margin-left: 8px; color: #909399; font-size: 13px">早于下班时间超过此分钟数视为早退</span>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <el-card>
       <template #header>
         <div class="card-header">
@@ -119,6 +139,39 @@ const form = ref({
 })
 const availableTeams = ref([])
 
+const configForm = ref({
+  late_threshold_minutes: 30,
+  early_leave_threshold_minutes: 30
+})
+const configSaving = ref(false)
+
+async function loadConfig() {
+  try {
+    const res = await api.get('/attendance-config')
+    configForm.value = {
+      late_threshold_minutes: res.data.late_threshold_minutes,
+      early_leave_threshold_minutes: res.data.early_leave_threshold_minutes
+    }
+  } catch (e) {
+    // 使用默认值
+  }
+}
+
+async function handleSaveConfig() {
+  configSaving.value = true
+  try {
+    await api.put('/attendance-config', {
+      late_threshold_minutes: configForm.value.late_threshold_minutes,
+      early_leave_threshold_minutes: configForm.value.early_leave_threshold_minutes
+    })
+    ElMessage.success('保存成功')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  } finally {
+    configSaving.value = false
+  }
+}
+
 async function loadData() {
   try {
     const [teamsRes, thresholdsRes] = await Promise.all([
@@ -220,6 +273,7 @@ async function handleDelete(row) {
 
 onMounted(() => {
   loadData()
+  loadConfig()
 })
 </script>
 
