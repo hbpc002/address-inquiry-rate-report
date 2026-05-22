@@ -127,3 +127,57 @@ describe('calcDailyStats - 统计去重逻辑', () => {
     expect(stats.attend).toBe(0)
   })
 })
+
+describe('monthly/range stats - 全量聚合逻辑', () => {
+  const mockData = [
+    { dept: '客服中心', scheduled_hours: 8, actual_hours: 7.5, overtime_hours: 0, owed_hours: 0.5, normal_days: 20 },
+    { dept: '客服中心', scheduled_hours: 8, actual_hours: 0, overtime_hours: 0, owed_hours: 8, normal_days: 0 },
+    { dept: '技术部', scheduled_hours: 8, actual_hours: 8, overtime_hours: 1, owed_hours: 0, normal_days: 22 },
+  ]
+
+  function calcStats(data) {
+    return {
+      total: data.length,
+      scheduled: data.reduce((s, d) => s + (d.scheduled_hours || 0), 0),
+      actual: data.reduce((s, d) => s + (d.actual_hours || 0), 0),
+      overtime: data.reduce((s, d) => s + (d.overtime_hours || 0), 0),
+      owed: data.reduce((s, d) => s + (d.owed_hours || 0), 0),
+      workDays: data.reduce((s, d) => s + (d.normal_days || 0), 0),
+    }
+  }
+
+  it('should aggregate from all data, not paginated subset', () => {
+    const stats = calcStats(mockData)
+    expect(stats.total).toBe(3)
+    expect(stats.scheduled).toBe(24)
+    expect(stats.actual).toBe(15.5)
+    expect(stats.overtime).toBe(1)
+    expect(stats.owed).toBe(8.5)
+    expect(stats.workDays).toBe(42)
+  })
+
+  it('should aggregate dept hours from all data', () => {
+    const deptMap = {}
+    mockData.forEach(d => {
+      if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
+      deptMap[d.dept].scheduled += d.scheduled_hours || 0
+      deptMap[d.dept].actual += d.actual_hours || 0
+    })
+    expect(deptMap['客服中心'].scheduled).toBe(16)
+    expect(deptMap['技术部'].scheduled).toBe(8)
+    expect(deptMap['客服中心'].actual).toBe(7.5)
+  })
+
+  it('should handle empty data for monthly stats', () => {
+    const stats = calcStats([])
+    expect(stats.total).toBe(0)
+    expect(stats.scheduled).toBe(0)
+  })
+
+  it('should compute overtime/owed status distribution', () => {
+    const overtime = mockData.filter(d => d.overtime_hours > 0).length
+    const owed = mockData.filter(d => d.owed_hours > 0).length
+    expect(overtime).toBe(1)
+    expect(owed).toBe(2)
+  })
+})

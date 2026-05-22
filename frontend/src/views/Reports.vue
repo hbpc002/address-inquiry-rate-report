@@ -171,12 +171,12 @@
               <el-input v-model="searchMonthly.emp_no" placeholder="工号" clearable style="width:120px" />
             </el-form-item>
             <el-form-item label="部门">
-              <el-select v-model="searchMonthly.dept" placeholder="全部部门" clearable filterable>
+              <el-select v-model="searchMonthly.dept" placeholder="全部部门" clearable filterable style="width:180px">
                 <el-option v-for="d in depts" :key="d.dept" :label="d.dept" :value="d.dept" />
               </el-select>
             </el-form-item>
             <el-form-item label="班组">
-              <el-select v-model="searchMonthly.team" placeholder="全部班组" clearable filterable>
+              <el-select v-model="searchMonthly.team" placeholder="全部班组" clearable filterable style="width:180px">
                 <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
               </el-select>
             </el-form-item>
@@ -285,17 +285,17 @@
               <el-input v-model="searchRange.emp_no" placeholder="工号" clearable style="width:120px" />
             </el-form-item>
             <el-form-item label="部门">
-              <el-select v-model="searchRange.dept" placeholder="全部部门" clearable filterable>
+              <el-select v-model="searchRange.dept" placeholder="全部部门" clearable filterable style="width:180px">
                 <el-option v-for="d in depts" :key="d.dept" :label="d.dept" :value="d.dept" />
               </el-select>
             </el-form-item>
             <el-form-item label="班组">
-              <el-select v-model="searchRange.team" placeholder="全部班组" clearable filterable>
+              <el-select v-model="searchRange.team" placeholder="全部班组" clearable filterable style="width:180px">
                 <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
               </el-select>
             </el-form-item>
             <el-form-item label="状态">
-              <el-select v-model="searchRange.status" placeholder="全部状态" clearable>
+              <el-select v-model="searchRange.status" placeholder="全部状态" clearable style="width:180px">
                 <el-option label="正常" value="正常" />
                 <el-option label="迟到" value="迟到" />
                 <el-option label="早退" value="早退" />
@@ -509,8 +509,11 @@ import { createPieOptions, createBarOptions, createLineOptions, createHorizontal
 
 const activeTab = ref('daily')
 const dailyData = ref([])
+const dailyAllData = ref([])
 const monthlyData = ref([])
+const monthlyAllData = ref([])
 const rangeData = ref([])
+const rangeAllData = ref([])
 const rankingData = ref([])
 const teams = ref([])
 const depts = ref([])
@@ -541,18 +544,23 @@ const detailTitle = ref('')
 const detailData = ref([])
 
 const dailyChartOptions = computed(() => {
-  if (!dailyData.value.length) return {}
+  if (!dailyAllData.value.length) return {}
+  const seen = new Set()
   const statusCount = {}
-  dailyData.value.forEach(d => { statusCount[d.status] = (statusCount[d.status] || 0) + 1 })
+  dailyAllData.value.forEach(d => {
+    if (seen.has(d.emp_id)) return
+    seen.add(d.emp_id)
+    statusCount[d.status] = (statusCount[d.status] || 0) + 1
+  })
   const pieData = Object.entries(statusCount).map(([name, value]) => ({ name, value }))
   return createPieOptions(pieData, '考勤状态分布')
 })
 
 const dailyDeptOptions = computed(() => {
-  if (!dailyData.value.length) return {}
+  if (!dailyAllData.value.length) return {}
   const seen = new Set()
   const deptMap = {}
-  dailyData.value.forEach(d => {
+  dailyAllData.value.forEach(d => {
     if (seen.has(d.emp_id)) return
     seen.add(d.emp_id)
     if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
@@ -567,9 +575,9 @@ const dailyDeptOptions = computed(() => {
 })
 
 const monthlyDeptOptions = computed(() => {
-  if (!monthlyData.value.length) return {}
+  if (!monthlyAllData.value.length) return {}
   const deptMap = {}
-  monthlyData.value.forEach(d => {
+  monthlyAllData.value.forEach(d => {
     if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
     deptMap[d.dept].scheduled += d.scheduled_hours || 0
     deptMap[d.dept].actual += d.actual_hours || 0
@@ -585,10 +593,10 @@ const monthlyDeptOptions = computed(() => {
 })
 
 const monthlyOvertimeOptions = computed(() => {
-  if (!monthlyData.value.length) return {}
-  const overtime = monthlyData.value.filter(d => d.overtime_hours > 0).length
-  const owed = monthlyData.value.filter(d => d.owed_hours > 0).length
-  const normal = monthlyData.value.length - overtime - owed
+  if (!monthlyAllData.value.length) return {}
+  const overtime = monthlyAllData.value.filter(d => d.overtime_hours > 0).length
+  const owed = monthlyAllData.value.filter(d => d.owed_hours > 0).length
+  const normal = monthlyAllData.value.length - overtime - owed
   return createPieOptions([
     { name: '正常', value: normal },
     { name: '加班', value: overtime },
@@ -597,9 +605,9 @@ const monthlyOvertimeOptions = computed(() => {
 })
 
 const rangeDeptOptions = computed(() => {
-  if (!rangeData.value.length) return {}
+  if (!rangeAllData.value.length) return {}
   const deptMap = {}
-  rangeData.value.forEach(d => {
+  rangeAllData.value.forEach(d => {
     if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
     deptMap[d.dept].scheduled += d.scheduled_hours || 0
     deptMap[d.dept].actual += d.actual_hours || 0
@@ -615,10 +623,15 @@ const rangeDeptOptions = computed(() => {
 })
 
 const rangeStatusOptions = computed(() => {
-  if (!rangeData.value.length) return {}
-  const statusCount = { '正常': 0, '迟到': 0, '早退': 0, '缺勤': 0, '请假': 0, '公休': 0 }
-  rangeData.value.forEach(d => { if (statusCount[d.status] !== undefined) statusCount[d.status]++ })
-  const data = Object.entries(statusCount).filter(([, v]) => v > 0).map(([n, v]) => ({ name: n, value: v }))
+  if (!rangeAllData.value.length) return {}
+  const statusCount = {}
+  rangeAllData.value.forEach(d => {
+    for (const [key, label] of [['normal_days', '正常'], ['late_days', '迟到'], ['early_days', '早退'], ['absent_days', '缺勤'], ['leave_days', '请假'], ['timeoff_days', '公休']]) {
+      const v = d[key] || 0
+      if (v > 0) statusCount[label] = (statusCount[label] || 0) + v
+    }
+  })
+  const data = Object.entries(statusCount).map(([name, value]) => ({ name, value }))
   return createPieOptions(data, '异常考勤分布')
 })
 
@@ -703,7 +716,9 @@ async function loadDaily() {
     dailyPagination.total = res.data.total || 0
 
     const allRes = await api.get('/reports/daily', { params: { ...searchDaily, page: 1, limit: 200 } })
-    calcDailyStats(expandItems(allRes.data.items || []))
+    const allExpanded = expandItems(allRes.data.items || [])
+    dailyAllData.value = allExpanded
+    calcDailyStats(allExpanded)
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
   }
@@ -721,7 +736,10 @@ async function loadMonthly() {
     const res = await api.get('/reports/month-summary', { params: { ...searchMonthly, page: monthlyPagination.page, limit: monthlyPagination.limit } })
     monthlyData.value = res.data.items || []
     monthlyPagination.total = res.data.total || 0
-    calcMonthlyStats(monthlyData.value)
+
+    const allRes = await api.get('/reports/month-summary', { params: { ...searchMonthly, page: 1, limit: 200 } })
+    monthlyAllData.value = allRes.data.items || []
+    calcMonthlyStats(monthlyAllData.value)
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
   }
@@ -736,7 +754,10 @@ async function loadRange() {
     const res = await api.get('/reports/date-range', { params: { ...searchRange, page: rangePagination.page, limit: rangePagination.limit } })
     rangeData.value = res.data.items || []
     rangePagination.total = res.data.total || 0
-    calcRangeStats(rangeData.value)
+
+    const allRes = await api.get('/reports/date-range', { params: { ...searchRange, page: 1, limit: 200 } })
+    rangeAllData.value = allRes.data.items || []
+    calcRangeStats(rangeAllData.value)
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
   }
