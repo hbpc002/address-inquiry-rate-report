@@ -2,6 +2,7 @@
 测试权限控制和用户改密码功能
 """
 import datetime
+import os
 from pathlib import Path
 import sys
 
@@ -27,7 +28,8 @@ from app.core.security import get_password_hash, verify_password, create_access_
 from app.core.config import settings
 
 # 使用测试数据库
-TEST_DB_URL = "sqlite:///./test_permissions.db"
+os.environ.setdefault("DATABASE_URL", "postgresql://postgres:admin123%40kf@localhost:5432/schedule_test")
+TEST_DB_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:admin123%40kf@localhost:5432/schedule_test")
 engine = create_engine(TEST_DB_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -71,11 +73,8 @@ def setup_module():
         db.close()
 
 def teardown_module():
-    """模块级别的清理：删除测试数据库"""
+    """模块级别的清理：删除测试数据"""
     Base.metadata.drop_all(bind=engine)
-    import os
-    if os.path.exists('./test_permissions.db'):
-        os.remove('./test_permissions.db')
 
 def get_user_dict(username):
     """获取用户字典（模拟get_current_user返回）"""

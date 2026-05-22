@@ -14,6 +14,7 @@ from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
 from app.models.checkin import Checkin
 from app.models.daily_report import DailyReport
+from app.models.attendance_config import AttendanceConfig
 from app.services.attendance import calculate_daily_attendance, save_daily_report
 
 
@@ -192,6 +193,13 @@ def db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        for key in ["late_threshold_minutes", "early_leave_threshold_minutes"]:
+            existing = db.query(AttendanceConfig).filter(AttendanceConfig.key == key).first()
+            if existing:
+                existing.value = "0"
+            else:
+                db.add(AttendanceConfig(key=key, value="0"))
+        db.commit()
         yield db
     finally:
         db.close()

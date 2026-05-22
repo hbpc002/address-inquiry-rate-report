@@ -1,17 +1,11 @@
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@localhost:5432/schedule_test')
 
-temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-temp_db.close()
-os.environ['DATABASE_URL'] = f'sqlite:///{temp_db.name}'
-
-from app.models.database import Base, SessionLocal, init_db
+from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.user import User
 from app.models.employee import Employee
 from app.models.checkin import Checkin
@@ -25,11 +19,7 @@ def setup_module():
 
 
 def teardown_module():
-    os.unlink(temp_db.name)
-
-
-engine = create_engine(os.environ['DATABASE_URL'])
-Base.metadata.create_all(engine)
+    pass
 
 
 def get_db():

@@ -60,9 +60,9 @@ def _migrate_db():
             'display_name': 'VARCHAR(50)',
             'role': "VARCHAR(20) DEFAULT 'user'",
             'permissions': "VARCHAR(500) DEFAULT '{}'",
-            'is_active': 'BOOLEAN DEFAULT 1',
-            'created_at': 'DATETIME',
-            'updated_at': 'DATETIME'
+            'is_active': 'BOOLEAN DEFAULT TRUE',
+            'created_at': 'TIMESTAMP',
+            'updated_at': 'TIMESTAMP'
         }
         for col_name, col_def in column_defaults.items():
             if col_name not in existing_columns:
@@ -78,7 +78,7 @@ def _migrate_db():
             schedule_cols = {col['name'] for col in inspector.get_columns('schedules')}
             schedule_migrations = [
                 ('shift_name', 'VARCHAR(50)'),
-                ('time_segments', 'JSON' if 'postgresql' in str(engine.url) else 'TEXT'),
+                ('time_segments', 'JSON'),
                 ('work_hours', 'DECIMAL(4,1)'),
                 ('is_night', 'BOOLEAN DEFAULT FALSE'),
             ]
@@ -95,7 +95,7 @@ def _migrate_db():
         if 'daily_reports' in tables:
             report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}
             if 'segment_details' not in report_cols:
-                col_def = 'JSON' if 'postgresql' in str(engine.url) else 'TEXT'
+                col_def = 'JSON'
                 try:
                     db.execute(text(f"ALTER TABLE daily_reports ADD COLUMN segment_details {col_def}"))
                     print("Added column segment_details to daily_reports")

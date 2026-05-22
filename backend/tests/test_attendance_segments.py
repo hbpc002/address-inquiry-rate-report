@@ -1,15 +1,9 @@
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
-temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-temp_db.close()
-os.environ['DATABASE_URL'] = f'sqlite:///{temp_db.name}'
+os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@localhost:5432/schedule_test')
 
 from app.models.database import Base, SessionLocal, init_db
 from app.models.employee import Employee
@@ -21,6 +15,7 @@ from app.models.monthly_report import MonthlyReport
 from app.models.attendance_config import AttendanceConfig
 from app.services.attendance import calculate_daily_attendance, save_daily_report
 from datetime import datetime, date, time
+from sqlalchemy import text
 
 
 def setup_module():
@@ -28,7 +23,7 @@ def setup_module():
 
 
 def teardown_module():
-    os.unlink(temp_db.name)
+    pass
 
 
 _emp_counter = 0
@@ -493,8 +488,8 @@ class TestEdgeCases:
         finally:
             db.close()
 
-    def test_no_checkout_marked_absent(self):
-        """打了卡但没签退，返回缺勤"""
+    def test_no_checkout_still_attends(self):
+        """打了卡但没签退，按签到时间计算，状态正常"""
         db = SessionLocal()
         try:
             emp_no = _unique_emp_no()
@@ -507,7 +502,9 @@ class TestEdgeCases:
             db.add(Checkin(emp_no=emp_no, name="测试员工", checkin_time=datetime(2024, 3, 1, 8, 0, 0), checkout_time=None, import_batch="test"))
             db.commit()
             result = calculate_daily_attendance(db, emp.id, date(2024, 3, 1))
-            assert result["status"] == "缺勤"
+            assert result["status"] == "正常"
+            assert result["actual_hours"] == 0
+            assert result["actual_checkout"] is None
         finally:
             db.close()
 

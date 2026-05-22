@@ -94,14 +94,24 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         return ci < e and co > s
 
     def checkin_in_shifts(c: Checkin) -> bool:
-        if not c.checkout_time or not shift_info:
+        if not shift_info:
             return False
         ci_h, ci_m = c.checkin_time.hour, c.checkin_time.minute
-        co_h, co_m = c.checkout_time.hour, c.checkout_time.minute
         segments = shift_info["time_segments"]
-        for seg in segments:
-            if in_segment(ci_h, ci_m, co_h, co_m, seg["start"], seg["end"]):
-                return True
+        if not c.checkout_time:
+            ci = ci_h * 60 + ci_m
+            for seg in segments:
+                s = time_to_minutes(seg["start"])
+                e = time_to_minutes(seg["end"])
+                if e < s:
+                    e += 1440
+                if s <= ci < e:
+                    return True
+        else:
+            co_h, co_m = c.checkout_time.hour, c.checkout_time.minute
+            for seg in segments:
+                if in_segment(ci_h, ci_m, co_h, co_m, seg["start"], seg["end"]):
+                    return True
         return False
 
     if schedule.schedule_type in ["请假", "公休", "加班"]:
@@ -168,6 +178,8 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
     if segments:
         def _checkin_range(c):
             ci = c.checkin_time.hour * 60 + c.checkin_time.minute
+            if not c.checkout_time:
+                return ci, ci
             co = c.checkout_time.hour * 60 + c.checkout_time.minute
             if c.checkout_time.date() > c.checkin_time.date():
                 co += 1440
@@ -192,16 +204,25 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         for c in valid:
             ci_m, co_m = _checkin_range(c)
             for idx, (s, e) in enumerate(seg_ranges):
-                if ci_m < e and co_m > s:
-                    seg_has_checkin[idx] = True
+                if c.checkout_time:
+                    if not (ci_m < e and co_m > s):
+                        continue
+                else:
+                    if not (s <= ci_m < e):
+                        continue
+                seg_has_checkin[idx] = True
+                if c.checkout_time:
                     effective_co = min(co_m, e)
                     if seg_last_effective_co[idx] is None or effective_co > seg_last_effective_co[idx]:
                         seg_last_effective_co[idx] = effective_co
-                    if seg_first_ci[idx] is None or ci_m < seg_first_ci[idx]:
-                        seg_first_ci[idx] = ci_m
-                        seg_actual_checkin_dt[idx] = c.checkin_time
+                        seg_actual_checkout_dt[idx] = c.checkout_time
+                if seg_first_ci[idx] is None or ci_m < seg_first_ci[idx]:
+                    seg_first_ci[idx] = ci_m
+                    seg_actual_checkin_dt[idx] = c.checkin_time
 
         for c in valid:
+            if not c.checkout_time:
+                continue
             ci_m, co_m = _checkin_range(c)
             ci = c.checkin_time
             co = c.checkout_time
@@ -211,10 +232,6 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
                 co_m2 += 1440
             for idx, (s, e) in enumerate(seg_ranges):
                 if ci_m < e and co_m > s:
-                    effective_co_actual = min(co_m, e)
-                    if seg_actual_checkout_dt[idx] is None or effective_co_actual > time_to_minutes(seg_actual_checkout_dt[idx].strftime('%H:%M')) if seg_actual_checkout_dt[idx] else 0:
-                        if seg_actual_checkout_dt[idx] is None or c.checkout_time > seg_actual_checkout_dt[idx]:
-                            seg_actual_checkout_dt[idx] = c.checkout_time
                     o_start = max(ci_m2, s)
                     o_end = min(co_m2, e)
                     if o_end > o_start:
@@ -274,6 +291,8 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
 
     actual_hours = 0
     for c in valid:
+        if not c.checkout_time:
+            continue
         ci = c.checkin_time
         co = c.checkout_time
         ci_m = ci.hour * 60 + ci.minute
@@ -301,6 +320,13 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
     else:
         status = "正常"
 
+    top_level_actual_checkout = None
+    if segments and any(seg_has_checkin):
+        last_attended = max(i for i, h in enumerate(seg_has_checkin) if h)
+        top_level_actual_checkout = seg_actual_checkout_dt[last_attended]
+    elif last_checkout:
+        top_level_actual_checkout = last_checkout.checkout_time
+
     return {
         "status": status,
         "late_minutes": late_minutes,
@@ -309,7 +335,7 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
         "scheduled_hours": scheduled_hours,
         "overtime_hours": round(overtime_hours, 1),
         "actual_checkin": first_checkin.checkin_time,
-        "actual_checkout": last_checkout.checkout_time if last_checkout else None,
+        "actual_checkout": top_level_actual_checkout,
         "shift_type_id": schedule.shift_type_id,
         "schedule_type": schedule.schedule_type,
         "time_segments": segments,

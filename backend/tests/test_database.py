@@ -1,17 +1,9 @@
 import os
 import sys
-import tempfile
 
-# 添加 backend 目录到 Python 路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-# 设置测试用的数据库URL
-temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-temp_db.close()
-os.environ['DATABASE_URL'] = f'sqlite:///{temp_db.name}'
+os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@localhost:5432/schedule_test')
 
 from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.user import User
@@ -19,10 +11,7 @@ from app.models.user import User
 
 def setup_module():
     Base.metadata.drop_all(bind=engine)
-
-
-def teardown_module():
-    os.unlink(temp_db.name)
+    Base.metadata.create_all(bind=engine)
 
 
 def test_init_db_creates_tables():
@@ -64,17 +53,17 @@ def test_migration_adds_missing_columns():
 
     # 创建一个只有基础列的旧版 users 表
     with engine.connect() as conn:
-        conn.execute(text("DROP TABLE IF EXISTS users"))
+        conn.execute(text("DROP TABLE IF EXISTS users CASCADE"))
         conn.execute(text("""
             CREATE TABLE users (
-                id INTEGER PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE,
                 password_hash VARCHAR(255),
                 display_name VARCHAR(50),
                 role VARCHAR(20) DEFAULT 'user',
-                is_active BOOLEAN DEFAULT 1,
-                created_at DATETIME,
-                updated_at DATETIME
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP
             )
         """))
         conn.commit()
