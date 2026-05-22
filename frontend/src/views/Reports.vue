@@ -24,12 +24,12 @@
               <el-input v-model="searchDaily.emp_no" placeholder="工号" clearable style="width:120px" />
             </el-form-item>
             <el-form-item label="部门">
-              <el-select v-model="searchDaily.dept" placeholder="全部部门" clearable filterable>
+              <el-select v-model="searchDaily.dept" placeholder="全部部门" clearable filterable style="width:180px">
                 <el-option v-for="d in depts" :key="d.dept" :label="d.dept" :value="d.dept" />
               </el-select>
             </el-form-item>
             <el-form-item label="班组">
-              <el-select v-model="searchDaily.team" placeholder="全部班组" clearable filterable>
+              <el-select v-model="searchDaily.team" placeholder="全部班组" clearable filterable style="width:180px">
                 <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
               </el-select>
             </el-form-item>
@@ -75,13 +75,13 @@
           <el-row :gutter="20" v-if="dailyData.length" style="margin-bottom: 20px">
             <el-col :span="12">
               <el-card shadow="hover">
-                <Echart :options="dailyChartOptions" :height="280" @click="handleDailyChartClick" />
+                <Echart :options="dailyChartOptions" :height="'280px'" @click="handleDailyChartClick" />
               </el-card>
             </el-col>
             <el-col :span="12">
               <el-card shadow="hover">
                 <div style="margin-bottom: 10px; text-align: center; font-size: 14px; color: #606266">部门出勤对比</div>
-                <Echart :options="monthlyDeptOptions" :height="250" @click="handleDeptChartClick" />
+                <Echart :options="dailyDeptOptions" :height="'250px'" @click="handleDeptChartClick" />
               </el-card>
             </el-col>
           </el-row>
@@ -136,7 +136,13 @@
                 {{ row._displayEarly ?? row.early_minutes }}
               </template>
             </el-table-column>
-            <el-table-column label="实际工时" width="85">
+            <el-table-column width="100">
+              <template #header>
+                实际工时
+                <el-tooltip content="仅计算排班时段内的重叠工时" placement="top">
+                  <span style="color:#909399;cursor:help;font-size:14px;">ⓘ</span>
+                </el-tooltip>
+              </template>
               <template #default="{ row }">
                 {{ row._displayActualHours ?? row.actual_hours }}
               </template>
@@ -211,12 +217,12 @@
                     <el-radio-button value="line">折线图</el-radio-button>
                   </el-radio-group>
                 </div>
-                <Echart :options="monthlyDeptOptions" :height="250" @click="handleDeptChartClick" />
+                <Echart :options="monthlyDeptOptions" :height="'250px'" @click="handleDeptChartClick" />
               </el-card>
             </el-col>
             <el-col :span="12">
               <el-card shadow="hover">
-                <Echart :options="monthlyOvertimeOptions" :height="280" @click="handleOvertimeChartClick" />
+                <Echart :options="monthlyOvertimeOptions" :height="'280px'" @click="handleOvertimeChartClick" />
               </el-card>
             </el-col>
           </el-row>
@@ -326,12 +332,12 @@
           <el-row :gutter="20" v-if="rangeData.length" style="margin-bottom: 20px">
             <el-col :span="12">
               <el-card shadow="hover">
-                <Echart :options="rangeDeptOptions" :height="280" @click="handleDeptChartClick" />
+                <Echart :options="rangeDeptOptions" :height="'280px'" @click="handleDeptChartClick" />
               </el-card>
             </el-col>
             <el-col :span="12">
               <el-card shadow="hover">
-                <Echart :options="rangeStatusOptions" :height="280" @click="handleRangeStatusClick" />
+                <Echart :options="rangeStatusOptions" :height="'280px'" @click="handleRangeStatusClick" />
               </el-card>
             </el-col>
           </el-row>
@@ -393,7 +399,7 @@
           <el-row :gutter="20" v-if="rankingData.length" style="margin-bottom: 20px">
             <el-col :span="24">
               <el-card shadow="hover">
-                <Echart :options="rankingChartOptions" :height="300" @click="handleRankingChartClick" />
+                <Echart :options="rankingChartOptions" :height="'300px'" @click="handleRankingChartClick" />
               </el-card>
             </el-col>
           </el-row>
@@ -542,6 +548,24 @@ const dailyChartOptions = computed(() => {
   return createPieOptions(pieData, '考勤状态分布')
 })
 
+const dailyDeptOptions = computed(() => {
+  if (!dailyData.value.length) return {}
+  const seen = new Set()
+  const deptMap = {}
+  dailyData.value.forEach(d => {
+    if (seen.has(d.emp_id)) return
+    seen.add(d.emp_id)
+    if (!deptMap[d.dept]) deptMap[d.dept] = { scheduled: 0, actual: 0 }
+    deptMap[d.dept].scheduled += d.scheduled_hours || 0
+    deptMap[d.dept].actual += d.actual_hours || 0
+  })
+  const depts = Object.keys(deptMap).slice(0, 8)
+  return createMultiBarOptions(depts, [
+    { name: '计划工时', data: depts.map(d => Math.round(deptMap[d].scheduled)) },
+    { name: '实际工时', data: depts.map(d => Math.round(deptMap[d].actual)) }
+  ], '部门工时对比')
+})
+
 const monthlyDeptOptions = computed(() => {
   if (!monthlyData.value.length) return {}
   const deptMap = {}
@@ -610,11 +634,17 @@ function getStatusType(status) {
 }
 
 function calcDailyStats(data) {
-  dailyStats.total = data.length
-  dailyStats.attend = data.filter(d => d.status !== '缺勤').length
-  dailyStats.normal = data.filter(d => d.status === '正常').length
-  dailyStats.late = data.filter(d => d.status === '迟到').length
-  dailyStats.absent = data.filter(d => d.status === '缺勤').length
+  const seen = new Set()
+  const unique = data.filter(d => {
+    if (seen.has(d.emp_id)) return false
+    seen.add(d.emp_id)
+    return true
+  })
+  dailyStats.total = unique.length
+  dailyStats.attend = unique.filter(d => d.status !== '缺勤').length
+  dailyStats.normal = unique.filter(d => d.status === '正常').length
+  dailyStats.late = unique.filter(d => d.status === '迟到').length
+  dailyStats.absent = unique.filter(d => d.status === '缺勤').length
   dailyStats.rate = dailyStats.total ? Math.round(dailyStats.attend / dailyStats.total * 100) : 0
 }
 
@@ -636,40 +666,44 @@ function calcRangeStats(data) {
   rangeStats.workDays = data.reduce((s, d) => s + (d.work_days || 0), 0)
 }
 
+function expandItems(items) {
+  const expanded = []
+  for (const item of items) {
+    const segs = item.segment_details || []
+    if (segs.length <= 1) {
+      expanded.push({ ...item, _totalSegments: 1, _segLabel: '', _displayScheduledStart: null, _displayScheduledEnd: null, _displayCheckin: null, _displayCheckout: null, _displayLate: null, _displayEarly: null, _displayActualHours: null, _displayStatus: null })
+    } else {
+      segs.forEach((seg, i) => {
+        expanded.push({
+          ...item,
+          _totalSegments: segs.length,
+          _segLabel: `${i + 1}/${segs.length}`,
+          _displayScheduledStart: seg.start,
+          _displayScheduledEnd: seg.end,
+          _displayCheckin: seg.actual_checkin ? seg.actual_checkin.slice(0, 19) : '-',
+          _displayCheckout: seg.actual_checkout ? seg.actual_checkout.slice(0, 19) : '-',
+          _displayLate: seg.late_minutes,
+          _displayEarly: seg.early_minutes,
+          _displayActualHours: seg.actual_hours,
+          _displayStatus: seg.status
+        })
+      })
+    }
+  }
+  return expanded
+}
+
 async function loadDaily() {
   if (!searchDaily.schedule_date) {
     searchDaily.schedule_date = new Date().toISOString().slice(0, 10)
   }
   try {
     const res = await api.get('/reports/daily', { params: { ...searchDaily, page: dailyPagination.page, limit: dailyPagination.limit } })
-    // 展开多段考勤为多行显示
-    const items = res.data.items || []
-    const expanded = []
-    for (const item of items) {
-      const segs = item.segment_details || []
-      if (segs.length <= 1) {
-        expanded.push({ ...item, _totalSegments: 1, _segLabel: '', _displayScheduledStart: null, _displayScheduledEnd: null, _displayCheckin: null, _displayCheckout: null, _displayLate: null, _displayEarly: null, _displayActualHours: null, _displayStatus: null })
-      } else {
-        segs.forEach((seg, i) => {
-          expanded.push({
-            ...item,
-            _totalSegments: segs.length,
-            _segLabel: `${i + 1}/${segs.length}`,
-            _displayScheduledStart: seg.start,
-            _displayScheduledEnd: seg.end,
-            _displayCheckin: seg.actual_checkin ? seg.actual_checkin.slice(0, 19) : '-',
-            _displayCheckout: seg.actual_checkout ? seg.actual_checkout.slice(0, 19) : '-',
-            _displayLate: seg.late_minutes,
-            _displayEarly: seg.early_minutes,
-            _displayActualHours: seg.actual_hours,
-            _displayStatus: seg.status
-          })
-        })
-      }
-    }
-    dailyData.value = expanded
+    dailyData.value = expandItems(res.data.items || [])
     dailyPagination.total = res.data.total || 0
-    calcDailyStats(dailyData.value)
+
+    const allRes = await api.get('/reports/daily', { params: { ...searchDaily, page: 1, limit: 200 } })
+    calcDailyStats(expandItems(allRes.data.items || []))
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
   }
