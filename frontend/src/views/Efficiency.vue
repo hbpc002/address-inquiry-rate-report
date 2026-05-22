@@ -344,21 +344,30 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createLineOptions, createBarOptions, createPieOptions, createHorizontalBarOptions } from '../utils/echarts'
+import { usePersistedFilters } from '../composables/usePersistedFilters'
 
-const activeTab = ref('employee')
+const savedTab = sessionStorage.getItem('efficiency-active-tab')
+const activeTab = ref(savedTab || 'employee')
+watch(activeTab, (val) => {
+  sessionStorage.setItem('efficiency-active-tab', val)
+})
 const teams = ref([])
 const depts = ref([])
 const empList = ref([])
 
-const searchEmp = reactive({ year_month: '', dept: '', team: '' })
-const searchWarn = reactive({ type: '', year_month: '' })
-const searchRank = reactive({ year_month: '', dept: '' })
-const searchTrend = reactive({ start_month: '', end_month: '', emp_no: '' })
+const now = new Date()
+const yearMonth = now.toISOString().slice(0, 7)
+const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().slice(0, 7)
+
+const { filters: searchEmp } = usePersistedFilters('efficiency-emp', { year_month: yearMonth, dept: '', team: '' })
+const { filters: searchWarn } = usePersistedFilters('efficiency-warn', { type: '', year_month: yearMonth })
+const { filters: searchRank } = usePersistedFilters('efficiency-rank', { year_month: yearMonth, dept: '' })
+const { filters: searchTrend } = usePersistedFilters('efficiency-trend', { start_month: sixMonthsAgo, end_month: yearMonth, emp_no: '' })
 
 const empStats = reactive({ total: 0, avgAttendance: 0, avgEfficiency: 0, lateCount: 0, absentCount: 0, overtimeCount: 0 })
 const empData = ref([])
@@ -609,16 +618,6 @@ async function handleAdjust() {
 }
 
 onMounted(() => {
-  const now = new Date()
-  const yearMonth = now.toISOString().slice(0, 7)
-  searchEmp.year_month = yearMonth
-  searchWarn.year_month = yearMonth
-  searchRank.year_month = yearMonth
-
-  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
-  searchTrend.start_month = sixMonthsAgo.toISOString().slice(0, 7)
-  searchTrend.end_month = yearMonth
-
   loadFilters()
   loadEmployeeEfficiency()
 })

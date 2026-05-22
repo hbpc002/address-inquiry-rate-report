@@ -8,9 +8,9 @@
       <el-form inline>
         <el-form-item label="查询方式">
           <el-radio-group v-model="searchForm.type" @change="handleTypeChange">
-            <el-radio label="day">按天</el-radio>
-            <el-radio label="month">按月</el-radio>
-            <el-radio label="range">自定义</el-radio>
+            <el-radio value="day">按天</el-radio>
+            <el-radio value="month">按月</el-radio>
+            <el-radio value="range">自定义</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -95,13 +95,13 @@
                 <el-radio-button value="line">折线图</el-radio-button>
               </el-radio-group>
             </div>
-            <Echart :options="hoursChartOptions" :height="280" @click="handleHoursChartClick" />
+            <Echart :options="hoursChartOptions" height="280px" @click="handleHoursChartClick" />
           </el-card>
         </el-col>
         <el-col :span="12">
           <el-card shadow="hover">
             <div style="margin-bottom: 10px; font-size: 14px; color: #606266">员工签入次数排名（点击员工筛选）</div>
-            <Echart :options="checkinCountOptions" :height="300" @click="handleCheckinChartClick" />
+            <Echart :options="checkinCountOptions" height="300px" @click="handleCheckinChartClick" />
           </el-card>
         </el-col>
       </el-row>
@@ -110,7 +110,7 @@
         <el-col :span="24">
           <el-card shadow="hover">
             <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组工时分布（点击班组筛选）</div>
-            <Echart :options="deptHoursOptions" :height="300" @click="handleTeamChartClick" />
+            <Echart :options="deptHoursOptions" height="300px" @click="handleTeamChartClick" />
           </el-card>
         </el-col>
       </el-row>
@@ -168,6 +168,8 @@ import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions } from '../utils/echarts'
+import { getYesterday } from '../utils/date'
+import { usePersistedFilters } from '../composables/usePersistedFilters'
 
 const tableData = ref([])
 const teams = ref([])
@@ -190,16 +192,19 @@ const paginatedData = computed(() => {
   return data.slice(start, end)
 })
 
-const searchForm = reactive({
-  type: 'day',
-  date: '',
-  month: '',
-  start_date: '',
-  end_date: '',
-  name: '',
-  emp_no: '',
-  team: ''
-})
+const { filters: searchForm, isRestored: searchFormRestored, resetFilters: resetSearchForm } = usePersistedFilters(
+  'checkin-report-filters',
+  {
+    type: 'day',
+    date: getYesterday(),
+    month: new Date().toISOString().slice(0, 7),
+    start_date: '',
+    end_date: '',
+    name: '',
+    emp_no: '',
+    team: ''
+  }
+)
 
 const stats = reactive({
   total_checkins: 0,
@@ -312,11 +317,10 @@ function handleTeamChartClick(params) {
 }
 
 function handleTypeChange() {
-  const today = new Date().toISOString().slice(0, 10)
   const now = new Date()
   
   if (searchForm.type === 'day') {
-    searchForm.date = today
+    searchForm.date = getYesterday()
     searchForm.month = ''
     searchForm.start_date = ''
     searchForm.end_date = ''
@@ -329,7 +333,7 @@ function handleTypeChange() {
     searchForm.date = ''
     searchForm.month = ''
     searchForm.start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-    searchForm.end_date = today
+    searchForm.end_date = getYesterday()
   }
 }
 
@@ -376,7 +380,9 @@ async function loadData() {
 }
 
 onMounted(() => {
-  handleTypeChange()
+  if (!searchFormRestored) {
+    handleTypeChange()
+  }
   loadTeams()
   loadData()
 })

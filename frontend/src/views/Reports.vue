@@ -501,13 +501,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions } from '../utils/echarts'
+import { getYesterday } from '../utils/date'
+import { usePersistedFilters } from '../composables/usePersistedFilters'
 
-const activeTab = ref('daily')
+const savedTab = sessionStorage.getItem('reports-active-tab')
+const activeTab = ref(savedTab || 'daily')
+watch(activeTab, (val) => {
+  sessionStorage.setItem('reports-active-tab', val)
+})
 const dailyData = ref([])
 const dailyAllData = ref([])
 const monthlyData = ref([])
@@ -526,10 +532,22 @@ const dailyPagination = reactive({ page: 1, limit: 20, total: 0 })
 const monthlyPagination = reactive({ page: 1, limit: 20, total: 0 })
 const rangePagination = reactive({ page: 1, limit: 20, total: 0 })
 
-const searchDaily = reactive({ schedule_date: '', name: '', emp_no: '', dept: '', team: '', status: '' })
-const searchMonthly = reactive({ year_month: '', name: '', emp_no: '', dept: '', team: '' })
-const searchRange = reactive({ start_date: '', end_date: '', name: '', emp_no: '', dept: '', team: '', status: '' })
-const searchRank = reactive({ year_month: '' })
+const { filters: searchDaily, resetFilters: resetDailyFilters } = usePersistedFilters(
+  'reports-daily',
+  { schedule_date: getYesterday(), name: '', emp_no: '', dept: '', team: '', status: '' }
+)
+const { filters: searchMonthly, resetFilters: resetMonthlyFilters } = usePersistedFilters(
+  'reports-monthly',
+  { year_month: new Date().toISOString().slice(0, 7), name: '', emp_no: '', dept: '', team: '' }
+)
+const { filters: searchRange, resetFilters: resetRangeFilters } = usePersistedFilters(
+  'reports-range',
+  { start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10), end_date: getYesterday(), name: '', emp_no: '', dept: '', team: '', status: '' }
+)
+const { filters: searchRank, resetFilters: resetRankFilters } = usePersistedFilters(
+  'reports-rank',
+  { year_month: new Date().toISOString().slice(0, 7) }
+)
 
 const exportDialogVisible = ref(false)
 const exportForm = reactive({ type: 'month', schedule_date: '', year_month: '', dateRange: [], team: '' })
@@ -708,7 +726,7 @@ function expandItems(items) {
 
 async function loadDaily() {
   if (!searchDaily.schedule_date) {
-    searchDaily.schedule_date = new Date().toISOString().slice(0, 10)
+    searchDaily.schedule_date = getYesterday()
   }
   try {
     const res = await api.get('/reports/daily', { params: { ...searchDaily, page: dailyPagination.page, limit: dailyPagination.limit } })
@@ -794,35 +812,19 @@ async function loadDepts() {
 }
 
 function resetDaily() {
-  searchDaily.schedule_date = new Date().toISOString().slice(0, 10)
-  searchDaily.name = ''
-  searchDaily.emp_no = ''
-  searchDaily.dept = ''
-  searchDaily.team = ''
-  searchDaily.status = ''
+  resetDailyFilters()
   dailyPagination.page = 1
   loadDaily()
 }
 
 function resetMonthly() {
-  searchMonthly.year_month = new Date().toISOString().slice(0, 7)
-  searchMonthly.name = ''
-  searchMonthly.emp_no = ''
-  searchMonthly.dept = ''
-  searchMonthly.team = ''
+  resetMonthlyFilters()
   monthlyPagination.page = 1
   loadMonthly()
 }
 
 function resetRange() {
-  const now = new Date()
-  searchRange.start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  searchRange.end_date = now.toISOString().slice(0, 10)
-  searchRange.name = ''
-  searchRange.emp_no = ''
-  searchRange.dept = ''
-  searchRange.team = ''
-  searchRange.status = ''
+  resetRangeFilters()
   rangePagination.page = 1
   loadRange()
 }
@@ -938,15 +940,6 @@ function handleRankingChartClick(params) {
 }
 
 onMounted(() => {
-  const today = new Date().toISOString().slice(0, 10)
-  searchDaily.schedule_date = today
-  searchMonthly.year_month = new Date().toISOString().slice(0, 7)
-  searchRank.year_month = new Date().toISOString().slice(0, 7)
-  
-  const now = new Date()
-  searchRange.start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  searchRange.end_date = now.toISOString().slice(0, 10)
-  
   loadTeams()
   loadDepts()
   loadDaily()
