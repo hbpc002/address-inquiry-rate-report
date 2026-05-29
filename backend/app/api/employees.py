@@ -12,7 +12,7 @@ from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     EmployeeListResponse
 )
-from app.core.security import get_current_user, require_permission, require_role
+from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/employees", tags=["员工管理"])
@@ -59,7 +59,7 @@ def create_employee(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "employees.create")
     existing = db.query(Employee).filter(Employee.emp_no == employee.emp_no).first()
     if existing:
         raise HTTPException(status_code=400, detail="工号已存在")
@@ -79,7 +79,7 @@ def update_employee(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "employees.edit")
     db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not db_employee:
         raise HTTPException(status_code=404, detail="员工不存在")
@@ -96,7 +96,7 @@ def delete_employee(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "employees.delete")
     db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not db_employee:
         raise HTTPException(status_code=404, detail="员工不存在")
@@ -147,7 +147,7 @@ def import_employees(
     current_user: dict = Depends(get_current_user)
 ):
     """导入员工信息Excel"""
-    require_permission(current_user, "upload_employee")
+    require_permission(current_user, "employees.upload")
     contents = file.file.read()
     try:
         xlsx = pd.ExcelFile(io.BytesIO(contents))

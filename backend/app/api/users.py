@@ -4,11 +4,12 @@ from sqlalchemy import func
 from typing import Optional
 from app.models.database import get_db
 from app.models.user import User
+from app.models.role import Role
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse,
     UserListResponse, ChangePasswordRequest, SetPermissionsRequest
 )
-from app.core.security import get_current_user, get_password_hash, verify_password
+from app.core.security import get_current_user, get_password_hash, verify_password, check_permission
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/users", tags=["用户管理"])
@@ -23,10 +24,9 @@ def get_users(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """获取用户列表"""
-    if current_user.get("role") not in ["admin", "manager"]:
+    if not check_permission(current_user, "users.view"):
         raise HTTPException(status_code=403, detail="权限不足")
-    
+
     query = db.query(User)
     if role:
         query = query.filter(User.role == role)
@@ -38,10 +38,31 @@ def get_users(
 
     total = query.count()
     items = query.order_by(User.id.desc()).offset((page-1)*limit).limit(limit).all()
-    return UserListResponse(
-        items=[UserResponse.model_validate(u) for u in items],
-        total=total
-    )
+
+    result_items = []
+    for u in items:
+        role_name = u.role
+        role_permissions = "{}"
+        is_system = False
+        if u.role_id:
+            r = db.query(Role).filter(Role.id == u.role_id).first()
+            if r:
+                role_name = r.name
+                role_permissions = r.permissions or "{}"
+                is_system = r.is_system
+        result_items.append(UserResponse(
+            id=u.id,
+            username=u.username,
+            display_name=u.display_name,
+            role=role_name,
+            role_id=u.role_id,
+            permissions=role_permissions,
+            is_system=is_system,
+            is_active=u.is_active,
+            created_at=u.created_at,
+        ))
+
+    return UserListResponse(items=result_items, total=total)
 
 
 @router.post("", response_model=dict)
@@ -50,19 +71,26 @@ def create_user(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """创建用户"""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可创建用户")
-    
+    if not check_permission(current_user, "users.manage"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
     existing = db.query(User).filter(User.username == user.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="用户名已存在")
+
+    role_id = user.role_id
+    role_name = user.role
+    if role_id:
+        role = db.query(Role).filter(Role.id == role_id).first()
+        if role:
+            role_name = role.name
 
     db_user = User(
         username=user.username,
         password_hash=get_password_hash(user.password),
         display_name=user.display_name,
-        role=user.role
+        role=role_name,
+        role_id=role_id,
     )
     db.add(db_user)
     db.commit()
@@ -78,19 +106,23 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """更新用户"""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可编辑用户")
-    
+    if not check_permission(current_user, "users.manage"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
-    # 不能修改自己的admin权限
-    if user_id == current_user["id"] and user.role and user.role != "admin":
-        raise HTTPException(status_code=400, detail="不能取消自己的管理员权限")
+    if user_id == current_user["id"] and user.role_id is not None:
+        admin_role = db.query(Role).filter(Role.name == "admin").first()
+        if admin_role and user.role_id != admin_role.id:
+            raise HTTPException(status_code=400, detail="不能取消自己的管理员权限")
 
     update_data = user.model_dump(exclude_unset=True)
+    if "role_id" in update_data and update_data["role_id"] is not None:
+        role = db.query(Role).filter(Role.id == update_data["role_id"]).first()
+        if role:
+            update_data["role"] = role.name
     for key, value in update_data.items():
         setattr(db_user, key, value)
     db.commit()
@@ -104,10 +136,9 @@ def delete_user(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """删除/禁用用户"""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可删除用户")
-    
+    if not check_permission(current_user, "users.manage"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
     if user_id == current_user["id"]:
         raise HTTPException(status_code=400, detail="不能删除自己")
 
@@ -128,14 +159,13 @@ def reset_password(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """重置密码"""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可重置密码")
-    
+    if not check_permission(current_user, "users.manage"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
     new_password = body.get("new_password")
     if not new_password:
         raise HTTPException(status_code=400, detail="密码不能为空")
-    
+
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -152,7 +182,6 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """用户自己修改密码"""
     db_user = db.query(User).filter(User.id == current_user["id"]).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -176,16 +205,36 @@ def set_permissions(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """管理员设置用户权限"""
-    if current_user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="仅管理员可设置权限")
+    if not check_permission(current_user, "users.manage"):
+        raise HTTPException(status_code=403, detail="权限不足")
 
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="用户不存在")
 
+    if not db_user.role_id:
+        raise HTTPException(status_code=400, detail="用户没有关联角色，无法设置权限")
+
     import json
-    db_user.permissions = json.dumps(body.permissions, ensure_ascii=False)
+    role = db.query(Role).filter(Role.id == db_user.role_id).first()
+    if not role:
+        raise HTTPException(status_code=404, detail="角色不存在")
+    if role.is_system:
+        raise HTTPException(status_code=400, detail="系统角色不允许修改权限")
+
+    role.permissions = json.dumps(body.permissions, ensure_ascii=False)
     db.commit()
-    log_operation(db, current_user["id"], "set_permissions", "users", user_id, {"permissions": body.permissions})
+    log_operation(db, current_user["id"], "set_permissions", "roles", role.id, {"permissions": body.permissions})
     return {"message": "权限设置成功"}
+
+
+@router.get("/roles", response_model=list)
+def get_user_roles(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if not check_permission(current_user, "users.view"):
+        raise HTTPException(status_code=403, detail="权限不足")
+    from app.models.role import Role
+    roles = db.query(Role).all()
+    return [{"id": r.id, "name": r.name, "description": r.description, "is_system": r.is_system} for r in roles]

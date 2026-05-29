@@ -6,7 +6,7 @@
           <template #header>
             <div class="card-header">
               <span>班次类型管理</span>
-              <el-button v-if="userStore.canEdit()" type="primary" @click="handleAddShift">新增班次</el-button>
+              <el-button v-if="userStore.hasPermission('shift_types.create')" type="primary" @click="handleAddShift">新增班次</el-button>
             </div>
           </template>
 
@@ -32,8 +32,8 @@
             </el-table-column>
             <el-table-column label="操作" width="150">
               <template #default="{ row }">
-                <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEditShift(row)">编辑</el-button>
-                <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDeleteShift(row)">删除</el-button>
+                <el-button v-if="userStore.hasPermission('shift_types.edit')" type="primary" link @click="handleEditShift(row)">编辑</el-button>
+                <el-button v-if="userStore.hasPermission('shift_types.delete')" type="danger" link @click="handleDeleteShift(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>

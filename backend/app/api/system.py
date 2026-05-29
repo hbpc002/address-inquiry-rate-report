@@ -157,7 +157,7 @@ def clear_data(
     current_user: dict = Depends(get_current_user)
 ):
     """清空指定表的数据"""
-    require_permission(current_user, "clear_data")
+    require_permission(current_user, "system.clear_data")
     
     table_map = {
         "employees": Employee,

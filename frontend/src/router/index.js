@@ -20,42 +20,56 @@ const routes = [
       {
         path: 'employees',
         name: 'Employees',
-        component: () => import('../views/Employees.vue')
+        component: () => import('../views/Employees.vue'),
+        meta: { permission: 'employees.view' }
       },
       {
         path: 'schedules',
         name: 'Schedules',
-        component: () => import('../views/Schedules.vue')
+        component: () => import('../views/Schedules.vue'),
+        meta: { permission: 'schedules.view' }
       },
       {
         path: 'checkins',
         name: 'Checkins',
-        component: () => import('../views/Checkins.vue')
+        component: () => import('../views/Checkins.vue'),
+        meta: { permission: 'checkins.view' }
       },
       {
         path: 'checkin-report',
         name: 'CheckinReport',
-        component: () => import('../views/CheckinReport.vue')
+        component: () => import('../views/CheckinReport.vue'),
+        meta: { permission: 'checkin_report.view' }
       },
       {
         path: 'work-hour-settings',
         name: 'WorkHourSettings',
-        component: () => import('../views/WorkHourSettings.vue')
+        component: () => import('../views/WorkHourSettings.vue'),
+        meta: { permission: 'work_hour_settings.view' }
       },
       {
         path: 'reports',
         name: 'Reports',
-        component: () => import('../views/Reports.vue')
+        component: () => import('../views/Reports.vue'),
+        meta: { permission: 'reports.view' }
       },
       {
         path: 'system',
         name: 'System',
-        component: () => import('../views/System.vue')
+        component: () => import('../views/System.vue'),
+        meta: { permission: 'system.view' }
       },
       {
         path: 'users',
         name: 'Users',
-        component: () => import('../views/Users.vue')
+        component: () => import('../views/Users.vue'),
+        meta: { permission: 'users.view' }
+      },
+      {
+        path: 'roles',
+        name: 'Roles',
+        component: () => import('../views/Roles.vue'),
+        meta: { permission: 'roles.view' }
       }
     ]
   }
@@ -71,6 +85,8 @@ router.beforeEach((to, from, next) => {
   if (to.path !== '/login' && !userStore.isLoggedIn) {
     next('/login')
   } else if (to.path === '/login' && userStore.isLoggedIn) {
+    next('/')
+  } else if (to.meta.permission && !userStore.hasPermission(to.meta.permission)) {
     next('/')
   } else {
     next()

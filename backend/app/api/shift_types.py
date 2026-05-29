@@ -5,7 +5,7 @@ from app.models.shift_type import ShiftType
 from app.schemas.shift_type import (
     ShiftTypeCreate, ShiftTypeUpdate, ShiftTypeResponse
 )
-from app.core.security import get_current_user, require_role
+from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
 from typing import List
 
@@ -26,7 +26,7 @@ def create_shift_type(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "shift_types.create")
     existing = db.query(ShiftType).filter(ShiftType.shift_name == shift_type.shift_name).first()
     if existing:
         raise HTTPException(status_code=400, detail="班次名称已存在")
@@ -46,7 +46,7 @@ def update_shift_type(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "shift_types.edit")
     db_shift_type = db.query(ShiftType).filter(ShiftType.id == shift_type_id).first()
     if not db_shift_type:
         raise HTTPException(status_code=404, detail="班次类型不存在")
@@ -64,7 +64,7 @@ def delete_shift_type(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "shift_types.delete")
     db_shift_type = db.query(ShiftType).filter(ShiftType.id == shift_type_id).first()
     if not db_shift_type:
         raise HTTPException(status_code=404, detail="班次类型不存在")

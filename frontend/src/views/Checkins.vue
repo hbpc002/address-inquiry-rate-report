@@ -4,19 +4,34 @@
       <template #header>
         <div class="card-header">
           <span>签到记录</span>
-          <el-button v-if="userStore.hasPermission('upload_checkin')" type="primary" @click="dialogVisible = true">导入签到</el-button>
+          <el-button v-if="userStore.hasPermission('checkins.upload')" type="primary" @click="dialogVisible = true">导入签到</el-button>
         </div>
       </template>
 
       <el-form inline>
-        <el-form-item label="导入批次">
-          <el-input v-model="searchForm.batch" placeholder="批次号" clearable />
-        </el-form-item>
         <el-form-item label="日期">
-          <el-date-picker v-model="searchForm.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
+          <el-date-picker v-model="searchForm.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" clearable />
+        </el-form-item>
+        <el-form-item label="工号">
+          <el-input v-model="searchForm.emp_no" placeholder="请输入工号" clearable style="width: 120px" />
+        </el-form-item>
+        <el-form-item label="姓名">
+          <el-input v-model="searchForm.name" placeholder="请输入姓名" clearable style="width: 120px" />
+        </el-form-item>
+        <el-form-item label="部门">
+          <el-select v-model="searchForm.dept" placeholder="全部" clearable style="width: 160px">
+            <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="设备号">
+          <el-input v-model="searchForm.device_no" placeholder="设备号" clearable style="width: 120px" />
+        </el-form-item>
+        <el-form-item label="导入批次">
+          <el-input v-model="searchForm.batch" placeholder="批次号" clearable style="width: 120px" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button @click="resetSearch">重置</el-button>
         </el-form-item>
       </el-form>
 
@@ -38,7 +53,7 @@
         <el-table-column prop="import_batch" label="批次号" width="100" />
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
-            <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="userStore.hasPermission('checkins.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -52,7 +67,7 @@
       />
     </el-card>
 
-    <el-dialog v-if="userStore.hasPermission('upload_checkin')" v-model="dialogVisible" title="导入签到记录" width="400px">
+    <el-dialog v-if="userStore.hasPermission('checkins.upload')" v-model="dialogVisible" title="导入签到记录" width="400px">
       <el-upload
         ref="upload"
         :auto-upload="false"
@@ -82,7 +97,8 @@ const userStore = useUserStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const uploading = ref(false)
-const searchForm = reactive({ batch: '', date: '' })
+const departments = ref([])
+const searchForm = reactive({ batch: '', date: '', name: '', emp_no: '', dept: '', device_no: '' })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const uploadFile = ref(null)
 
@@ -92,13 +108,37 @@ async function loadData() {
       page: pagination.page,
       limit: pagination.limit,
       import_batch: searchForm.batch || undefined,
-      checkin_date: searchForm.date || undefined
+      checkin_date: searchForm.date || undefined,
+      name: searchForm.name || undefined,
+      emp_no: searchForm.emp_no || undefined,
+      dept: searchForm.dept || undefined,
+      device_no: searchForm.device_no || undefined
     }
     const res = await api.get('/checkins', { params })
     tableData.value = res.data.items
     pagination.total = res.data.total
   } catch (e) {
     ElMessage.error('加载失败')
+  }
+}
+
+function resetSearch() {
+  searchForm.batch = ''
+  searchForm.date = ''
+  searchForm.name = ''
+  searchForm.emp_no = ''
+  searchForm.dept = ''
+  searchForm.device_no = ''
+  pagination.page = 1
+  loadData()
+}
+
+async function loadFilters() {
+  try {
+    const res = await api.get('/checkins/departments')
+    departments.value = res.data
+  } catch (e) {
+    console.error(e)
   }
 }
 
@@ -143,6 +183,7 @@ async function handleDelete(row) {
 
 onMounted(() => {
   loadData()
+  loadFilters()
 })
 </script>
 

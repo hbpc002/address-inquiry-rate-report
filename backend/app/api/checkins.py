@@ -15,7 +15,7 @@ from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.utils.logger import log_operation
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
-from app.core.security import get_current_user, require_permission, require_role
+from app.core.security import get_current_user, require_permission
 from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/checkins", tags=["签到记录"])
@@ -30,6 +30,10 @@ def get_checkins(
     limit: int = Query(20, ge=1, le=100),
     import_batch: Optional[str] = None,
     checkin_date: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    dept: Optional[str] = None,
+    device_no: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -38,6 +42,14 @@ def get_checkins(
         query = query.filter(Checkin.import_batch == import_batch)
     if checkin_date:
         query = query.filter(func.date(Checkin.checkin_time) == checkin_date)
+    if name:
+        query = query.filter(Checkin.name.ilike(f'%{name}%'))
+    if emp_no:
+        query = query.filter(Checkin.emp_no == emp_no)
+    if dept:
+        query = query.filter(Checkin.dept == dept)
+    if device_no:
+        query = query.filter(Checkin.device_no.ilike(f'%{device_no}%'))
 
     total = query.count()
     items = query.order_by(Checkin.checkin_time.desc()).offset((page-1)*limit).limit(limit).all()
@@ -47,6 +59,15 @@ def get_checkins(
     )
 
 
+@router.get("/departments", response_model=list)
+def get_checkin_departments(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    results = db.query(Checkin.dept, func.count(Checkin.id)).group_by(Checkin.dept).all()
+    return [{"dept": r[0], "count": r[1]} for r in results if r[0]]
+
+
 @router.post("/import", response_model=ImportCheckinResponse)
 def import_checkins(
     file: UploadFile = File(...),
@@ -54,7 +75,7 @@ def import_checkins(
     current_user: dict = Depends(get_current_user)
 ):
     """导入签到记录，只取目标部门的员工"""
-    require_permission(current_user, "upload_checkin")
+    require_permission(current_user, "checkins.upload")
     
     batch = str(uuid.uuid4())[:8]
     content = file.file.read()
@@ -139,6 +160,10 @@ def import_checkins(
             )
             db.add(checkin)
             count += 1
+
+            # 同步更新员工表的部门
+            if dept:
+                db.query(Employee).filter(Employee.emp_no == emp_no).update({"dept": dept})
         except Exception as e:
             continue
 
@@ -198,7 +223,7 @@ def delete_checkin(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "checkins.delete")
     checkin = db.query(Checkin).filter(Checkin.id == checkin_id).first()
     if not checkin:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -215,7 +240,7 @@ def delete_batch(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
+    require_permission(current_user, "checkins.delete")
     count = db.query(Checkin).filter(Checkin.import_batch == batch).delete()
     db.commit()
     log_operation(db, current_user["id"], "delete_batch", "checkins", None, {"batch": batch, "count": count})

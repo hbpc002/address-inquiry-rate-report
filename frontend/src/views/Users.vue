@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>用户管理</span>
-          <el-button v-if="userStore.user?.role === 'admin'" type="primary" @click="handleAdd">新增用户</el-button>
+          <el-button v-if="userStore.hasPermission('users.manage')" type="primary" @click="handleAdd">新增用户</el-button>
         </div>
       </template>
 
@@ -14,9 +14,7 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="searchForm.role" placeholder="请选择" clearable>
-            <el-option label="管理员" value="admin" />
-            <el-option label="经理" value="manager" />
-            <el-option label="普通用户" value="user" />
+            <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.name" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -30,20 +28,9 @@
         <el-table-column prop="display_name" label="显示名" width="120" />
         <el-table-column prop="role" label="角色" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.role === 'admin' ? 'danger' : row.role === 'manager' ? 'warning' : 'success'">
-              {{ row.role === 'admin' ? '管理员' : row.role === 'manager' ? '经理' : '普通用户' }}
+            <el-tag :type="row.is_system ? 'danger' : row.role === 'manager' ? 'warning' : 'success'">
+              {{ row.role === 'admin' ? '管理员' : row.role === 'manager' ? '经理' : row.role }}
             </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="权限" width="200">
-          <template #default="{ row }">
-            <el-tag v-if="row.role === 'admin'" type="danger">全部</el-tag>
-            <template v-else>
-              <el-tag v-for="(val, key) in parsePermissions(row.permissions)" :key="key" size="small" style="margin-right: 4px">
-                {{ permLabel(key) }}
-              </el-tag>
-              <span v-if="!row.permissions || Object.keys(parsePermissions(row.permissions)).length === 0">无</span>
-            </template>
           </template>
         </el-table-column>
         <el-table-column prop="is_active" label="状态" width="80">
@@ -58,9 +45,9 @@
         </el-table-column>
         <el-table-column label="操作" width="200">
           <template #default="{ row }">
-            <el-button v-if="userStore.user?.role === 'admin'" type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="userStore.user?.role === 'admin'" type="warning" link @click="handleResetPwd(row)">重置密码</el-button>
-            <el-button v-if="userStore.user?.role === 'admin'" type="danger" link @click="handleDelete(row)">禁用</el-button>
+            <el-button v-if="userStore.hasPermission('users.manage')" type="primary" link @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="userStore.hasPermission('users.manage')" type="warning" link @click="handleResetPwd(row)">重置密码</el-button>
+            <el-button v-if="userStore.hasPermission('users.manage')" type="danger" link @click="handleDelete(row)">禁用</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -86,19 +73,11 @@
           <el-input v-model="form.display_name" />
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.role" @change="handleRoleChange">
-            <el-option label="普通用户" value="user" />
-            <el-option label="经理" value="manager" />
-            <el-option label="管理员" value="admin" />
+          <el-select v-model="form.role_id" placeholder="选择角色" @change="handleRoleChange">
+            <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" :disabled="r.is_system && !userStore.isSystem">
+              {{ r.name }}{{ r.is_system ? '（系统）' : '' }}
+            </el-option>
           </el-select>
-        </el-form-item>
-        <el-form-item v-if="form.role !== 'admin'" label="权限">
-          <el-checkbox-group v-model="form.permissions">
-            <el-checkbox label="upload_employee">上传员工</el-checkbox>
-            <el-checkbox label="upload_schedule">上传排班</el-checkbox>
-            <el-checkbox label="upload_checkin">上传签到</el-checkbox>
-            <el-checkbox label="clear_data">清除数据</el-checkbox>
-          </el-checkbox-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -118,34 +97,22 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const userStore = useUserStore()
 
 const tableData = ref([])
+const roles = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const searchForm = reactive({ search: '', role: '' })
-const form = reactive({ id: null, username: '', password: '', display_name: '', role: 'user', permissions: [] })
+const form = reactive({ id: null, username: '', password: '', display_name: '', role_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 
-const permLabels = {
-  upload_employee: '上传员工',
-  upload_schedule: '上传排班',
-  upload_checkin: '上传签到',
-  clear_data: '清除数据'
+function handleRoleChange(roleId) {
 }
 
-function parsePermissions(permissions) {
+async function loadRoles() {
   try {
-    return JSON.parse(permissions || '{}')
-  } catch {
-    return {}
-  }
-}
-
-function permLabel(key) {
-  return permLabels[key] || key
-}
-
-function handleRoleChange(role) {
-  if (role === 'admin') {
-    form.permissions = []
+    const res = await api.get('/users/roles')
+    roles.value = res.data
+  } catch (e) {
+    console.error('Load roles failed', e)
   }
 }
 
@@ -161,30 +128,24 @@ async function loadData() {
 }
 
 function handleAdd() {
-  Object.assign(form, { id: null, username: '', password: '', display_name: '', role: 'user', permissions: [] })
+  Object.assign(form, { id: null, username: '', password: '', display_name: '', role_id: null })
   isEdit.value = false
   dialogVisible.value = true
 }
 
 function handleEdit(row) {
-  const perms = parsePermissions(row.permissions)
-  const permKeys = Object.keys(perms).filter(k => perms[k] === true)
-  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, role: row.role, permissions: permKeys })
+  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, role_id: row.role_id })
   isEdit.value = true
   dialogVisible.value = true
 }
 
 async function handleSubmit() {
   try {
-    const permObj = {}
-    if (form.role !== 'admin') {
-      form.permissions.forEach(p => { permObj[p] = true })
-    }
     if (isEdit.value) {
-      await api.put(`/users/${form.id}`, { display_name: form.display_name, role: form.role, permissions: JSON.stringify(permObj) })
+      await api.put(`/users/${form.id}`, { display_name: form.display_name, role_id: form.role_id })
       ElMessage.success('更新成功')
     } else {
-      await api.post('/users', { ...form, permissions: JSON.stringify(permObj) })
+      await api.post('/users', { username: form.username, password: form.password, display_name: form.display_name, role_id: form.role_id })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -231,6 +192,7 @@ function resetForm() {
 }
 
 onMounted(() => {
+  loadRoles()
   loadData()
 })
 </script>

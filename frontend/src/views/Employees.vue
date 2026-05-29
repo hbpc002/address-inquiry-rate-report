@@ -6,8 +6,8 @@
           <span>员工管理</span>
           <el-space>
             <el-button @click="handleExport">导出员工</el-button>
-            <el-button v-if="userStore.hasPermission('upload_employee')" type="success" @click="importVisible = true">导入员工</el-button>
-            <el-button v-if="userStore.canEdit()" type="primary" @click="handleAdd">新增员工</el-button>
+            <el-button v-if="userStore.hasPermission('employees.upload')" type="success" @click="importVisible = true">导入员工</el-button>
+            <el-button v-if="userStore.hasPermission('employees.create')" type="primary" @click="handleAdd">新增员工</el-button>
           </el-space>
         </div>
       </template>
@@ -55,8 +55,8 @@
         </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="userStore.hasPermission('employees.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -98,7 +98,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-if="userStore.hasPermission('upload_employee')" v-model="importVisible" title="导入员工" width="500px">
+    <el-dialog v-if="userStore.hasPermission('employees.upload')" v-model="importVisible" title="导入员工" width="500px">
       <el-upload
         ref="upload"
         :auto-upload="false"
@@ -161,7 +161,7 @@ async function loadFilters() {
   try {
     const [tRes, dRes, rRes] = await Promise.all([
       api.get('/employees/teams'),
-      api.get('/employees/departments'),
+      api.get('/checkins/departments'),
       api.get('/employees/roles')
     ])
     teams.value = tRes.data

@@ -804,7 +804,7 @@ async function loadTeams() {
 
 async function loadDepts() {
   try {
-    const res = await api.get('/employees/departments')
+    const res = await api.get('/checkins/departments')
     depts.value = res.data || []
   } catch (e) {
     console.error(e)

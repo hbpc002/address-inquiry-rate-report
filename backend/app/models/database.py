@@ -22,8 +22,8 @@ def get_db():
 
 
 def init_db():
-    # 确保所有模型已导入并注册到 metadata
     from app.models.user import User
+    from app.models.role import Role
     from app.models.employee import Employee
     from app.models.shift_type import ShiftType
     from app.models.schedule import Schedule
@@ -40,40 +40,37 @@ def init_db():
 
 
 def _migrate_db():
-    """迁移数据库结构，添加缺失的列"""
     from sqlalchemy import inspect as sa_inspect, text
     from app.models.user import User
+    from app.models.role import Role
 
     db = SessionLocal()
     try:
         inspector = sa_inspect(engine)
         tables = inspector.get_table_names()
 
-        if 'users' not in tables:
-            return
+        if 'users' in tables:
+            existing_columns = [col['name'] for col in inspector.get_columns('users')]
+            column_defaults = {
+                'id': 'INTEGER',
+                'username': 'VARCHAR(50)',
+                'password_hash': 'VARCHAR(255)',
+                'display_name': 'VARCHAR(50)',
+                'role': "VARCHAR(20) DEFAULT 'user'",
+                'role_id': 'INTEGER',
+                'is_active': 'BOOLEAN DEFAULT TRUE',
+                'created_at': 'TIMESTAMP',
+                'updated_at': 'TIMESTAMP'
+            }
+            for col_name, col_def in column_defaults.items():
+                if col_name not in existing_columns:
+                    sql = f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+                    try:
+                        db.execute(text(sql))
+                        print(f"Added column {col_name} to users")
+                    except Exception as e:
+                        print(f"Failed to add column {col_name}: {e}")
 
-        existing_columns = [col['name'] for col in inspector.get_columns('users')]
-        column_defaults = {
-            'id': 'INTEGER',
-            'username': 'VARCHAR(50)',
-            'password_hash': 'VARCHAR(255)',
-            'display_name': 'VARCHAR(50)',
-            'role': "VARCHAR(20) DEFAULT 'user'",
-            'permissions': "VARCHAR(500) DEFAULT '{}'",
-            'is_active': 'BOOLEAN DEFAULT TRUE',
-            'created_at': 'TIMESTAMP',
-            'updated_at': 'TIMESTAMP'
-        }
-        for col_name, col_def in column_defaults.items():
-            if col_name not in existing_columns:
-                sql = f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
-                try:
-                    db.execute(text(sql))
-                    print(f"Added column {col_name} to users")
-                except Exception as e:
-                    print(f"Failed to add column {col_name}: {e}")
-
-        # 迁移 schedules 表：添加班次信息字段
         if 'schedules' in tables:
             schedule_cols = {col['name'] for col in inspector.get_columns('schedules')}
             schedule_migrations = [
@@ -91,7 +88,6 @@ def _migrate_db():
                     except Exception as e:
                         print(f"Failed to add column {col_name}: {e}")
 
-        # 迁移 daily_reports 表：添加分段考勤详情字段
         if 'daily_reports' in tables:
             report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}
             if 'segment_details' not in report_cols:
@@ -112,20 +108,72 @@ def _migrate_db():
 
 def _init_default_data():
     from app.models.user import User
+    from app.models.role import Role
     from app.core.security import get_password_hash
+    from app.core.permissions import get_default_permissions
+    import json
 
     db = SessionLocal()
     try:
-        if not db.query(User).filter(User.username == "admin").first():
-            admin = User(
+        admin_role = db.query(Role).filter(Role.name == "admin").first()
+        if not admin_role:
+            admin_role = Role(
+                name="admin",
+                description="超级管理员，拥有所有权限",
+                permissions=json.dumps(get_default_permissions("admin"), ensure_ascii=False),
+                is_system=True,
+            )
+            db.add(admin_role)
+            db.flush()
+            print("Created admin role")
+
+        manager_role = db.query(Role).filter(Role.name == "manager").first()
+        if not manager_role:
+            manager_role = Role(
+                name="manager",
+                description="经理，可管理数据和上传",
+                permissions=json.dumps(get_default_permissions("manager"), ensure_ascii=False),
+                is_system=False,
+            )
+            db.add(manager_role)
+            db.flush()
+            print("Created manager role")
+
+        user_role = db.query(Role).filter(Role.name == "user").first()
+        if not user_role:
+            user_role = Role(
+                name="user",
+                description="普通用户，只可查看数据",
+                permissions=json.dumps(get_default_permissions("user"), ensure_ascii=False),
+                is_system=False,
+            )
+            db.add(user_role)
+            db.flush()
+            print("Created user role")
+
+        admin_user = db.query(User).filter(User.username == "admin").first()
+        if not admin_user:
+            admin_user = User(
                 username="admin",
                 password_hash=get_password_hash("admin123"),
                 display_name="管理员",
                 role="admin",
-                is_active=True
+                role_id=admin_role.id,
+                is_active=True,
             )
-            db.add(admin)
-            db.commit()
+            db.add(admin_user)
             print("Created admin user")
+        elif not admin_user.role_id:
+            admin_user.role_id = admin_role.id
+
+        existing_users = db.query(User).filter(User.username != "admin").all()
+        for u in existing_users:
+            if not u.role_id:
+                if u.role == "manager" and manager_role:
+                    u.role_id = manager_role.id
+                elif user_role:
+                    u.role_id = user_role.id
+
+        db.commit()
     finally:
         db.close()

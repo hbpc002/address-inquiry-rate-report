@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.models.database import get_db
 from app.models.attendance_config import AttendanceConfig
-from app.core.security import get_current_user, require_permission, require_role
+from app.core.security import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/attendance-config", tags=["考勤配置"])
 
@@ -56,8 +56,7 @@ def update_attendance_config(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
-    require_permission(current_user, "manage_threshold")
+    require_permission(current_user, "work_hour_settings.edit")
 
     if data.late_threshold_minutes is not None:
         _set_config_value(db, "late_threshold_minutes", str(data.late_threshold_minutes))

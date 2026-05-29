@@ -31,6 +31,8 @@ export const useUserStore = defineStore('user', () => {
 
   const isLoggedIn = computed(() => !!token.value)
 
+  const isSystem = computed(() => user.value?.is_system === true)
+
   async function login(username, password) {
     const formData = new FormData()
     formData.append('username', username)
@@ -67,7 +69,7 @@ export const useUserStore = defineStore('user', () => {
 
   function hasPermission(permKey) {
     if (!user.value) return false
-    if (user.value.role === 'admin') return true
+    if (user.value.is_system === true) return true
     try {
       const permissions = JSON.parse(user.value.permissions || '{}')
       return permissions[permKey] === true
@@ -76,12 +78,25 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  function canEdit() {
-    if (!user.value) return false
-    return user.value.role === 'admin' || user.value.role === 'manager'
+  function hasAnyPermission(permKeys) {
+    return permKeys.some(k => hasPermission(k))
   }
 
-  return { token, user, isLoggedIn, login, logout, fetchCurrentUser, changePassword, hasPermission, canEdit }
+  function canEdit() {
+    return hasAnyPermission([
+      'schedules.create', 'schedules.edit', 'schedules.delete',
+      'employees.create', 'employees.edit', 'employees.delete',
+      'checkins.delete',
+      'shift_types.create', 'shift_types.edit', 'shift_types.delete',
+      'work_hour_settings.create', 'work_hour_settings.edit', 'work_hour_settings.delete',
+    ])
+  }
+
+  function canView(pageKey) {
+    return hasPermission(`${pageKey}.view`)
+  }
+
+  return { token, user, isLoggedIn, isSystem, login, logout, fetchCurrentUser, changePassword, hasPermission, hasAnyPermission, canEdit, canView }
 })
 
 export { api }

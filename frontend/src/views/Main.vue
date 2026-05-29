@@ -13,44 +13,48 @@
           <el-icon><House /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
-        <el-menu-item index="/employees">
+        <el-menu-item v-if="userStore.canView('employees')" index="/employees">
           <el-icon><User /></el-icon>
           <span>员工管理</span>
         </el-menu-item>
-        <el-menu-item index="/schedules">
+        <el-menu-item v-if="userStore.canView('schedules')" index="/schedules">
           <el-icon><Calendar /></el-icon>
           <span>排班管理</span>
         </el-menu-item>
-        <el-menu-item index="/checkins">
+        <el-menu-item v-if="userStore.canView('checkins')" index="/checkins">
           <el-icon><Clock /></el-icon>
           <span>签到记录</span>
         </el-menu-item>
-        <el-menu-item index="/checkin-report">
+        <el-menu-item v-if="userStore.canView('checkin_report')" index="/checkin-report">
           <el-icon><Tickets /></el-icon>
           <span>签入签出报表</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.user?.role === 'admin'" index="/work-hour-settings">
+        <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
           <el-icon><Warning /></el-icon>
           <span>工时预警设置</span>
         </el-menu-item>
-        <el-menu-item index="/reports">
+        <el-menu-item v-if="userStore.canView('reports')" index="/reports">
           <el-icon><DataAnalysis /></el-icon>
           <span>考勤报表</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.user?.role === 'admin'" index="/system">
+        <el-menu-item v-if="userStore.canView('system')" index="/system">
           <el-icon><Setting /></el-icon>
           <span>系统管理</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.user?.role === 'admin'" index="/users">
+        <el-menu-item v-if="userStore.canView('users')" index="/users">
           <el-icon><UserFilled /></el-icon>
           <span>用户管理</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.canView('roles')" index="/roles">
+          <el-icon><Management /></el-icon>
+          <span>角色管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
       <el-header>
         <div class="header-right">
-          <span>{{ userStore.user?.username }}</span>
+          <span>{{ userStore.user?.display_name || userStore.user?.username }}</span>
           <el-button type="primary" link @click="showChangePwd = true">修改密码</el-button>
           <el-button type="danger" link @click="handleLogout">登出</el-button>
         </div>
@@ -81,7 +85,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()

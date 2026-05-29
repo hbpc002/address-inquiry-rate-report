@@ -5,9 +5,9 @@
         <div class="card-header">
           <span>排班管理</span>
           <el-space>
-            <el-button v-if="userStore.hasPermission('upload_schedule')" type="success" @click="dialogType = 'import'; importVisible = true">导入排班</el-button>
-            <el-button v-if="userStore.canEdit()" type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
-            <el-button v-if="userStore.canEdit()" type="warning" @click="dialogType = 'batch'; dialogVisible = true">批量排班</el-button>
+            <el-button v-if="userStore.hasPermission('schedules.upload')" type="success" @click="dialogType = 'import'; importVisible = true">导入排班</el-button>
+            <el-button v-if="userStore.hasPermission('schedules.create')" type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
+            <el-button v-if="userStore.hasPermission('schedules.create')" type="warning" @click="dialogType = 'batch'; dialogVisible = true">批量排班</el-button>
           </el-space>
         </div>
       </template>
@@ -47,7 +47,7 @@
       </el-form>
 
       <el-space style="margin-bottom: 12px">
-        <el-button v-if="userStore.canEdit()" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">
+        <el-button v-if="userStore.hasPermission('schedules.delete')" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">
           批量删除 ({{ selectedIds.length }})
         </el-button>
       </el-space>
@@ -84,8 +84,8 @@
         <el-table-column label="操作" width="150">
           <template #default="{ row }">
             <template v-if="row._isFirst">
-              <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
-              <el-button v-if="userStore.canEdit()" type="danger" link @click="handleDelete(row)">删除</el-button>
+              <el-button v-if="userStore.hasPermission('schedules.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-button v-if="userStore.hasPermission('schedules.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
             </template>
           </template>
         </el-table-column>
@@ -101,7 +101,7 @@
     </el-card>
 
     <!-- 导入排班对话框 -->
-    <el-dialog v-if="userStore.hasPermission('upload_schedule')" v-model="importVisible" title="导入排班" width="500px">
+    <el-dialog v-if="userStore.hasPermission('schedules.upload')" v-model="importVisible" title="导入排班" width="500px">
       <el-upload
         ref="upload"
         :auto-upload="false"

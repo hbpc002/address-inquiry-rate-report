@@ -1003,7 +1003,167 @@ POSTGRES_DB=schedule_db
 
 ---
 
-## 十三、版本记录
+## 十三、权限系统 (RBAC)
+
+### 13.1 概述
+
+系统采用基于角色的权限控制（RBAC）。每个角色是一组权限的集合，用户通过关联角色获得权限。
+
+```
+用户 ──→ 角色 ──→ 权限集合
+                    ├── employees.view
+                    ├── employees.create
+                    ├── schedules.upload
+                    └── ...
+```
+
+### 13.2 默认角色
+
+| 角色 | 说明 | 系统保护 |
+|------|------|----------|
+| `admin` | 超级管理员，拥有所有权限（跳过检查） | 是（不可删除/修改） |
+| `manager` | 经理，可管理数据和导入 | 否 |
+| `user` | 普通用户，默认只可查看数据 | 否 |
+
+### 13.3 权限命名规则
+
+权限键格式：`{page_key}.{action}`
+
+| 页面 key | 页面显示名 | 可用操作 |
+|----------|-----------|----------|
+| `employees` | 员工管理 | view, create, edit, delete, upload |
+| `schedules` | 排班管理 | view, create, edit, delete, upload |
+| `checkins` | 签到记录 | view, delete, upload |
+| `checkin_report` | 签入签出报表 | view |
+| `reports` | 考勤报表 | view |
+| `shift_types` | 班次管理 | view, create, edit, delete |
+| `work_hour_settings` | 工时预警设置 | view, create, edit, delete |
+| `system` | 系统管理 | view, clear_data |
+| `users` | 用户管理 | view, manage |
+| `roles` | 角色管理 | view, manage |
+
+### 13.4 添加新页面
+
+当需要新增一个页面时，按以下步骤操作：
+
+**步骤1：注册权限**
+
+在以下两个文件的 `PERMISSION_REGISTRY` 中添加条目：
+
+`backend/app/core/permissions.py`：
+```python
+PERMISSION_REGISTRY = {
+    # ... 已有页面 ...
+    "your_page": {
+        "label": "你的页面",
+        "permissions": {
+            "view": "查看",
+            "create": "新增",
+            "edit": "编辑",
+            "delete": "删除",
+        },
+    },
+}
+```
+
+`frontend/src/permissions.js`：
+```javascript
+export const PERMISSION_REGISTRY = {
+  // ... 已有页面 ...
+  your_page: {
+    label: '你的页面',
+    permissions: {
+      view: '查看',
+      create: '新增',
+      edit: '编辑',
+      delete: '删除',
+    },
+  },
+}
+```
+
+**步骤2：添加路由**
+
+`frontend/src/router/index.js`：
+```javascript
+{
+  path: 'your-page',
+  name: 'YourPage',
+  component: () => import('../views/YourPage.vue'),
+  meta: { permission: 'your_page.view' }
+}
+```
+
+**步骤3：添加侧边栏**
+
+`frontend/src/views/Main.vue`：
+```html
+<el-menu-item v-if="userStore.canView('your_page')" index="/your-page">
+  <el-icon><YourIcon /></el-icon>
+  <span>你的页面</span>
+</el-menu-item>
+```
+
+**步骤4：后端 API 权限保护**
+
+```python
+# 在 API 端点中使用
+from app.core.security import require_permission
+
+@router.post("/api/your-page/items")
+def create_item(..., current_user: dict = Depends(get_current_user)):
+    require_permission(current_user, "your_page.create")
+    # ...
+```
+
+**步骤5：前端按钮权限控制**
+
+```html
+<el-button v-if="userStore.hasPermission('your_page.create')">
+  新增
+</el-button>
+```
+
+完成以上步骤后：
+- 角色管理页面自动显示新页面的权限复选框
+- 默认角色自动获得相应权限
+- 路由守卫自动拦截无权限用户
+
+### 13.5 默认权限分配逻辑
+
+```python
+def get_default_permissions(role_name):
+    if role_name == "admin":
+        return {all_permissions: True}     # admin 全部权限
+    
+    admin_only_views = {"system", "users", "roles"}
+    admin_only_actions = {"clear_data", "manage"}
+    
+    for each permission key:
+        if action == "view":
+            # 非 admin-only 页面默认可查看
+            result[key] = page not in admin_only_views
+        elif action in admin_only_actions:
+            result[key] = False            # 只有 admin 能管理/清除
+        else:
+            result[key] = role_name == "manager"  # 仅 manager 有编辑/上传权限
+```
+
+### 13.6 API 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /api/roles/all | 获取所有角色列表 |
+| GET | /api/roles | 分页获取角色 |
+| POST | /api/roles | 新增角色 |
+| PUT | /api/roles/{id} | 修改角色（系统角色不可修改） |
+| DELETE | /api/roles/{id} | 删除角色（有用户关联或系统角色不可删除） |
+| GET | /api/roles/permissions | 获取权限注册表 |
+| GET | /api/users/roles | 获取角色下拉列表 |
+
+---
+
+## 十四、版本记录
 
 | 版本 | 日期 | 说明 |
 |-----|------|------|

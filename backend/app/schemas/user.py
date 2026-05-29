@@ -11,18 +11,21 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    role_id: Optional[int] = None
 
 
 class UserUpdate(BaseModel):
     display_name: Optional[str] = None
     role: Optional[str] = None
-    permissions: Optional[str] = None
+    role_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
 class UserResponse(UserBase):
     id: int
+    role_id: Optional[int] = None
     permissions: Optional[str] = "{}"
+    is_system: Optional[bool] = False
     is_active: bool
     created_at: datetime
 

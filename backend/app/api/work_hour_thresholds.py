@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from app.models.database import get_db
 from app.models.work_hour_threshold import WorkHourThreshold
-from app.core.security import get_current_user, require_permission, require_role
+from app.core.security import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/work-hour-thresholds", tags=["工时预警阈值"])
 
@@ -49,8 +49,7 @@ def create_threshold(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
-    require_permission(current_user, "manage_threshold")
+    require_permission(current_user, "work_hour_settings.create")
     
     existing = db.query(WorkHourThreshold).filter(
         WorkHourThreshold.team == data.team
@@ -77,8 +76,7 @@ def update_threshold(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
-    require_permission(current_user, "manage_threshold")
+    require_permission(current_user, "work_hour_settings.edit")
     
     threshold = db.query(WorkHourThreshold).filter(
         WorkHourThreshold.id == threshold_id
@@ -102,8 +100,7 @@ def delete_threshold(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_role(current_user, ["admin", "manager"])
-    require_permission(current_user, "manage_threshold")
+    require_permission(current_user, "work_hour_settings.delete")
     
     threshold = db.query(WorkHourThreshold).filter(
         WorkHourThreshold.id == threshold_id

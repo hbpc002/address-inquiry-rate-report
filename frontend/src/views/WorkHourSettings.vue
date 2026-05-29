@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>迟到早退阈值设置</span>
-          <el-button v-if="userStore.canEdit()" type="primary" :loading="configSaving" @click="handleSaveConfig">保存配置</el-button>
+          <el-button v-if="userStore.hasPermission('work_hour_settings.edit')" type="primary" :loading="configSaving" @click="handleSaveConfig">保存配置</el-button>
         </div>
       </template>
 
@@ -24,7 +24,7 @@
       <template #header>
         <div class="card-header">
           <span>工时预警阈值设置</span>
-          <el-button v-if="userStore.canEdit()" type="primary" @click="handleAdd">新增阈值</el-button>
+          <el-button v-if="userStore.hasPermission('work_hour_settings.create')" type="primary" @click="handleAdd">新增阈值</el-button>
         </div>
       </template>
 
@@ -87,8 +87,8 @@
               <el-button link @click="handleCancel(row)">取消</el-button>
             </template>
             <template v-else>
-              <el-button v-if="userStore.canEdit()" type="primary" link @click="handleEdit(row)">编辑</el-button>
-              <el-button v-if="userStore.canEdit() && row.has_threshold" type="danger" link @click="handleDelete(row)">删除</el-button>
+              <el-button v-if="userStore.hasPermission('work_hour_settings.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-button v-if="userStore.hasPermission('work_hour_settings.delete') && row.has_threshold" type="danger" link @click="handleDelete(row)">删除</el-button>
             </template>
           </template>
         </el-table-column>
