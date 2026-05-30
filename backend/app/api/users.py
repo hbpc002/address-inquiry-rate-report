@@ -152,6 +152,27 @@ def delete_user(
     return {"message": "删除成功"}
 
 
+@router.post("/{user_id}/enable", response_model=dict)
+def enable_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    if not check_permission(current_user, "users.manage"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if db_user.is_active:
+        raise HTTPException(status_code=400, detail="用户已是启用状态")
+
+    db_user.is_active = True
+    db.commit()
+    log_operation(db, current_user["id"], "enable_user", "users", user_id, {"username": db_user.username})
+    return {"message": "启用成功"}
+
+
 @router.post("/{user_id}/reset-password", response_model=dict)
 def reset_password(
     user_id: int,

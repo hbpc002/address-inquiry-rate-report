@@ -47,7 +47,8 @@
           <template #default="{ row }">
             <el-button v-if="userStore.hasPermission('users.manage')" type="primary" link @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="userStore.hasPermission('users.manage')" type="warning" link @click="handleResetPwd(row)">重置密码</el-button>
-            <el-button v-if="userStore.hasPermission('users.manage')" type="danger" link @click="handleDelete(row)">禁用</el-button>
+            <el-button v-if="userStore.hasPermission('users.manage') && row.is_active" type="danger" link @click="handleDelete(row)">禁用</el-button>
+            <el-button v-if="userStore.hasPermission('users.manage') && !row.is_active" type="success" link @click="handleEnable(row)">启用</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -160,6 +161,18 @@ async function handleDelete(row) {
     await ElMessageBox.confirm('确定要禁用该用户吗?', '提示', { type: 'warning' })
     await api.delete(`/users/${row.id}`)
     ElMessage.success('禁用成功')
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('操作失败')
+    }
+  }
+}
+async function handleEnable(row) {
+  try {
+    await ElMessageBox.confirm('确定要启用该用户吗?', '提示', { type: 'info' })
+    await api.post(`/users/${row.id}/enable`)
+    ElMessage.success('启用成功')
     loadData()
   } catch (e) {
     if (e !== 'cancel') {
