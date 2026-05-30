@@ -147,6 +147,11 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="60" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <el-pagination
@@ -159,15 +164,167 @@
         style="margin-top: 15px; justify-content: flex-end"
       />
     </el-card>
+
+    <el-drawer v-model="drawerVisible" :title="drawerTitle" size="50%" direction="rtl">
+      <template v-if="personalDetail">
+        <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
+          <el-descriptions-item label="工号">{{ personalDetail.emp_info.emp_no }}</el-descriptions-item>
+          <el-descriptions-item label="姓名">{{ personalDetail.emp_info.name }}</el-descriptions-item>
+          <el-descriptions-item label="班组">{{ personalDetail.emp_info.team }}</el-descriptions-item>
+          <el-descriptions-item label="部门">{{ personalDetail.emp_info.dept }}</el-descriptions-item>
+        </el-descriptions>
+
+        <el-row :gutter="12" class="stats-row">
+          <el-col :span="3">
+            <el-statistic title="排班总工时" :value="personalDetail.summary.total_scheduled_hours" :precision="1">
+              <template #suffix>h</template>
+            </el-statistic>
+          </el-col>
+          <el-col :span="3">
+            <el-statistic title="累计工时" :value="personalDetail.summary.total_hours" :precision="1">
+              <template #suffix>h</template>
+            </el-statistic>
+          </el-col>
+          <el-col :span="3">
+            <el-statistic title="班组平均工时" :value="personalDetail.summary.team_avg_hours" :precision="1">
+              <template #suffix>h</template>
+            </el-statistic>
+          </el-col>
+          <el-col :span="4">
+            <div class="stat-custom">
+              <div class="stat-label">出勤/排班</div>
+              <div class="stat-value">
+                <span class="stat-number">{{ personalDetail.summary.attend_days }}</span>
+                <span class="stat-sub">/{{ personalDetail.summary.scheduled_days }}天</span>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="3">
+            <el-statistic title="超长工时" :value="localLongHourDays">
+              <template #suffix>天</template>
+            </el-statistic>
+          </el-col>
+          <el-col :span="3">
+            <el-statistic title="晚签天数" :value="personalDetail.summary.late_days">
+              <template #suffix>天</template>
+            </el-statistic>
+          </el-col>
+          <el-col :span="3">
+            <el-statistic title="提前签出天数" :value="personalDetail.summary.early_days">
+              <template #suffix>天</template>
+            </el-statistic>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="12" style="margin-bottom: 16px">
+          <el-col :span="8">
+            <el-tag type="primary" style="width: 100%; justify-content: center; padding: 8px 0; font-size: 14px">
+              早班 {{ personalDetail.summary.morning_shift_days }} 天
+            </el-tag>
+          </el-col>
+          <el-col :span="8">
+            <el-tag type="warning" style="width: 100%; justify-content: center; padding: 8px 0; font-size: 14px">
+              中班 {{ personalDetail.summary.mid_shift_days }} 天
+            </el-tag>
+          </el-col>
+          <el-col :span="8">
+            <el-tag type="info" style="width: 100%; justify-content: center; padding: 8px 0; font-size: 14px">
+              晚班 {{ personalDetail.summary.night_shift_days }} 天
+            </el-tag>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="16" style="margin-bottom: 16px">
+          <el-col :span="14">
+            <el-card shadow="hover">
+              <div style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap">
+                <span style="font-size: 14px; color: #606266; white-space: nowrap">每日工时趋势</span>
+                <span style="font-size: 13px; color: #909399; white-space: nowrap">超长阈值:</span>
+                <el-slider v-model="localThreshold" :min="6" :max="10" :step="0.5" style="width: 100px; flex-shrink: 0" />
+                <el-input-number v-model="localThreshold" :min="0" :max="24" :step="0.5" :precision="1" size="small" style="width: 100px; flex-shrink: 0" />
+              </div>
+              <Echart :options="personalDailyChartOptions" height="300px" />
+            </el-card>
+          </el-col>
+          <el-col :span="10">
+            <el-card shadow="hover">
+              <div style="margin-bottom: 8px; font-size: 14px; color: #606266">班次分布</div>
+              <Echart :options="personalShiftPieOptions" height="300px" />
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <el-table :data="localDailyStats" border stripe size="small" max-height="400">
+          <el-table-column prop="date" label="日期" width="90" />
+          <el-table-column prop="scheduled_hours" label="排班工时" width="70">
+            <template #default="{ row }">
+              {{ row.scheduled_hours ? row.scheduled_hours.toFixed(1) + 'h' : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="checkin_time" label="签到时间" width="110">
+            <template #default="{ row }">
+              {{ row.checkin_time ? row.checkin_time.slice(11, 16) : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="checkout_time" label="签退时间" width="110">
+            <template #default="{ row }">
+              {{ row.checkout_time ? row.checkout_time.slice(11, 16) : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="duration" label="签入工时" width="80">
+            <template #default="{ row }">
+              <span :class="{ 'text-danger': row.is_long_hour }">{{ row.duration.toFixed(1) }}h</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="status" label="状态" width="70">
+            <template #default="{ row }">
+              <el-tag v-if="row.status === '正常'" type="success" size="small">正常</el-tag>
+              <el-tag v-else-if="row.status === '迟到'" type="warning" size="small">迟到</el-tag>
+              <el-tag v-else-if="row.status === '早退'" type="warning" size="small">早退</el-tag>
+              <el-tag v-else-if="row.status === '缺勤'" type="danger" size="small">缺勤</el-tag>
+              <el-tag v-else-if="row.status === '请假'" type="info" size="small">请假</el-tag>
+              <el-tag v-else-if="row.status === '公休'" type="info" size="small">公休</el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="late_minutes" label="晚签" width="60">
+            <template #default="{ row }">
+              <span v-if="row.late_minutes > 0" class="text-danger">{{ row.late_minutes }}分</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="early_minutes" label="提前签出" width="70">
+            <template #default="{ row }">
+              <span v-if="row.early_minutes > 0" class="text-danger">{{ row.early_minutes }}分</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="shift_name" label="班次" width="80">
+            <template #default="{ row }">
+              <el-tag v-if="row.shift_name === '早班'" type="primary" size="small">早班</el-tag>
+              <el-tag v-else-if="row.shift_name === '中班'" type="warning" size="small">中班</el-tag>
+              <el-tag v-else type="info" size="small">{{ row.shift_name }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="超长" width="60">
+            <template #default="{ row }">
+              <el-tag v-if="row.is_long_hour" type="danger" size="small">是</el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <div v-else style="text-align: center; padding: 40px; color: #999">加载中...</div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
-import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions } from '../utils/echarts'
+import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
@@ -175,6 +332,31 @@ const tableData = ref([])
 const teams = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
+
+const drawerVisible = ref(false)
+const personalDetail = ref(null)
+const drawerTitle = ref('')
+const localThreshold = ref(9.5)
+
+watch(personalDetail, (val) => {
+  if (val && val.summary && val.summary.long_hour_threshold) {
+    localThreshold.value = val.summary.long_hour_threshold
+  }
+}, { immediate: true })
+
+const localDailyStats = computed(() => {
+  const detail = personalDetail.value
+  if (!detail || !detail.daily_stats) return []
+  const threshold = localThreshold.value
+  return detail.daily_stats.map(d => ({
+    ...d,
+    is_long_hour: d.duration > threshold
+  }))
+})
+
+const localLongHourDays = computed(() => {
+  return localDailyStats.value.filter(d => d.is_long_hour).length
+})
 
 const paginatedData = computed(() => {
   let data = tableData.value
@@ -264,6 +446,66 @@ const deptHoursOptions = computed(() => {
   }))
     .sort((a, b) => b.value - a.value).slice(0, 8)
   return createPieOptions(data, '班组工时分布')
+})
+
+const personalDailyChartOptions = computed(() => {
+  const detail = personalDetail.value
+  if (!detail || !detail.daily_stats || !detail.daily_stats.length) return {}
+  const dates = detail.daily_stats.map(d => d.date.slice(5))
+  const durations = detail.daily_stats.map(d => d.duration)
+  const scheduled = detail.daily_stats.map(d => d.scheduled_hours || null)
+  const threshold = localThreshold.value
+  return {
+    title: { text: '', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        let html = `<strong>${params[0].axisValue}</strong><br/>`
+        params.forEach(p => {
+          if (p.value !== null && p.value !== undefined) {
+            html += `${p.marker} ${p.seriesName}: ${typeof p.value === 'number' ? p.value.toFixed(1) : p.value}h<br/>`
+          }
+        })
+        return html
+      }
+    },
+    legend: { data: ['实际工时', '排班工时'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+    xAxis: { type: 'category', data: dates, name: '日期' },
+    yAxis: { type: 'value', name: '工时(h)', min: 0 },
+    series: [{
+      name: '实际工时',
+      type: 'line',
+      data: durations,
+      smooth: true,
+      itemStyle: { color: CHART_COLORS[0] },
+      areaStyle: { opacity: 0.3, color: CHART_COLORS[0] },
+      markLine: {
+        silent: true,
+        data: [{ yAxis: threshold, label: { formatter: threshold + 'h 警戒线' }, lineStyle: { color: '#ee6666', type: 'dashed' } }]
+      }
+    }, {
+      name: '排班工时',
+      type: 'line',
+      data: scheduled,
+      smooth: true,
+      lineStyle: { type: 'dashed', color: '#91cc75' },
+      itemStyle: { color: '#91cc75' },
+      symbol: 'none'
+    }]
+  }
+})
+
+const personalShiftPieOptions = computed(() => {
+  const detail = personalDetail.value
+  if (!detail || !detail.summary) return {}
+  const data = [
+    { name: '早班', value: detail.summary.morning_shift_days },
+    { name: '中班', value: detail.summary.mid_shift_days },
+    { name: '晚班', value: detail.summary.night_shift_days }
+  ].filter(d => d.value > 0)
+  if (!data.length) return {}
+  return createPieOptions(data, '班次分布')
 })
 
 function toggleFilter(type) {
@@ -379,6 +621,46 @@ async function loadData() {
   }
 }
 
+function getDetailDateRange() {
+  let startDate, endDate
+  if (searchForm.type === 'day' && searchForm.date) {
+    endDate = searchForm.date
+    startDate = endDate.slice(0, 7) + '-01'
+  } else if (searchForm.type === 'month' && searchForm.month) {
+    startDate = searchForm.month + '-01'
+    const [y, m] = searchForm.month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    endDate = `${searchForm.month}-${String(lastDay).padStart(2, '0')}`
+  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
+    startDate = searchForm.start_date
+    endDate = searchForm.end_date
+  } else {
+    const now = new Date()
+    endDate = getYesterday()
+    startDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01'
+  }
+  return { startDate, endDate }
+}
+
+function openDetail(row) {
+  drawerTitle.value = `${row.name}（${row.emp_no}）多维统计`
+  personalDetail.value = null
+  drawerVisible.value = true
+  loadPersonalDetail(row.emp_no)
+}
+
+async function loadPersonalDetail(empNo) {
+  try {
+    const { startDate, endDate } = getDetailDateRange()
+    const res = await api.get('/checkins/personal-report', {
+      params: { emp_no: empNo, start_date: startDate, end_date: endDate }
+    })
+    personalDetail.value = res.data
+  } catch (e) {
+    ElMessage.error('加载个人详情失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
 onMounted(() => {
   if (!searchFormRestored) {
     handleTypeChange()
@@ -394,5 +676,34 @@ onMounted(() => {
   padding: 15px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+.text-danger {
+  color: #ee6666;
+  font-weight: bold;
+}
+.stat-custom {
+  text-align: center;
+}
+.stat-custom .stat-label {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+.stat-custom .stat-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+}
+.stat-custom .stat-number {
+  font-size: 24px;
+  color: #303133;
+}
+.stat-custom .stat-sub {
+  font-size: 13px;
+  color: #909399;
+}
+.el-drawer__body :deep(.echart-container) {
+  min-height: 0;
 }
 </style>

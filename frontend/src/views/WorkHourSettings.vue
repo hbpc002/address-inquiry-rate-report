@@ -17,6 +17,10 @@
           <el-input-number v-model="configForm.early_leave_threshold_minutes" :min="1" :max="240" :step="5" />
           <span style="margin-left: 8px; color: #909399; font-size: 13px">早于下班时间超过此分钟数视为早退</span>
         </el-form-item>
+        <el-form-item label="超长工时阈值（小时）">
+          <el-input-number v-model="configForm.long_hour_threshold" :min="1" :max="24" :step="0.5" :precision="1" />
+          <span style="margin-left: 8px; color: #909399; font-size: 13px">当日工时超过此值标记为超长工时</span>
+        </el-form-item>
       </el-form>
     </el-card>
 
@@ -141,7 +145,8 @@ const availableTeams = ref([])
 
 const configForm = ref({
   late_threshold_minutes: 30,
-  early_leave_threshold_minutes: 30
+  early_leave_threshold_minutes: 30,
+  long_hour_threshold: 9.5
 })
 const configSaving = ref(false)
 
@@ -150,7 +155,8 @@ async function loadConfig() {
     const res = await api.get('/attendance-config')
     configForm.value = {
       late_threshold_minutes: res.data.late_threshold_minutes,
-      early_leave_threshold_minutes: res.data.early_leave_threshold_minutes
+      early_leave_threshold_minutes: res.data.early_leave_threshold_minutes,
+      long_hour_threshold: res.data.long_hour_threshold
     }
   } catch (e) {
     // 使用默认值
@@ -162,7 +168,8 @@ async function handleSaveConfig() {
   try {
     await api.put('/attendance-config', {
       late_threshold_minutes: configForm.value.late_threshold_minutes,
-      early_leave_threshold_minutes: configForm.value.early_leave_threshold_minutes
+      early_leave_threshold_minutes: configForm.value.early_leave_threshold_minutes,
+      long_hour_threshold: configForm.value.long_hour_threshold
     })
     ElMessage.success('保存成功')
   } catch (e) {

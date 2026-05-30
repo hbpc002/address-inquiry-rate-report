@@ -13,6 +13,7 @@ from app.models.employee import Employee
 from app.models.schedule import Schedule
 from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
+from app.models.attendance_config import AttendanceConfig
 from app.utils.logger import log_operation
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
 from app.core.security import get_current_user, require_permission
@@ -428,4 +429,153 @@ def get_checkin_report(
             "undertime_count": undertime_count
         },
         "items": items
+    }
+
+
+@router.get("/personal-report")
+def get_personal_report(
+    emp_no: str = Query(...),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """个人签到多维度统计"""
+    from datetime import timedelta
+
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+    emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="员工不存在")
+
+    config_row = db.query(AttendanceConfig).filter(AttendanceConfig.key == "long_hour_threshold").first()
+    long_hour_threshold = float(config_row.value) if config_row else 9.5
+
+    checkins = db.query(Checkin).filter(
+        Checkin.emp_no == emp_no,
+        func.date(Checkin.checkin_time) >= start,
+        func.date(Checkin.checkin_time) <= end
+    ).order_by(Checkin.checkin_time).all()
+
+    daily_reports = db.query(DailyReport).filter(
+        DailyReport.emp_id == emp.id,
+        DailyReport.schedule_date >= start,
+        DailyReport.schedule_date <= end
+    ).all()
+    daily_report_map = {r.schedule_date: r for r in daily_reports}
+
+    daily_map = {}
+    for c in checkins:
+        d = c.checkin_time.date()
+        if d not in daily_map:
+            daily_map[d] = {
+                "date": d.isoformat(),
+                "checkins": [],
+                "total_duration": 0.0
+            }
+
+        duration = 0.0
+        if c.checkout_time and c.checkin_time:
+            duration = (c.checkout_time - c.checkin_time).total_seconds() / 3600
+
+        daily_map[d]["checkins"].append({
+            "checkin_time": c.checkin_time.strftime('%Y-%m-%d %H:%M'),
+            "checkout_time": c.checkout_time.strftime('%Y-%m-%d %H:%M') if c.checkout_time else None,
+            "duration": round(duration, 1),
+            "device_no": c.device_no or ''
+        })
+        daily_map[d]["total_duration"] += duration
+
+    daily_stats = []
+    for d in sorted(daily_map.keys()):
+        entry = daily_map[d]
+
+        first_checkin = entry["checkins"][0]["checkin_time"]
+        hour = int(first_checkin.split()[1].split(':')[0])
+        if hour < 10:
+            shift_name = "早班"
+        elif hour < 15:
+            shift_name = "中班"
+        else:
+            shift_name = "晚班"
+
+        report = daily_report_map.get(d)
+        daily_stats.append({
+            "date": entry["date"],
+            "checkin_time": entry["checkins"][0]["checkin_time"] if entry["checkins"] else None,
+            "checkout_time": entry["checkins"][-1]["checkout_time"] if entry["checkins"] else None,
+            "duration": round(entry["total_duration"], 1),
+            "shift_name": shift_name,
+            "is_long_hour": entry["total_duration"] > long_hour_threshold,
+            "scheduled_hours": float(report.scheduled_hours) if report and report.scheduled_hours else 0,
+            "status": report.status if report else '',
+            "actual_hours": float(report.actual_hours) if report and report.actual_hours else 0,
+            "late_minutes": report.late_minutes if report else 0,
+            "early_minutes": report.early_minutes if report else 0
+        })
+
+    attend_days = len(daily_stats)
+    scheduled_days = sum(1 for d in daily_stats if d["scheduled_hours"] > 0)
+    total_hours = sum(d["duration"] for d in daily_stats)
+    total_scheduled_hours = sum(d["scheduled_hours"] for d in daily_stats)
+    long_hour_days = sum(1 for d in daily_stats if d["is_long_hour"])
+    late_days = sum(1 for d in daily_stats if d["late_minutes"] > 0)
+    early_days = sum(1 for d in daily_stats if d["early_minutes"] > 0)
+    morning_days = sum(1 for d in daily_stats if d["shift_name"] == "早班")
+    mid_days = sum(1 for d in daily_stats if d["shift_name"] == "中班")
+    night_days = sum(1 for d in daily_stats if d["shift_name"] == "晚班")
+
+    team_avg = {"avg_hours": 0, "avg_checkin_count": 0}
+    if emp.team:
+        team_emps = db.query(Employee.emp_no).filter(
+            Employee.team == emp.team,
+            Employee.emp_no != emp_no
+        ).all()
+        team_emp_nos = [e[0] for e in team_emps]
+        if team_emp_nos:
+            team_data = db.query(
+                Checkin.emp_no,
+                func.count(Checkin.id),
+                func.sum(
+                    func.extract('epoch', Checkin.checkout_time - Checkin.checkin_time) / 3600
+                )
+            ).filter(
+                Checkin.emp_no.in_(team_emp_nos),
+                func.date(Checkin.checkin_time) >= start,
+                func.date(Checkin.checkin_time) <= end,
+                Checkin.checkout_time.isnot(None),
+                Checkin.checkin_time.isnot(None)
+            ).group_by(Checkin.emp_no).all()
+            if team_data:
+                total_h = sum(float(t[2] or 0) for t in team_data)
+                total_c = sum(t[1] for t in team_data)
+                n = len(team_data)
+                team_avg["avg_hours"] = round(total_h / n, 1) if n else 0
+                team_avg["avg_checkin_count"] = round(total_c / n, 1) if n else 0
+
+    return {
+        "emp_info": {
+            "emp_no": emp.emp_no,
+            "name": emp.name,
+            "team": emp.team or '',
+            "dept": emp.dept or ''
+        },
+        "summary": {
+            "total_hours": round(total_hours, 1),
+            "total_scheduled_hours": round(total_scheduled_hours, 1),
+            "attend_days": attend_days,
+            "scheduled_days": scheduled_days,
+            "long_hour_days": long_hour_days,
+            "long_hour_threshold": long_hour_threshold,
+            "late_days": late_days,
+            "early_days": early_days,
+            "morning_shift_days": morning_days,
+            "mid_shift_days": mid_days,
+            "night_shift_days": night_days,
+            "team_avg_hours": team_avg["avg_hours"],
+            "team_avg_checkin_count": team_avg["avg_checkin_count"]
+        },
+        "daily_stats": daily_stats
     }

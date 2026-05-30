@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/attendance-config", tags=["考勤配置"])
 class AttendanceConfigResponse(BaseModel):
     late_threshold_minutes: int = 30
     early_leave_threshold_minutes: int = 30
+    long_hour_threshold: float = 9.5
 
     class Config:
         from_attributes = True
@@ -21,6 +22,7 @@ class AttendanceConfigResponse(BaseModel):
 class AttendanceConfigUpdate(BaseModel):
     late_threshold_minutes: Optional[int] = None
     early_leave_threshold_minutes: Optional[int] = None
+    long_hour_threshold: Optional[float] = None
 
 
 def _get_config_value(db: Session, key: str, default: str) -> str:
@@ -44,9 +46,11 @@ def get_attendance_config(
 ):
     late = int(_get_config_value(db, "late_threshold_minutes", "30"))
     early = int(_get_config_value(db, "early_leave_threshold_minutes", "30"))
+    long_hour = float(_get_config_value(db, "long_hour_threshold", "9.5"))
     return AttendanceConfigResponse(
         late_threshold_minutes=late,
-        early_leave_threshold_minutes=early
+        early_leave_threshold_minutes=early,
+        long_hour_threshold=long_hour
     )
 
 
@@ -62,12 +66,16 @@ def update_attendance_config(
         _set_config_value(db, "late_threshold_minutes", str(data.late_threshold_minutes))
     if data.early_leave_threshold_minutes is not None:
         _set_config_value(db, "early_leave_threshold_minutes", str(data.early_leave_threshold_minutes))
+    if data.long_hour_threshold is not None:
+        _set_config_value(db, "long_hour_threshold", str(data.long_hour_threshold))
 
     db.commit()
 
     late = int(_get_config_value(db, "late_threshold_minutes", "30"))
     early = int(_get_config_value(db, "early_leave_threshold_minutes", "30"))
+    long_hour = float(_get_config_value(db, "long_hour_threshold", "9.5"))
     return AttendanceConfigResponse(
         late_threshold_minutes=late,
-        early_leave_threshold_minutes=early
+        early_leave_threshold_minutes=early,
+        long_hour_threshold=long_hour
     )
