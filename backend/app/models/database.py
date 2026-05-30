@@ -33,6 +33,7 @@ def init_db():
     from app.models.operation_log import OperationLog
     from app.models.work_hour_threshold import WorkHourThreshold
     from app.models.attendance_config import AttendanceConfig
+    from app.models.announcement import Announcement
 
     Base.metadata.create_all(bind=engine)
     _migrate_db()

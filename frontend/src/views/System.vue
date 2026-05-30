@@ -112,6 +112,32 @@
           </el-form>
         </el-card>
       </el-tab-pane>
+
+      <el-tab-pane label="更新日志" name="changelogs">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>更新日志管理</span>
+              <el-button v-if="userStore.hasPermission('system.changelogs')" type="primary" @click="openChangelogCreate">新增日志</el-button>
+            </div>
+          </template>
+          <el-table :data="changelogs" border stripe>
+            <el-table-column prop="title" label="标题" width="160" />
+            <el-table-column prop="content" label="内容" />
+            <el-table-column prop="created_at" label="创建时间" width="180">
+              <template #default="{ row }">
+                {{ row.created_at?.slice(0, 16) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button v-if="userStore.hasPermission('system.changelogs')" type="primary" link @click="openChangelogEdit(row)">编辑</el-button>
+                <el-button v-if="userStore.hasPermission('system.changelogs')" type="danger" link @click="handleDeleteChangelog(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑班次' : '新增班次'" width="500px">
@@ -140,6 +166,21 @@
         <el-button type="primary" @click="handleSubmitShift">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="changelogDialogVisible" :title="changelogDialogTitle" width="600px">
+      <el-form :model="changelogForm" label-width="80px">
+        <el-form-item label="标题">
+          <el-input v-model="changelogForm.title" placeholder="例如：v1.2.0" />
+        </el-form-item>
+        <el-form-item label="内容">
+          <el-input v-model="changelogForm.content" type="textarea" :rows="4" placeholder="例如：新增仪表盘数据更新日期显示 / 新增公告功能" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="changelogDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingChangelog" @click="saveChangelog">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -154,6 +195,7 @@ const userStore = useUserStore()
 const activeTab = ref('shifts')
 const shiftTypes = ref([])
 const logs = ref([])
+const changelogs = ref([])
 const manualCleanupMonths = ref(3)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -169,6 +211,10 @@ const form = reactive({
   color: '#409EFF',
   is_night: false
 })
+const changelogDialogVisible = ref(false)
+const changelogDialogTitle = ref('')
+const changelogForm = ref({ id: null, title: '', content: '' })
+const savingChangelog = ref(false)
 
 async function loadShiftTypes() {
   try {
@@ -273,8 +319,66 @@ async function handleClearData() {
   }
 }
 
+async function loadChangelogs() {
+  try {
+    const res = await api.get('/announcements', { params: { type: '更新日志', limit: 100 } })
+    changelogs.value = res.data.items || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+function openChangelogCreate() {
+  changelogForm.value = { id: null, title: '', content: '' }
+  changelogDialogTitle.value = '新增更新日志'
+  changelogDialogVisible.value = true
+}
+
+function openChangelogEdit(row) {
+  changelogForm.value = { id: row.id, title: row.title, content: row.content }
+  changelogDialogTitle.value = '编辑更新日志'
+  changelogDialogVisible.value = true
+}
+
+async function saveChangelog() {
+  if (!changelogForm.value.title || !changelogForm.value.content) {
+    ElMessage.warning('请填写完整')
+    return
+  }
+  savingChangelog.value = true
+  try {
+    if (changelogForm.value.id) {
+      await api.put(`/announcements/${changelogForm.value.id}`, { title: changelogForm.value.title, content: changelogForm.value.content })
+      ElMessage.success('更新日志已更新')
+    } else {
+      await api.post('/announcements', { title: changelogForm.value.title, content: changelogForm.value.content, type: '更新日志' })
+      ElMessage.success('更新日志已创建')
+    }
+    changelogDialogVisible.value = false
+    loadChangelogs()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  } finally {
+    savingChangelog.value = false
+  }
+}
+
+async function handleDeleteChangelog(row) {
+  try {
+    await ElMessageBox.confirm(`确定要删除更新日志"${row.title}"吗？`, '提示', { type: 'warning' })
+    await api.delete(`/announcements/${row.id}`)
+    ElMessage.success('已删除')
+    loadChangelogs()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
+  }
+}
+
 onMounted(() => {
   loadShiftTypes()
+  loadChangelogs()
 })
 </script>
 

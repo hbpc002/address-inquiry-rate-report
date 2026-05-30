@@ -1,111 +1,98 @@
 <template>
   <div class="dashboard">
-    <el-row :gutter="20">
-      <el-col :span="6">
-        <el-card>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.employeeCount }}</div>
-            <div class="stat-label">员工总数</div>
+    <el-card class="data-date-banner" :body-style="{ padding: '12px 20px' }">
+      <div class="banner-content">
+        <div class="date-info">
+          <el-tag type="success" effect="dark">数据</el-tag>
+          <span class="date-text">数据已更新至：<strong>{{ stats.latest_data_date || '暂无数据' }}</strong></span>
+          <span class="report-count" v-if="stats.latest_attendance + stats.latest_late + stats.latest_absent > 0">
+            （最新日出勤 {{ stats.latest_attendance }} / 迟到 {{ stats.latest_late }} / 缺勤 {{ stats.latest_absent }}）
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <el-date-picker v-model="yearMonth" type="month" value-format="YYYY-MM" placeholder="选择月份" size="small" style="width:140px" @change="onMonthChange" />
+          <div class="changelog-carousel" v-if="changelog.length > 0">
+            <el-tag type="warning" effect="dark" size="small">更新日志</el-tag>
+            <el-carousel height="32px" direction="vertical" :autoplay="true" indicator-position="none" class="carousel-inline">
+              <el-carousel-item v-for="log in changelog" :key="log.id" class="carousel-item-content">
+                <span class="carousel-text">{{ log.title }}：{{ log.content }}</span>
+                <el-button type="warning" link size="small" @click="showChangelogDetail(log)">详情</el-button>
+              </el-carousel-item>
+            </el-carousel>
+            <el-button type="warning" link size="small" @click="showAllChangelog">查看全部</el-button>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.todayAttendance }}</div>
-            <div class="stat-label">今日出勤</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.todayLate }}</div>
-            <div class="stat-label">今日迟到</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.todayAbsent }}</div>
-            <div class="stat-label">今日缺勤</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>今日考勤状态分布</span>
-          </template>
-          <Echart :options="attendancePieOptions" :height="300" @click="handleAttendanceClick" />
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>各部门人数</span>
-          </template>
-          <Echart :options="deptBarOptions" :height="300" @click="handleDeptClick" />
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>各班组人数</span>
-          </template>
-          <Echart :options="teamBarOptions" :height="300" @click="handleTeamClick" />
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>班组出勤排名</span>
-          </template>
-          <Echart :options="rankingOptions" :height="300" @click="handleRankingClick" />
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-card style="margin-top: 20px">
-      <template #header>
-        <span>快速操作</span>
-      </template>
-      <el-space wrap>
-        <el-button type="primary" @click="$router.push('/employees')">员工管理</el-button>
-        <el-button type="success" @click="$router.push('/schedules')">排班管理</el-button>
-        <el-button type="warning" @click="$router.push('/checkins')">导入签到</el-button>
-        <el-button type="info" @click="$router.push('/reports')">考勤报表</el-button>
-      </el-space>
+        </div>
+      </div>
     </el-card>
 
-    <el-dialog v-model="detailDialogVisible" :title="detailTitle" width="800px">
-      <el-table :data="detailData" border stripe max-height="400">
+    <el-row :gutter="12" style="margin-top:20px">
+      <el-col :span="12">
+        <el-card><template #header><span>工时完成趋势</span></template>
+          <Echart :options="hoursTrendOptions" :height="320" @click="handleTrendClick" />
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card><template #header><span>工时分布</span></template>
+          <Echart :options="hoursDistOptions" :height="320" @click="handleDistClick" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="12" style="margin-top:20px">
+      <el-col :span="12">
+        <el-card><template #header><span>班组工时对比（应出勤 vs 实际）</span></template>
+          <Echart :options="teamHoursOptions" :height="300" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-dialog v-model="trendDetailVisible" :title="'工时明细 - ' + trendDetailDate" width="900px">
+      <el-table :data="trendDetailData" border stripe max-height="500">
         <el-table-column prop="emp_no" label="工号" width="100" />
-        <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column prop="team" label="班组" width="120" />
-        <el-table-column prop="dept" label="部门" width="120" />
-        <el-table-column v-if="detailType === 'attendance'" prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">{{ row.status }}</el-tag>
-          </template>
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="team" label="班组" width="100" />
+        <el-table-column prop="status" label="状态" width="70">
+          <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag></template>
         </el-table-column>
-        <el-table-column v-if="detailType === 'attendance'" prop="late_minutes" label="迟到(分)" width="80" />
-        <el-table-column v-if="detailType === 'dept' || detailType === 'team'" prop="status" label="在职状态" width="100">
-          <template #default>
-            <el-tag type="success">在职</el-tag>
-          </template>
+        <el-table-column prop="scheduled_hours" label="应出勤" width="80" />
+        <el-table-column prop="actual_hours" label="实际" width="80" />
+        <el-table-column prop="overtime_hours" label="加班" width="80" />
+        <el-table-column prop="late_minutes" label="迟到(分)" width="80" />
+        <el-table-column prop="early_minutes" label="早退(分)" width="80" />
+      </el-table>
+      <template #footer><el-button @click="trendDetailVisible = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="distDetailVisible" :title="distDetailTitle" width="800px">
+      <el-table :data="distDetailData" border stripe max-height="500">
+        <el-table-column prop="emp_no" label="工号" width="100" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="team" label="班组" width="100" />
+        <el-table-column prop="actual_hours" label="实际工时" width="90" />
+        <el-table-column prop="status" label="状态" width="70">
+          <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag></template>
         </el-table-column>
       </el-table>
-      <template #footer>
-        <el-button @click="detailDialogVisible = false">关闭</el-button>
-      </template>
+      <template #footer><el-button @click="distDetailVisible = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="allChangelogVisible" title="全部更新日志" width="800px">
+      <el-table :data="allChangelogs" border stripe max-height="500">
+        <el-table-column prop="title" label="标题" width="140" />
+        <el-table-column prop="content" label="内容" min-width="300" />
+        <el-table-column prop="created_at" label="时间" width="120"><template #default="{ row }">{{ (row.created_at || '').slice(0, 10) }}</template></el-table-column>
+        <el-table-column label="操作" width="70"><template #default="{ row }"><el-button type="warning" link size="small" @click="showChangelogDetail(row)">详情</el-button></template></el-table-column>
+      </el-table>
+      <template #footer><el-button @click="allChangelogVisible = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="changelogDetailVisible" title="更新日志详情" width="600px">
+      <div v-if="currentChangelog">
+        <h3>{{ currentChangelog.title }}</h3>
+        <p style="white-space:pre-wrap;line-height:1.8;margin-top:12px">{{ currentChangelog.content }}</p>
+        <el-text type="info" size="small" style="margin-top:16px;display:block">{{ (currentChangelog.created_at || '').slice(0, 10) }}</el-text>
+      </div>
+      <template #footer><el-button @click="changelogDetailVisible = false">关闭</el-button></template>
     </el-dialog>
   </div>
 </template>
@@ -114,38 +101,90 @@
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import Echart from '../components/Echart.vue'
-import { createPieOptions, createBarOptions, createHorizontalBarOptions } from '../utils/echarts'
+import { createBarOptions } from '../utils/echarts'
 
 const stats = ref({
-  employeeCount: 0,
-  todayAttendance: 0,
-  todayLate: 0,
-  todayAbsent: 0
+  employee_count: 0, latest_data_date: null,
+  latest_attendance: 0, latest_late: 0, latest_absent: 0, latest_leave: 0, latest_timeoff: 0,
+  monthly_total_days: 0, monthly_normal_days: 0, monthly_late_days: 0,
+  monthly_absent_days: 0, monthly_leave_days: 0, monthly_timeoff_days: 0,
+  monthly_actual_hours: 0, monthly_scheduled_hours: 0, monthly_overtime_hours: 0, monthly_owed_hours: 0,
+  attendance_rate: 0, overtime_rate: 0, owed_rate: 0,
 })
 
-const depts = ref([])
+const yearMonth = ref('')
 const teams = ref([])
-const rankingData = ref([])
-const todayReports = ref([])
+const teamHours = ref([])
+const changelog = ref([])
+const dailyTrend = ref([])
 
-const detailDialogVisible = ref(false)
-const detailTitle = ref('')
-const detailData = ref([])
-const detailType = ref('')
+const trendDetailVisible = ref(false)
+const trendDetailDate = ref('')
+const trendDetailData = ref([])
+const distDetailVisible = ref(false)
+const distDetailTitle = ref('')
+const distDetailData = ref([])
+const allChangelogVisible = ref(false)
+const allChangelogs = ref([])
+const changelogDetailVisible = ref(false)
+const currentChangelog = ref(null)
 
-const attendancePieOptions = computed(() => {
-  const total = stats.value.employeeCount || 1
-  const data = [
-    { name: '正常', value: stats.value.todayAttendance || 0 },
-    { name: '迟到', value: stats.value.todayLate || 0 },
-    { name: '缺勤', value: stats.value.todayAbsent || 0 }
-  ]
-  return createPieOptions(data, '', ['#67c23a', '#e6a23c', '#f56c6c'])
+function statusType(s) {
+  const m = { '正常': 'success', '迟到': 'warning', '缺勤': 'danger', '早退': 'warning', '请假': 'info', '公休': '' }
+  return m[s] || 'info'
+}
+
+function showChangelogDetail(log) { currentChangelog.value = log; changelogDetailVisible.value = true }
+
+const hoursTrendOptions = computed(() => {
+  const data = dailyTrend.value
+  const dates = data.map(d => d.date.slice(5))
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['应出勤工时', '实际工时'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '20%', containLabel: true },
+    xAxis: { type: 'category', data: dates },
+    yAxis: { type: 'value' },
+    series: [
+      { name: '应出勤工时', type: 'line', data: data.map(d => d.scheduled_hours), smooth: true, itemStyle: { color: '#5470c6' }, lineStyle: { type: 'dashed' }, areaStyle: { opacity: 0.08 } },
+      { name: '实际工时', type: 'line', data: data.map(d => d.actual_hours), smooth: true, itemStyle: { color: '#91cc75' }, areaStyle: { opacity: 0.15 } },
+    ],
+  }
 })
 
-const deptBarOptions = computed(() => {
-  const data = depts.value.slice(0, 10)
-  return createBarOptions(data.map(d => d.dept), data.map(d => d.count), '', '部门', '人数')
+const hoursDistOptions = computed(() => {
+  const data = dailyTrend.value
+  const dates = data.map(d => d.date.slice(5))
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const idx = params[0].dataIndex
+        const d = data[idx]
+        let s = `<b>${d.date}</b><br/>`
+        const order = ['应到人数', '实到人数', '≥9h（加班）', '8~9h（正常）', '7~8h（略低）', '<7h（不足）']
+        const pMap = {}
+        params.forEach(p => { pMap[p.seriesName] = p })
+        order.forEach(name => {
+          const p = pMap[name]
+          if (p) s += `${p.marker} ${name}：${p.value}<br/>`
+        })
+        return s
+      }
+    },
+    legend: { data: ['≥9h（加班）', '8~9h（正常）', '7~8h（略低）', '<7h（不足）', '实到人数', '应到人数'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '22%', containLabel: true },
+    xAxis: { type: 'category', data: dates },
+    yAxis: { type: 'value', minInterval: 1 },
+    series: [
+      { name: '≥9h（加班）', type: 'bar', stack: 'total', data: data.map(d => d.long_hours), itemStyle: { color: '#f56c6c' } },
+      { name: '8~9h（正常）', type: 'bar', stack: 'total', data: data.map(d => d.normal_hours_count), itemStyle: { color: '#67c23a' } },
+      { name: '7~8h（略低）', type: 'bar', stack: 'total', data: data.map(d => d.slight_short), itemStyle: { color: '#e6a23c' } },
+      { name: '<7h（不足）', type: 'bar', stack: 'total', data: data.map(d => d.short_hours), itemStyle: { color: '#909399' } },
+      { name: '实到人数', type: 'line', data: data.map(d => d.total_with_hours), smooth: true, lineStyle: { type: 'dashed', color: '#5470c6' }, itemStyle: { color: '#5470c6' }, symbol: 'circle', symbolSize: 4 },
+      { name: '应到人数', type: 'line', data: data.map(d => d.total), smooth: true, lineStyle: { type: 'dotted', color: '#fc8452' }, itemStyle: { color: '#fc8452' }, symbol: 'diamond', symbolSize: 4 },
+    ],
+  }
 })
 
 const teamBarOptions = computed(() => {
@@ -153,143 +192,115 @@ const teamBarOptions = computed(() => {
   return createBarOptions(data.map(t => t.team), data.map(t => t.count), '', '班组', '人数')
 })
 
-const rankingOptions = computed(() => {
-  const data = [...rankingData.value].sort((a, b) => b.avg_attendance - a.avg_attendance).slice(0, 8)
-  const names = data.map(d => d.team)
-  const rates = data.map(d => Math.round(d.avg_attendance * 100))
-  return createHorizontalBarOptions(names, rates, '', '班组', '出勤率(%)')
+const teamHoursOptions = computed(() => {
+  const data = teamHours.value.slice(0, 10)
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const idx = params[0].dataIndex
+        const item = data[idx]
+        if (!item) return ''
+        let s = `<b>${item.team}</b>（${item.emp_count} 人）<br/>`
+        params.forEach(p => { s += `${p.marker} ${p.seriesName}：${p.value}<br/>` })
+        return s
+      }
+    },
+    legend: { data: ['应出勤工时', '实际工时'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+    xAxis: { type: 'category', data: data.map(d => `${d.team}\n(${d.emp_count}人)`) },
+    yAxis: { type: 'value' },
+    series: [
+      { name: '应出勤工时', type: 'bar', data: data.map(d => d.scheduled_hours), itemStyle: { color: '#5470c6' } },
+      { name: '实际工时', type: 'bar', data: data.map(d => d.actual_hours), itemStyle: { color: '#91cc75' } },
+    ],
+  }
 })
 
-function getStatusType(status) {
-  const map = { '正常': 'success', '迟到': 'warning', '缺勤': 'danger', '早退': 'warning', '请假': 'info', '公休': '' }
-  return map[status] || 'info'
+async function handleTrendClick(params) {
+  const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
+  const date = dailyTrend.value[idx]?.date
+  if (!date) return
+  trendDetailDate.value = date
+  try {
+    const r = await api.get('/daily-detail', { params: { date } })
+    trendDetailData.value = r.data || []
+  } catch (e) { trendDetailData.value = [] }
+  trendDetailVisible.value = true
+}
+
+async function handleDistClick(params) {
+  const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
+  const date = dailyTrend.value[idx]?.date
+  const seriesName = params.seriesName || ''
+  const bucketMap = { '≥9h（加班）': 'long', '8~9h（正常）': 'normal', '7~8h（略低）': 'slight', '<7h（不足）': 'short' }
+  const bucket = bucketMap[seriesName]
+  if (!date || !bucket) return
+  distDetailTitle.value = `${date} ${seriesName}`
+  try {
+    const r = await api.get('/hour-bucket-detail', { params: { date, bucket } })
+    distDetailData.value = r.data || []
+  } catch (e) { distDetailData.value = [] }
+  distDetailVisible.value = true
+}
+
+function onMonthChange() {
+  loadAll()
 }
 
 async function loadStats() {
   try {
-    const res = await api.get('/system/stats')
-    stats.value = res.data
-  } catch (e) {
-    stats.value = { employeeCount: 0, todayAttendance: 0, todayLate: 0, todayAbsent: 0 }
-  }
-}
-
-async function loadDepts() {
-  try {
-    const res = await api.get('/system/departments')
-    depts.value = res.data || []
-  } catch (e) {
-    depts.value = []
-  }
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/stats', { params })
+    stats.value = r.data
+  } catch (e) { /* keep defaults */ }
 }
 
 async function loadTeams() {
+  try { const r = await api.get('/teams'); teams.value = r.data || [] } catch (e) { teams.value = [] }
+}
+
+async function loadChangelog() {
+  try { const r = await api.get('/announcements/changelog'); changelog.value = r.data || [] } catch (e) { changelog.value = [] }
+}
+
+async function loadDailyTrend() {
   try {
-    const res = await api.get('/system/teams')
-    teams.value = res.data || []
-  } catch (e) {
-    teams.value = []
-  }
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/daily-trend', { params })
+    dailyTrend.value = r.data || []
+  } catch (e) { dailyTrend.value = [] }
 }
 
-async function loadRanking() {
+async function loadTeamHours() {
   try {
-    const now = new Date()
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const res = await api.get('/reports/team-ranking', { params: { year_month: yearMonth } })
-    rankingData.value = res.data || []
-  } catch (e) {
-    rankingData.value = []
-  }
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/team-hours', { params })
+    teamHours.value = r.data || []
+  } catch (e) { teamHours.value = [] }
 }
 
-async function loadTodayReports() {
-  try {
-    const today = new Date().toISOString().slice(0, 10)
-    const res = await api.get('/reports/daily', { params: { schedule_date: today } })
-    todayReports.value = res.data.items || []
-  } catch (e) {
-    todayReports.value = []
-  }
-}
-
-function handleAttendanceClick(params) {
-  const statusMap = { '正常': '正常', '迟到': '迟到', '缺勤': '缺勤' }
-  const status = statusMap[params.name]
-  if (!status) return
-
-  const filtered = todayReports.value.filter(r => r.status === status)
-  detailTitle.value = `${params.name}人员列表 (${filtered.length}人)`
-  detailData.value = filtered
-  detailType.value = 'attendance'
-  detailDialogVisible.value = true
-}
-
-function handleDeptClick(params) {
-  const deptName = params.name
-  const filtered = todayReports.value.filter(r => r.dept === deptName)
-  detailTitle.value = `${deptName}员工列表 (${filtered.length}人)`
-  detailData.value = filtered.length ? filtered : depts.value.filter(d => d.dept === deptName).map(d => ({
-    emp_no: '-', name: `${d.count}人`, team: '-', dept: deptName, status: '在职'
-  }))
-  detailType.value = 'dept'
-  detailDialogVisible.value = true
-}
-
-function handleTeamClick(params) {
-  const teamName = params.name
-  const filtered = todayReports.value.filter(r => r.team === teamName)
-  detailTitle.value = `${teamName}员工列表 (${filtered.length}人)`
-  detailData.value = filtered.length ? filtered : teams.value.filter(t => t.team === teamName).map(t => ({
-    emp_no: '-', name: `${t.count}人`, team: teamName, dept: '-', status: '在职'
-  }))
-  detailType.value = 'team'
-  detailDialogVisible.value = true
-}
-
-function handleRankingClick(params) {
-  const teamName = params.name
-  const teamData = rankingData.value.find(r => r.team === teamName)
-  if (teamData) {
-    const filtered = todayReports.value.filter(r => r.team === teamName)
-    detailTitle.value = `${teamName}详情 (${teamData.emp_count}人, 出勤率${Math.round(teamData.avg_attendance * 100)}%)`
-    detailData.value = filtered.length ? filtered : [{ emp_no: '-', name: `${teamData.emp_count}人`, team: teamName, dept: '-', status: '在职' }]
-  } else {
-    detailTitle.value = `${teamName}详情`
-    detailData.value = []
-  }
-  detailType.value = 'ranking'
-  detailDialogVisible.value = true
+async function loadAll() {
+  await loadStats()
+  await Promise.all([loadTeams(), loadChangelog(), loadDailyTrend(), loadTeamHours()])
 }
 
 onMounted(() => {
-  loadStats()
-  loadDepts()
-  loadTeams()
-  loadRanking()
-  loadTodayReports()
+  const now = new Date()
+  yearMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  loadAll()
 })
 </script>
 
 <style scoped>
-.dashboard {
-  width: 100%;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 20px 0;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #409EFF;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #999;
-  margin-top: 10px;
-}
+.dashboard { width: 100%; }
+.data-date-banner { margin-bottom: 0; }
+.banner-content { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.date-info { display: flex; align-items: center; gap: 10px; }
+.date-text { font-size: 14px; color: #333; }
+.report-count { font-size: 13px; color: #999; }
+.changelog-carousel { display: flex; align-items: center; gap: 8px; max-width: 350px; }
+.carousel-inline { flex: 1; min-width: 150px; }
+.carousel-item-content { display: flex; align-items: center; gap: 4px; }
+.carousel-text { font-size: 13px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 </style>

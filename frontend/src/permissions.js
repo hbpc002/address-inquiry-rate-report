@@ -62,6 +62,7 @@ export const PERMISSION_REGISTRY = {
     permissions: {
       view: '查看',
       clear_data: '清除数据',
+      changelogs: '管理更新日志',
     },
   },
   users: {
