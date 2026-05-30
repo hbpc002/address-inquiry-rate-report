@@ -218,6 +218,27 @@ def import_checkins(
     return ImportCheckinResponse(count=count, batch=batch)
 
 
+@router.delete("/by-date", response_model=dict)
+def delete_checkins_by_date(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """按日期删除签到记录"""
+    require_permission(current_user, "checkins.delete")
+    try:
+        target = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
+    records = db.query(Checkin).filter(func.date(Checkin.checkin_time) == target).all()
+    count = len(records)
+    for r in records:
+        db.delete(r)
+    db.commit()
+    log_operation(db, current_user["id"], "delete_by_date", "checkins", None, {"date": date, "count": count})
+    return {"count": count}
+
+
 @router.delete("/{checkin_id}", response_model=dict)
 def delete_checkin(
     checkin_id: int,

@@ -101,24 +101,31 @@
     </el-card>
 
     <!-- 导入排班对话框 -->
-    <el-dialog v-if="userStore.hasPermission('schedules.upload')" v-model="importVisible" title="导入排班" width="500px">
+    <el-dialog v-if="userStore.hasPermission('schedules.upload')" v-model="importVisible" title="导入排班" width="500px" @closed="closeImport">
       <el-upload
         ref="upload"
+        drag
         :auto-upload="false"
-        :limit="1"
+        multiple
         accept=".xlsx"
         :on-change="handleFileChange"
+        :on-remove="handleFileRemove"
+        :file-list="fileList"
       >
-        <el-button type="primary">选择排班Excel文件</el-button>
+        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+        <div class="el-upload__text">拖拽Excel文件到此处，或<em>点击选择</em></div>
         <template #tip>
-          <div class="el-upload__tip">
-            请上传排班表Excel文件，系统将自动解析员工信息和排班数据<br/>
-            格式要求：第1列班组/角色，第2列姓名，后续列为日期和班次
-          </div>
+          <div class="el-upload__tip">支持多文件同时拖入，系统将自动解析员工信息和排班数据<br/>
+          格式要求：第1列班组/角色，第2列姓名，后续列为日期和班次</div>
         </template>
       </el-upload>
+      <div v-if="importResults.length" style="margin-top: 12px">
+        <el-tag v-for="r in importResults" :key="r.file" :type="r.success ? 'success' : 'danger'" style="margin: 2px; white-space: normal; height: auto; line-height: 1.4; padding: 4px 8px">
+          {{ r.file }} → {{ r.success ? `导入成功：员工${r.employees}人，排班${r.schedules}条` : r.error }}
+        </el-tag>
+      </div>
       <template #footer>
-        <el-button @click="importVisible = false">取消</el-button>
+        <el-button @click="closeImport">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="handleImport">导入</el-button>
       </template>
     </el-dialog>
@@ -175,6 +182,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 const tableData = ref([])
@@ -189,7 +197,8 @@ const searchForm = reactive({ date: '', name: '', emp_no: '', team: '', shift_ty
 const form = reactive({ emp_id: null, schedule_date: '', shift_type_id: null, schedule_type: '正常', notes: '' })
 const batchForm = reactive({ emp_ids: [], schedule_date: '', shift_type_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
-const importFile = ref(null)
+const fileList = ref([])
+const importResults = ref([])
 const selectedIds = ref([])
 
 async function loadData() {
@@ -258,30 +267,50 @@ async function loadOptions() {
   }
 }
 
-function handleFileChange(file) {
-  importFile.value = file.raw
+function handleFileChange(file, files) {
+  fileList.value = files.map(f => ({ name: f.name, raw: f.raw }))
+}
+
+function handleFileRemove(file, files) {
+  fileList.value = files.map(f => ({ name: f.name, raw: f.raw }))
 }
 
 async function handleImport() {
-  if (!importFile.value) {
+  if (!fileList.value.length) {
     ElMessage.warning('请选择文件')
     return
   }
   uploading.value = true
-  try {
-    const formData = new FormData()
-    formData.append('file', importFile.value)
-    const res = await api.post('/schedules/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    ElMessage.success(`导入成功！新增员工${res.data.employees}人，排班${res.data.schedules}条`)
-    importVisible.value = false
-    loadData()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '导入失败')
-  } finally {
-    uploading.value = false
+  importResults.value = []
+  let successCount = 0
+  let failCount = 0
+  for (const f of fileList.value) {
+    try {
+      const formData = new FormData()
+      formData.append('file', f.raw)
+      const res = await api.post('/schedules/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      importResults.value.push({ file: f.name, success: true, employees: res.data.employees, schedules: res.data.schedules })
+      successCount++
+    } catch (e) {
+      importResults.value.push({ file: f.name, success: false, error: e.response?.data?.detail || '导入失败' })
+      failCount++
+    }
   }
+  uploading.value = false
+  if (failCount === 0) {
+    ElMessage.success(`全部导入成功，共${successCount}个文件`)
+  } else {
+    ElMessage.warning(`${successCount}个文件成功，${failCount}个文件失败`)
+  }
+  loadData()
+}
+
+function closeImport() {
+  importVisible.value = false
+  fileList.value = []
+  importResults.value = []
 }
 
 function handleEdit(row) {
