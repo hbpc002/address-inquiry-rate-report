@@ -136,6 +136,11 @@ function statusType(s) {
 
 function showChangelogDetail(log) { currentChangelog.value = log; changelogDetailVisible.value = true }
 
+async function showAllChangelog() {
+  try { const r = await api.get('/announcements', { params: { type: '更新日志', limit: 100 } }); allChangelogs.value = r.data.items || [] } catch (e) { allChangelogs.value = [] }
+  allChangelogVisible.value = true
+}
+
 const hoursTrendOptions = computed(() => {
   const data = dailyTrend.value
   const dates = data.map(d => d.date.slice(5))
