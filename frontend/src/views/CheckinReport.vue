@@ -115,7 +115,7 @@
         </el-col>
       </el-row>
 
-      <el-table :data="paginatedData" border stripe show-summary>
+      <el-table :data="paginatedData" border stripe show-summary max-height="calc(100vh - 350px)">
         <el-table-column prop="emp_no" label="账号" width="100" />
         <el-table-column prop="name" label="用户名" width="100" />
         <el-table-column prop="dept" label="所属部门" min-width="150" />
@@ -190,7 +190,7 @@
       />
     </el-card>
 
-    <el-drawer v-model="drawerVisible" :title="drawerTitle" size="50%" direction="rtl">
+    <el-drawer v-model="drawerVisible" :title="drawerTitle" size="70%" direction="rtl">
       <template v-if="personalDetail">
         <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
           <el-descriptions-item label="工号">{{ personalDetail.emp_info.emp_no }}</el-descriptions-item>
@@ -289,90 +289,92 @@
           </el-col>
         </el-row>
 
-        <el-table :data="localDailyStats" border stripe size="small" max-height="400">
-          <el-table-column prop="date" label="日期" width="90" />
-          <el-table-column prop="scheduled_hours" label="排班工时" width="70">
-            <template #default="{ row }">
-              {{ row.scheduled_hours ? row.scheduled_hours.toFixed(1) + 'h' : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="遵时率" width="70">
-            <template #default="{ row }">
-              {{ row.punctuality_rate != null ? row.punctuality_rate.toFixed(2) + '%' : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="通话时长" width="70">
-            <template #default="{ row }">
-              {{ row.call_duration != null ? row.call_duration.toFixed(1) + 'h' : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="整理时长" width="70">
-            <template #default="{ row }">
-              {{ row.organize_duration != null ? row.organize_duration.toFixed(1) + 'h' : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="工时利用率" width="80">
-            <template #default="{ row }">
-              {{ row.utilization_rate != null ? row.utilization_rate.toFixed(2) + '%' : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="班表出勤率" width="80">
-            <template #default="{ row }">
-              {{ row.attendance_rate != null ? row.attendance_rate.toFixed(2) + '%' : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="checkin_time" label="签到时间" width="110">
-            <template #default="{ row }">
-              {{ row.checkin_time ? row.checkin_time.slice(11, 16) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="checkout_time" label="签退时间" width="110">
-            <template #default="{ row }">
-              {{ row.checkout_time ? row.checkout_time.slice(11, 16) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="duration" label="签入工时" width="80">
-            <template #default="{ row }">
-              <span :class="{ 'text-danger': row.is_long_hour }">{{ row.duration.toFixed(1) }}h</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="70">
-            <template #default="{ row }">
-              <el-tag v-if="row.status === '正常'" type="success" size="small">正常</el-tag>
-              <el-tag v-else-if="row.status === '迟到'" type="warning" size="small">迟到</el-tag>
-              <el-tag v-else-if="row.status === '早退'" type="warning" size="small">早退</el-tag>
-              <el-tag v-else-if="row.status === '缺勤'" type="danger" size="small">缺勤</el-tag>
-              <el-tag v-else-if="row.status === '请假'" type="info" size="small">请假</el-tag>
-              <el-tag v-else-if="row.status === '公休'" type="info" size="small">公休</el-tag>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="late_minutes" label="晚签" width="60">
-            <template #default="{ row }">
-              <span v-if="row.late_minutes > 0" class="text-danger">{{ row.late_minutes }}分</span>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="early_minutes" label="提前签出" width="70">
-            <template #default="{ row }">
-              <span v-if="row.early_minutes > 0" class="text-danger">{{ row.early_minutes }}分</span>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="shift_name" label="班次" width="80">
-            <template #default="{ row }">
-              <el-tag v-if="row.shift_name === '早班'" type="primary" size="small">早班</el-tag>
-              <el-tag v-else-if="row.shift_name === '中班'" type="warning" size="small">中班</el-tag>
-              <el-tag v-else type="info" size="small">{{ row.shift_name }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="超长" width="60">
-            <template #default="{ row }">
-              <el-tag v-if="row.is_long_hour" type="danger" size="small">是</el-tag>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div style="overflow-x: auto;">
+          <el-table :data="localDailyStats" border stripe size="small" max-height="400">
+            <el-table-column prop="date" label="日期" width="90" />
+            <el-table-column prop="scheduled_hours" label="排班工时" width="70">
+              <template #default="{ row }">
+                {{ row.scheduled_hours ? row.scheduled_hours.toFixed(1) + 'h' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="遵时率" width="70">
+              <template #default="{ row }">
+                {{ row.punctuality_rate != null ? row.punctuality_rate.toFixed(2) + '%' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="通话时长" width="70">
+              <template #default="{ row }">
+                {{ row.call_duration != null ? row.call_duration.toFixed(1) + 'h' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="整理时长" width="70">
+              <template #default="{ row }">
+                {{ row.organize_duration != null ? row.organize_duration.toFixed(1) + 'h' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="工时利用率" width="80">
+              <template #default="{ row }">
+                {{ row.utilization_rate != null ? row.utilization_rate.toFixed(2) + '%' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="班表出勤率" width="80">
+              <template #default="{ row }">
+                {{ row.attendance_rate != null ? row.attendance_rate.toFixed(2) + '%' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="checkin_time" label="签到时间" width="110">
+              <template #default="{ row }">
+                {{ row.checkin_time ? row.checkin_time.slice(11, 16) : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="checkout_time" label="签退时间" width="110">
+              <template #default="{ row }">
+                {{ row.checkout_time ? row.checkout_time.slice(11, 16) : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="duration" label="签入工时" width="80">
+              <template #default="{ row }">
+                <span :class="{ 'text-danger': row.is_long_hour }">{{ row.duration.toFixed(1) }}h</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="70">
+              <template #default="{ row }">
+                <el-tag v-if="row.status === '正常'" type="success" size="small">正常</el-tag>
+                <el-tag v-else-if="row.status === '迟到'" type="warning" size="small">迟到</el-tag>
+                <el-tag v-else-if="row.status === '早退'" type="warning" size="small">早退</el-tag>
+                <el-tag v-else-if="row.status === '缺勤'" type="danger" size="small">缺勤</el-tag>
+                <el-tag v-else-if="row.status === '请假'" type="info" size="small">请假</el-tag>
+                <el-tag v-else-if="row.status === '公休'" type="info" size="small">公休</el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="late_minutes" label="晚签" width="60">
+              <template #default="{ row }">
+                <span v-if="row.late_minutes > 0" class="text-danger">{{ row.late_minutes }}分</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="early_minutes" label="提前签出" width="70">
+              <template #default="{ row }">
+                <span v-if="row.early_minutes > 0" class="text-danger">{{ row.early_minutes }}分</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="shift_name" label="班次" width="80">
+              <template #default="{ row }">
+                <el-tag v-if="row.shift_name === '早班'" type="primary" size="small">早班</el-tag>
+                <el-tag v-else-if="row.shift_name === '中班'" type="warning" size="small">中班</el-tag>
+                <el-tag v-else type="info" size="small">{{ row.shift_name }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="超长" width="60">
+              <template #default="{ row }">
+                <el-tag v-if="row.is_long_hour" type="danger" size="small">是</el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </template>
       <div v-else style="text-align: center; padding: 40px; color: #999">加载中...</div>
     </el-drawer>
