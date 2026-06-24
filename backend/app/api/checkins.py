@@ -335,11 +335,34 @@ def get_checkin_report(
     ).group_by(Employee.emp_no).all()
     scheduled_map = {emp_no: float(total or 0) for emp_no, total in scheduled_data}
 
+    # Get aggregated Schedule metrics for the same date range
+    schedule_stats = db.query(
+        Employee.emp_no,
+        func.avg(Schedule.punctuality_rate),
+        func.sum(Schedule.call_duration),
+        func.sum(Schedule.organize_duration),
+        func.avg(Schedule.utilization_rate),
+        func.avg(Schedule.attendance_rate)
+    ).join(Employee, Schedule.emp_id == Employee.id).filter(
+        Schedule.schedule_date >= query_start,
+        Schedule.schedule_date <= query_end
+    ).group_by(Employee.emp_no).all()
+    schedule_agg_map = {}
+    for row in schedule_stats:
+        schedule_agg_map[row[0]] = {
+            "avg_punctuality_rate": float(row[1]) if row[1] is not None else None,
+            "total_call_duration": float(row[2]) if row[2] is not None else None,
+            "total_organize_duration": float(row[3]) if row[3] is not None else None,
+            "avg_utilization_rate": float(row[4]) if row[4] is not None else None,
+            "avg_attendance_rate": float(row[5]) if row[5] is not None else None,
+        }
+
     emp_stats = {}
     for c in checkins:
         key = c.emp_no
         if key not in emp_stats:
             emp = db.query(Employee).filter(Employee.emp_no == key).first()
+            sched_agg = schedule_agg_map.get(key, {})
             emp_stats[key] = {
                 "emp_no": c.emp_no,
                 "name": c.name,
@@ -348,6 +371,11 @@ def get_checkin_report(
                 "checkin_count": 0,
                 "total_hours": 0.0,
                 "scheduled_hours": scheduled_map.get(key, 0),
+                "avg_punctuality_rate": sched_agg.get("avg_punctuality_rate"),
+                "total_call_duration": sched_agg.get("total_call_duration"),
+                "total_organize_duration": sched_agg.get("total_organize_duration"),
+                "avg_utilization_rate": sched_agg.get("avg_utilization_rate"),
+                "avg_attendance_rate": sched_agg.get("avg_attendance_rate"),
                 "checkins": []
             }
         emp_stats[key]["checkin_count"] += 1
@@ -487,6 +515,13 @@ def get_personal_report(
     ).all()
     daily_report_map = {r.schedule_date: r for r in daily_reports}
 
+    schedules = db.query(Schedule).filter(
+        Schedule.emp_id == emp.id,
+        Schedule.schedule_date >= start,
+        Schedule.schedule_date <= end
+    ).all()
+    schedule_map = {s.schedule_date: s for s in schedules}
+
     daily_map = {}
     for c in checkins:
         d = c.checkin_time.date()
@@ -523,6 +558,7 @@ def get_personal_report(
             shift_name = "晚班"
 
         report = daily_report_map.get(d)
+        sched = schedule_map.get(d)
         daily_stats.append({
             "date": entry["date"],
             "checkin_time": entry["checkins"][0]["checkin_time"] if entry["checkins"] else None,
@@ -534,7 +570,12 @@ def get_personal_report(
             "status": report.status if report else '',
             "actual_hours": float(report.actual_hours) if report and report.actual_hours else 0,
             "late_minutes": report.late_minutes if report else 0,
-            "early_minutes": report.early_minutes if report else 0
+            "early_minutes": report.early_minutes if report else 0,
+            "punctuality_rate": float(sched.punctuality_rate) if sched and sched.punctuality_rate is not None else None,
+            "call_duration": float(sched.call_duration) if sched and sched.call_duration is not None else None,
+            "organize_duration": float(sched.organize_duration) if sched and sched.organize_duration is not None else None,
+            "utilization_rate": float(sched.utilization_rate) if sched and sched.utilization_rate is not None else None,
+            "attendance_rate": float(sched.attendance_rate) if sched and sched.attendance_rate is not None else None
         })
 
     attend_days = len(daily_stats)
@@ -596,7 +637,9 @@ def get_personal_report(
             "mid_shift_days": mid_days,
             "night_shift_days": night_days,
             "team_avg_hours": team_avg["avg_hours"],
-            "team_avg_checkin_count": team_avg["avg_checkin_count"]
+            "team_avg_checkin_count": team_avg["avg_checkin_count"],
+            "total_call_duration": round(sum(d.get("call_duration") or 0 for d in daily_stats), 1),
+            "total_organize_duration": round(sum(d.get("organize_duration") or 0 for d in daily_stats), 1)
         },
         "daily_stats": daily_stats
     }

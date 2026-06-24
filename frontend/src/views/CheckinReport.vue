@@ -134,6 +134,31 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="遵时率" width="80" sortable prop="avg_punctuality_rate">
+          <template #default="{ row }">
+            {{ row.avg_punctuality_rate != null ? row.avg_punctuality_rate.toFixed(2) + '%' : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="通话时长" width="80" sortable prop="total_call_duration">
+          <template #default="{ row }">
+            {{ row.total_call_duration != null ? row.total_call_duration.toFixed(1) + 'h' : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="整理时长" width="80" sortable prop="total_organize_duration">
+          <template #default="{ row }">
+            {{ row.total_organize_duration != null ? row.total_organize_duration.toFixed(1) + 'h' : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="工时利用率" width="90" sortable prop="avg_utilization_rate">
+          <template #default="{ row }">
+            {{ row.avg_utilization_rate != null ? row.avg_utilization_rate.toFixed(2) + '%' : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="班表出勤率" width="90" sortable prop="avg_attendance_rate">
+          <template #default="{ row }">
+            {{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="签入明细" min-width="350">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
@@ -214,6 +239,16 @@
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
+          <el-col :span="3">
+            <el-statistic title="通话总时长" :value="personalDetail.summary.total_call_duration || 0" :precision="1">
+              <template #suffix>h</template>
+            </el-statistic>
+          </el-col>
+          <el-col :span="3">
+            <el-statistic title="整理总时长" :value="personalDetail.summary.total_organize_duration || 0" :precision="1">
+              <template #suffix>h</template>
+            </el-statistic>
+          </el-col>
         </el-row>
 
         <el-row :gutter="12" style="margin-bottom: 16px">
@@ -259,6 +294,31 @@
           <el-table-column prop="scheduled_hours" label="排班工时" width="70">
             <template #default="{ row }">
               {{ row.scheduled_hours ? row.scheduled_hours.toFixed(1) + 'h' : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="遵时率" width="70">
+            <template #default="{ row }">
+              {{ row.punctuality_rate != null ? row.punctuality_rate.toFixed(2) + '%' : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="通话时长" width="70">
+            <template #default="{ row }">
+              {{ row.call_duration != null ? row.call_duration.toFixed(1) + 'h' : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="整理时长" width="70">
+            <template #default="{ row }">
+              {{ row.organize_duration != null ? row.organize_duration.toFixed(1) + 'h' : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="工时利用率" width="80">
+            <template #default="{ row }">
+              {{ row.utilization_rate != null ? row.utilization_rate.toFixed(2) + '%' : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="班表出勤率" width="80">
+            <template #default="{ row }">
+              {{ row.attendance_rate != null ? row.attendance_rate.toFixed(2) + '%' : '-' }}
             </template>
           </el-table-column>
           <el-table-column prop="checkin_time" label="签到时间" width="110">
