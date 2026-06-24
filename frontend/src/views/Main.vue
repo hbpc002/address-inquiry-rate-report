@@ -1,9 +1,13 @@
 <template>
   <el-container class="main-container">
-    <el-aside width="200px">
-      <div class="logo">排班签到系统</div>
+    <el-aside :width="sidebarWidth">
+      <div class="logo">
+        <span v-show="!isCollapsed">排班签到系统</span>
+      </div>
       <el-menu
         :default-active="activeMenu"
+        :collapse="isCollapsed"
+        :collapse-transition="false"
         router
         background-color="#304156"
         text-color="#bfcbd9"
@@ -53,6 +57,11 @@
     </el-aside>
     <el-container>
       <el-header>
+        <div class="header-left">
+          <el-button link @click="toggleSidebar" style="color: #333; font-size: 20px;">
+            <el-icon><Fold v-if="!isCollapsed" /><Expand v-else /></el-icon>
+          </el-button>
+        </div>
         <div class="header-right">
           <span>{{ userStore.user?.display_name || userStore.user?.username }}</span>
           <el-button type="primary" link @click="showChangePwd = true">修改密码</el-button>
@@ -85,7 +94,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()
@@ -96,6 +105,12 @@ const activeMenu = computed(() => route.path)
 const showChangePwd = ref(false)
 const changing = ref(false)
 const pwdForm = ref({ oldPassword: '', newPassword: '' })
+
+const isCollapsed = ref(false)
+const sidebarWidth = computed(() => isCollapsed.value ? '64px' : '200px')
+function toggleSidebar() {
+  isCollapsed.value = !isCollapsed.value
+}
 
 function handleLogout() {
   userStore.logout()
@@ -128,6 +143,8 @@ async function handleChangePwd() {
 
 .el-aside {
   background-color: #304156;
+  transition: width 0.3s ease;
+  overflow: hidden;
 }
 
 .logo {
@@ -137,6 +154,8 @@ async function handleChangePwd() {
   color: #fff;
   font-size: 18px;
   font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .el-header {
@@ -144,8 +163,13 @@ async function handleChangePwd() {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 0 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
 }
 
 .header-right {
