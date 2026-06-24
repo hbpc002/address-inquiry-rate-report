@@ -35,6 +35,11 @@ class ScheduleResponse(ScheduleBase):
     shift_time: Optional[str] = None
     time_segments: Optional[Any] = None
     work_hours: Optional[float] = None
+    punctuality_rate: Optional[float] = None
+    call_duration: Optional[float] = None
+    organize_duration: Optional[float] = None
+    utilization_rate: Optional[float] = None
+    attendance_rate: Optional[float] = None
 
     class Config:
         from_attributes = True

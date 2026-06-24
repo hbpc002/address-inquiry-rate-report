@@ -162,9 +162,18 @@
 | emp_id | INTEGER | FK(employees.id), NOT NULL | 员工ID |
 | schedule_date | DATE | NOT NULL | 排班日期 |
 | shift_type_id | INTEGER | FK(shift_types.id) | 班次类型ID |
+| shift_name | VARCHAR(50) | | 班次名称(冗余) |
+| time_segments | JSON | | 时段详情(含扩展指标) |
+| work_hours | DECIMAL(4,1) | | 排班工时 |
+| is_night | BOOLEAN | DEFAULT FALSE | 是否晚班 |
 | schedule_type | VARCHAR(20) | DEFAULT '正常' | 排班类型 |
 | original_shift_id | INTEGER | FK(shift_types.id) | 原班次ID(换班时用) |
 | notes | VARCHAR(200) | | 备注 |
+| punctuality_rate | DECIMAL(5,2) | | 遵时率(%) |
+| call_duration | DECIMAL(4,1) | | 通话时长(H) |
+| organize_duration | DECIMAL(4,1) | | 整理时长(H) |
+| utilization_rate | DECIMAL(5,2) | | 工时利用率(%) |
+| attendance_rate | DECIMAL(5,2) | | 班表出勤率(%) |
 | created_by | INTEGER | FK(users.id) | 创建人ID |
 | created_at | TIMESTAMP | DEFAULT NOW() | 创建时间 |
 | updated_at | TIMESTAMP | | 更新时间 |
@@ -324,7 +333,7 @@
 | 换班管理 | 两人交换班次 |
 | 请假申请 | 标记请假 |
 | 公休申请 | 标记公休 |
-| 排班导入 | Excel批量导入排班 |
+| 导入考勤报表 | Excel批量导入排班(含遵时率/通话时长等指标) |
 
 ### 3.5 签到记录
 
@@ -412,6 +421,7 @@ E001,张三,2026-04-14 08:05:00,2026-04-14 17:02:00,Device001,客服中心
 | POST | /api/schedules/swap | 换班 | `{schedule_a_id, schedule_b_id}` | `{message}` |
 | POST | /api/schedules/leave | 请假 | `{emp_id, date, days}` | `{id}` |
 | POST | /api/schedules/timeoff | 公休 | `{emp_id, date, days}` | `{id}` |
+| POST | /api/schedules/import-attendance-report | 导入考勤报表 | `file: .xlsx` | `{message, employees, schedules}` |
 
 ### 4.5 签到记录
 
@@ -752,28 +762,51 @@ const monthlyParams = {
 
 ## 八、导入/导出规则
 
-### 8.1 排班Excel导入
+### 8.1 考勤报表导入（替代原排班Excel导入）
 
-**文件结构**：
-- 组长师傅表：A列（班组/角色），B列（姓名），后面列：日期+班次
-- 组员班表：A列（班组），B列（姓名），后面列：日期+班次
+通过 `POST /api/schedules/import-attendance-report` 上传考勤出勤报表(.xlsx)，自动解析排班及扩展指标。
 
-**Excel列示例**：
-| A列（班组） | B列（姓名） | 20260401 | 20260402 | 20260403 | ...
-|-----------|-----------|----------|----------|----------| ---
-| 一班1组组长 | 陈坤兰 | 行政（8.0）8:00-12:30 14:30-18:00 | 中班（8.0）8:30-13:00 15:30-19:00 | ...
-| 一班1组师傅 | 陈梓灿 | 行政 | 中班 | ...
+**文件格式**：考勤系统导出的日报表，每行一个员工时段
 
-**解析规则**：
-1. A列班组匹配：一班1组~二班3组
-2. A列岗位识别：包含"组长"→组长，包含"师傅"→师傅，否则→组员
-3. 员工工号：从签到记录表匹配（账号字段）
-4. **班次识别**：从Excel表头动态解析，自动提取班次名称、时间、工作时长
+**列结构**：
 
-**动态班次解析**：
-- 从非日期列（如"晚三（8.0H）10:00-14:30 16:30-21:00"）中提取
-- 自动识别：班次名称、工作时长、开始/结束时间
-- 支持多时段班次（如上午+下午）
+| 列 | 字段 | 说明 | 映射目标 |
+|----|------|------|---------|
+| A | 排班日期 | 如 `2026-06-22` | `schedule_date` |
+| B | 区队名称 | 如 `热线运营组` | `employee.dept` |
+| C | 班组名称 | 如 `一班1组` | `employee.team` |
+| D | 姓名 | 员工姓名 | `employee.name` |
+| E | 账号 | 员工工号 | `employee.emp_no`(优先匹配) |
+| F | 班次名称 | 如 `中班9`、`行8.5` | `shift_name` |
+| G | 时间范围 | 如 `08:30~13:00` | `time_segments`(每段) |
+| M | 班次时长 | 每段工时(如 `4.5`) | `work_hours`(累加) |
+| O | 遵时率 | 如 `88.89` | `punctuality_rate` |
+| P | 通话时长(H) | 如 `2.53` | `call_duration`(累加) |
+| Q | 整理时长(H) | 如 `0.48` | `organize_duration`(累加) |
+| R | 工时利用率 | 如 `57.50%` | `utilization_rate` |
+| S | 班表出勤率 | 如 `88.89%` | `attendance_rate` |
+
+**处理逻辑**：
+1. 按 `账号(E)+日期(A)` 分组，合并多时段班次
+2. 匹配员工：账号 → 姓名 → 自动新建
+3. 同组多段合并：工时累加，遵时率/利用率/出勤率按工时加权平均
+4. `休息` → `schedule_type = "公休"`；`离职` → 跳过
+5. 先清理导入日期范围内的旧排班，再批量新建
+6. 导入完成自动触发考勤重算(`save_daily_report`)
+
+**time_segments JSON 扩展**：
+```json
+[
+  {"start": "08:30", "end": "13:00", "work_hours": 4.5,
+   "punctuality_rate": 88.89, "call_duration": 2.0,
+   "organize_duration": 0.3, "utilization_rate": 57.50,
+   "attendance_rate": 88.89},
+  {"start": "15:30", "end": "20:00", "work_hours": 4.5,
+   "punctuality_rate": 95.56, "call_duration": 2.5,
+   "organize_duration": 0.4, "utilization_rate": 67.44,
+   "attendance_rate": 95.56}
+]
+```
 
 ### 8.2 签到记录导入
 
@@ -1169,10 +1202,11 @@ def get_default_permissions(role_name):
 |-----|------|------|
 | v1.0 | 2026-04-16 | 初始版本 |
 | v1.1 | 2026-04-24 | 新增员工导入功能 |
+| v1.2 | 2026-06-23 | 新增考勤报表导入接口，替代原排班导入；新增遵时率/通话时长/整理时长/工时利用率/班表出勤率字段 |
 
 ---
 
-## 十四、使用指南
+## 十五、使用指南
 
 ### 14.1 数据导入流程
 
@@ -1196,17 +1230,28 @@ def get_default_permissions(role_name):
 - 工号、姓名：必填
 - 班组、部门、岗位、状态：可选
 
-#### 步骤2：导入排班表
+#### 步骤2：导入考勤报表
 
 1. 进入「排班管理」页面
-2. 点击「导入排班」按钮
-3. 上传排班Excel文件
+2. 点击「导入考勤报表」按钮
+3. 上传考勤出勤报表Excel文件(.xlsx)
 
-**排班Excel格式要求**：
+**报表格式**：考勤系统导出的日报表，每行一个员工时段
 
-- 支持多个Sheet：组长、组员、新人
-- 每行：员工姓名
-- 每列：日期和班次信息
+**关键列**：
+
+| 列 | 内容 | 说明 |
+|----|------|------|
+| A 排班日期 | `2026-06-22` | 排班日期 |
+| E 账号 | `KF77130173` | 员工工号(优先匹配) |
+| F 班次名称 | `中班9` | 班次 |
+| G 时间范围 | `08:30~13:00` | 时段(多段自动合并) |
+| M 班次时长 | `4.5` | 工时 |
+| O 遵时率 | `88.89` | 遵时率(%) |
+| P 通话时长 | `2.53` | 通话时长(H) |
+| Q 整理时长 | `0.48` | 整理时长(H) |
+| R 工时利用率 | `57.50%` | 工时利用率(%) |
+| S 班表出勤率 | `88.89%` | 班表出勤率(%) |
 
 #### 步骤3：导入签到记录
 
@@ -1223,7 +1268,7 @@ def get_default_permissions(role_name):
 - 签入时间必填
 - 系统自动过滤非目标部门数据
 
-### 14.2 考勤计算逻辑
+### 15.2 考勤计算逻辑
 
 1. 排班表导入后，系统记录每个员工的排班信息
 2. 签到记录导入后，系统自动匹配签到与排班
@@ -1231,7 +1276,7 @@ def get_default_permissions(role_name):
 4. 计算实际工时：累加所有签到段时长
 5. 自动生成日报表和月汇总
 
-### 14.3 报表维度
+### 15.3 报表维度
 
 - **日报表**：按天查看考勤明细
 - **月度汇总**：按人按月统计工时

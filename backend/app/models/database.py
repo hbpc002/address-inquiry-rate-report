@@ -79,6 +79,11 @@ def _migrate_db():
                 ('time_segments', 'JSON'),
                 ('work_hours', 'DECIMAL(4,1)'),
                 ('is_night', 'BOOLEAN DEFAULT FALSE'),
+                ('punctuality_rate', 'DECIMAL(5,2)'),
+                ('call_duration', 'DECIMAL(4,1)'),
+                ('organize_duration', 'DECIMAL(4,1)'),
+                ('utilization_rate', 'DECIMAL(5,2)'),
+                ('attendance_rate', 'DECIMAL(5,2)'),
             ]
             for col_name, col_def in schedule_migrations:
                 if col_name not in schedule_cols:

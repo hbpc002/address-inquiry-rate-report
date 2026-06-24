@@ -5,7 +5,7 @@
         <div class="card-header">
           <span>排班管理</span>
           <el-space>
-            <el-button v-if="userStore.hasPermission('schedules.upload')" type="success" @click="dialogType = 'import'; importVisible = true">导入排班</el-button>
+            <el-button v-if="userStore.hasPermission('schedules.upload')" type="success" @click="dialogType = 'import'; importVisible = true">导入考勤报表</el-button>
             <el-button v-if="userStore.hasPermission('schedules.create')" type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
             <el-button v-if="userStore.hasPermission('schedules.create')" type="warning" @click="dialogType = 'batch'; dialogVisible = true">批量排班</el-button>
           </el-space>
@@ -70,6 +70,31 @@
           </template>
         </el-table-column>
         <el-table-column prop="work_hours" label="工时" width="60" />
+        <el-table-column label="遵时率" width="80">
+          <template #default="{ row }">
+            <span>{{ _segValue(row, 'punctuality_rate') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="通话时长" width="80">
+          <template #default="{ row }">
+            <span>{{ _segValue(row, 'call_duration') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="整理时长" width="80">
+          <template #default="{ row }">
+            <span>{{ _segValue(row, 'organize_duration') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="工时利用率" width="80">
+          <template #default="{ row }">
+            <span>{{ _segValue(row, 'utilization_rate') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="班表出勤率" width="90">
+          <template #default="{ row }">
+            <span>{{ _segValue(row, 'attendance_rate') }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="schedule_type" label="排班类型" width="100">
           <template #default="{ row }">
             <el-tag>{{ row.schedule_type }}</el-tag>
@@ -100,8 +125,8 @@
       />
     </el-card>
 
-    <!-- 导入排班对话框 -->
-    <el-dialog v-if="userStore.hasPermission('schedules.upload')" v-model="importVisible" title="导入排班" width="500px" @closed="closeImport">
+    <!-- 导入考勤报表对话框 -->
+    <el-dialog v-if="userStore.hasPermission('schedules.upload')" v-model="importVisible" title="导入考勤报表" width="500px" @closed="closeImport">
       <el-upload
         ref="upload"
         drag
@@ -115,8 +140,8 @@
         <el-icon class="el-icon--upload"><upload-filled /></el-icon>
         <div class="el-upload__text">拖拽Excel文件到此处，或<em>点击选择</em></div>
         <template #tip>
-          <div class="el-upload__tip">支持多文件同时拖入，系统将自动解析员工信息和排班数据<br/>
-          格式要求：第1列班组/角色，第2列姓名，后续列为日期和班次</div>
+          <div class="el-upload__tip">支持多文件同时拖入，系统将自动解析排班、遵时率、通话时长、整理时长、工时利用率、班表出勤率<br/>
+          格式：考勤出勤报表(.xlsx)，每行一个时段</div>
         </template>
       </el-upload>
       <div v-if="importResults.length" style="margin-top: 12px">
@@ -237,6 +262,16 @@ async function loadData() {
   }
 }
 
+function _segValue(row, field) {
+  const seg = row.time_segments?.[row._segmentIndex]
+  const val = seg?.[field] ?? row[field]
+  if (val == null || val === '') return '-'
+  if (['punctuality_rate', 'utilization_rate', 'attendance_rate'].includes(field)) {
+    return Number(val).toFixed(1) + '%'
+  }
+  return Number(val).toFixed(2)
+}
+
 function segmentRowClass({ row }) {
   return row._segmentIndex > 0 ? 'segment-sub-row' : ''
 }
@@ -288,7 +323,7 @@ async function handleImport() {
     try {
       const formData = new FormData()
       formData.append('file', f.raw)
-      const res = await api.post('/schedules/import', formData, {
+      const res = await api.post('/schedules/import-attendance-report', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       importResults.value.push({ file: f.name, success: true, employees: res.data.employees, schedules: res.data.schedules })

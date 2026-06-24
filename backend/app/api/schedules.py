@@ -3,9 +3,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import Optional
 from datetime import date, datetime
-import pandas as pd
+from collections import defaultdict
+import zipfile
 import io
 import re
+import logging
+import pandas as pd
+from xml.etree import ElementTree as ET
 
 from app.models.database import get_db
 from app.models.schedule import Schedule
@@ -20,7 +24,74 @@ from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
 from app.services.attendance import save_daily_report
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/schedules", tags=["排班管理"])
+
+
+def _parse_xlsx_cell_text(cell, ns) -> str:
+    """Extract text from an openpyxl-style XML cell, handling inline strings and numeric."""
+    t = cell.get('t', '')
+    v_el = cell.find('s:v', ns)
+    v = v_el.text if v_el is not None else ''
+    if t == 'inlineStr':
+        t_el = cell.find('.//s:t', ns)
+        return t_el.text if t_el is not None else ''
+    return v
+
+
+def _parse_attendance_report_xlsx(content: bytes) -> list[dict]:
+    """Parse a 排班出勤情况 xlsx file using raw XML (bypasses openpyxl type bugs)."""
+    ns = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+    rows_out = []
+    with zipfile.ZipFile(io.BytesIO(content), 'r') as z:
+        for name in z.namelist():
+            if not name.startswith('xl/worksheets/') or not name.endswith('.xml'):
+                continue
+            xml_content = z.read(name)
+            root = ET.fromstring(xml_content)
+            sheet_rows = root.findall('.//s:row', ns)
+            for row_el in sheet_rows[1:]:  # skip header row
+                cells = row_el.findall('s:c', ns)
+                rd = {}
+                for cell in cells:
+                    ref = cell.get('r')
+                    col = ''.join(c for c in ref if c.isalpha())
+                    rd[col] = _parse_xlsx_cell_text(cell, ns)
+
+                date_val = rd.get('A', '')
+                shift_name = rd.get('F', '')
+                if not date_val or not shift_name:
+                    continue
+
+                time_range = rd.get('G', '') or '00:00~00:00'
+                time_parts = time_range.split('~')
+                time_start = time_parts[0].strip() if len(time_parts) > 0 else ''
+                time_end = time_parts[1].strip() if len(time_parts) > 1 else ''
+
+                def _num(val, default=0):
+                    try:
+                        return float(str(val).rstrip('%'))
+                    except (ValueError, TypeError):
+                        return default
+
+                rows_out.append({
+                    'date': date_val,
+                    'dept': rd.get('B', ''),
+                    'team': rd.get('C', ''),
+                    'name': rd.get('D', ''),
+                    'emp_no': rd.get('E', ''),
+                    'shift_name': shift_name,
+                    'time_start': time_start,
+                    'time_end': time_end,
+                    'work_hours': _num(rd.get('M')),
+                    'punctuality_rate': _num(rd.get('O')),
+                    'call_duration': _num(rd.get('P')),
+                    'organize_duration': _num(rd.get('Q')),
+                    'utilization_rate': _num(rd.get('R')),
+                    'attendance_rate': _num(rd.get('S')),
+                })
+    return rows_out
 
 def parse_shift_from_cell(cell_value: str) -> Optional[dict]:
     if pd.isna(cell_value) or not cell_value:
@@ -219,7 +290,12 @@ def get_schedules(
             "shift_name": shift_name,
             "shift_time": _format_shift_time(time_segments),
             "time_segments": time_segments,
-            "work_hours": work_hours
+            "work_hours": work_hours,
+            "punctuality_rate": float(s.punctuality_rate) if s.punctuality_rate is not None else None,
+            "call_duration": float(s.call_duration) if s.call_duration is not None else None,
+            "organize_duration": float(s.organize_duration) if s.organize_duration is not None else None,
+            "utilization_rate": float(s.utilization_rate) if s.utilization_rate is not None else None,
+            "attendance_rate": float(s.attendance_rate) if s.attendance_rate is not None else None,
         })
     return ScheduleListResponse(items=result_items, total=total)
 
@@ -362,178 +438,166 @@ def batch_delete_schedules(
     log_operation(db, current_user["id"], "batch_delete_schedules", "schedules", None, {"ids": ids, "count": len(schedules)})
     return {"message": f"批量删除成功，共删除{len(schedules)}条", "count": len(schedules)}
 
-@router.post("/import", response_model=dict)
-def import_schedule_excel(
+@router.post("/import-attendance-report", response_model=dict)
+def import_attendance_report(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """从排班Excel导入员工和排班（支持多个sheet：组长、组员、新人）"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
+    """从考勤出勤报表(.xlsx)导入排班数据，替换已有排班"""
     require_permission(current_user, "schedules.upload")
-    
+
     contents = file.file.read()
-    logger.info(f"收到文件，大小: {len(contents)}")
-    
+    logger.info(f"收到考勤报表文件，大小: {len(contents)}")
+
     if not contents:
         raise HTTPException(status_code=400, detail="文件为空")
-    
-    # 解析Excel
+
     try:
-        xlsx = pd.ExcelFile(io.BytesIO(contents))
-        sheet_names = xlsx.sheet_names
-        logger.info(f"解析成功: {sheet_names}")
+        rows = _parse_attendance_report_xlsx(contents)
     except Exception as e:
+        logger.error(f"考勤报表解析失败: {e}")
+        raise HTTPException(status_code=400, detail=f"文件解析失败: {str(e)}")
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="未解析到有效数据")
+
+    groups = defaultdict(list)
+    for r in rows:
+        key = (r['emp_no'], r['date'])
+        groups[key].append(r)
+
+    covered_dates = {r['date'] for r in rows}
+    date_objs = set()
+    for d in covered_dates:
         try:
-            xlsx = pd.ExcelFile(io.BytesIO(contents), engine='openpyxl')
-            sheet_names = xlsx.sheet_names
-        except Exception as e2:
-            logger.error(f"Excel解析失败: {e2}")
-            raise HTTPException(status_code=400, detail=f"Excel解析失败: {str(e2)}")
-    
-    if not sheet_names:
-        raise HTTPException(status_code=400, detail="Excel文件中没有sheet")
-    
-    # 过滤有效sheet
-    valid_sheets = [sn for sn in sheet_names 
-                 if not any(kw in sn for kw in ['工时', '人员分组', '人员'])
-                 and any(kw in sn for kw in ['组长', '组员', '新人'])]
-    
-    if not valid_sheets:
-        raise HTTPException(status_code=400, detail=f"未找到有效sheet，现有: {sheet_names}")
-    
-    # 员工映射
-    emp_map = {}
-    for e in db.query(Employee).all():
-        emp_map[e.emp_no] = {"name": e.name, "emp_id": e.id}
-    
+            date_objs.add(datetime.strptime(d, '%Y-%m-%d').date())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"无效日期格式: {d}")
+
+    # Delete existing schedules for covered dates
+    deleted = db.query(Schedule).filter(Schedule.schedule_date.in_(date_objs)).delete(synchronize_session=False)
+    db.commit()
+    if deleted:
+        logger.info(f"已清理 {deleted} 条旧排班记录")
+
     created_employees = 0
     created_schedules = 0
     created_shifts = 0
-    skipped_no_match = 0
-    
-    for sheet_name in valid_sheets:
-        df = pd.read_excel(xlsx, sheet_name=sheet_name)
-        
-        if df.empty:
+
+    for (emp_no, schedule_date_str), segments in groups.items():
+        try:
+            schedule_date = datetime.strptime(schedule_date_str, '%Y-%m-%d').date()
+        except ValueError:
             continue
-            
-        cols = df.columns.tolist()
 
-        shift_definitions = {}
-        for col in cols:
-            if pd.isna(col):
-                continue
-            col_str = str(col)
-            try:
-                if int(col_str):
-                    continue
-            except (ValueError, TypeError):
-                pass
-            if '休息' in col_str:
-                continue
-            shift_info = parse_shift_from_header(col_str)
-            if shift_info and shift_info["name"]:
-                shift_definitions[shift_info["name"]] = shift_info
+        first_seg = segments[0]
+        shift_name = first_seg['shift_name']
 
-        for idx, row in df.iterrows():
-            if idx == 0:
-                continue
-            col_a = row.get('日期') or row.get('班组')
-            col_b = row.get('Unnamed: 1') or row.get('姓名')
-            if pd.isna(col_a) or pd.isna(col_b):
-                continue
-            col_a = str(col_a).strip()
-            col_b = str(col_b).strip()
-            if not is_valid_employee_name(col_b):
-                continue
-            team, role = extract_team_role(col_a)
+        if shift_name == '离职':
+            continue
 
-            matched_emp_id = None
-            for emp_no, info in emp_map.items():
-                if info["name"] == col_b:
-                    matched_emp_id = info["emp_id"]
-                    break
+        emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+        if not emp:
+            emp = db.query(Employee).filter(Employee.name == first_seg['name']).first()
+        if not emp:
+            emp = Employee(
+                emp_no=emp_no,
+                name=first_seg['name'],
+                team=first_seg['team'],
+                dept=first_seg['dept'] or '客服中心',
+                role='组员',
+                status='在职',
+                created_by=current_user["id"]
+            )
+            db.add(emp)
+            db.flush()
+            created_employees += 1
 
-            if not matched_emp_id:
-                emp = Employee(
-                    emp_no=f"TEMP_{col_b}",
-                    name=col_b,
-                    team=team,
-                    dept='客服中心',
-                    role=role,
-                    status='在职',
-                    created_by=current_user["id"]
-                )
-                db.add(emp)
-                db.flush()
-                emp_map[f"TEMP_{col_b}"] = {"name": col_b, "emp_id": emp.id}
-                created_employees += 1
-                matched_emp_id = emp.id
+        time_segments = []
+        total_work_hours = 0.0
+        total_call = 0.0
+        total_organize = 0.0
+        weighted_punctuality = 0.0
+        weighted_utilization = 0.0
+        weighted_attendance = 0.0
 
-            emp = db.query(Employee).filter(Employee.id == matched_emp_id).first()
+        for seg in segments:
+            seg_hours = seg['work_hours']
+            seg_entry = {
+                "start": seg['time_start'],
+                "end": seg['time_end'],
+                "work_hours": seg_hours,
+                "punctuality_rate": seg['punctuality_rate'],
+                "call_duration": seg['call_duration'],
+                "organize_duration": seg['organize_duration'],
+                "utilization_rate": seg['utilization_rate'],
+                "attendance_rate": seg['attendance_rate'],
+            }
+            time_segments.append(seg_entry)
+            total_work_hours += seg_hours
+            total_call += seg['call_duration']
+            total_organize += seg['organize_duration']
+            weighted_punctuality += seg['punctuality_rate'] * seg_hours
+            weighted_utilization += seg['utilization_rate'] * seg_hours
+            weighted_attendance += seg['attendance_rate'] * seg_hours
 
-            for col in cols:
-                if pd.isna(col):
-                    continue
-                try:
-                    col_int = int(col)
-                except (ValueError, TypeError):
-                    continue
-                if col_int < 20200000:
-                    continue
-                try:
-                    schedule_date = datetime.strptime(str(col_int), '%Y%m%d').date()
-                except:
-                    continue
-                shift_name = row.get(col_int)
-                if pd.isna(shift_name):
-                    continue
-                shift_name = str(shift_name).strip()
-                if shift_name == '休息' or not shift_name:
-                    continue
-                shift_info = None
-                for name, info in shift_definitions.items():
-                    if name in shift_name or shift_name in name:
-                        shift_info = info
-                        break
-                if not shift_info:
-                    shift_info = parse_shift_from_cell(shift_name)
-                if not shift_info:
-                    continue
-                shift = get_or_create_shift(db, shift_info)
-                if shift:
-                    created_shifts += 1
-                if not shift:
-                    continue
-                existing = db.query(Schedule).filter(
-                    and_(
-                        Schedule.emp_id == emp.id,
-                        Schedule.schedule_date == schedule_date
-                    )
-                ).first()
-                if not existing:
-                    schedule = Schedule(
-                        emp_id=emp.id,
-                        schedule_date=schedule_date,
-                        shift_type_id=shift.id,
-                        shift_name=shift_info["name"],
-                        time_segments=shift_info.get("time_segments"),
-                        work_hours=shift_info.get("work_hours"),
-                        is_night=shift_info.get("is_night", False),
-                        schedule_type='正常',
-                        created_by=current_user["id"]
-                    )
-                    db.add(schedule)
-                    created_schedules += 1
+        if total_work_hours > 0:
+            overall_punctuality = round(weighted_punctuality / total_work_hours, 2)
+            overall_utilization = round(weighted_utilization / total_work_hours, 2)
+            overall_attendance = round(weighted_attendance / total_work_hours, 2)
+        else:
+            overall_punctuality = 0.0
+            overall_utilization = 0.0
+            overall_attendance = 0.0
+
+        is_night = '晚' in shift_name
+        is_rest = (shift_name == '休息')
+        schedule_type = '公休' if is_rest else '正常'
+
+        shift_type_id = None
+        if not is_rest:
+            shift_info = {
+                "name": shift_name,
+                "time_segments": [{"start": s['time_start'], "end": s['time_end']} for s in segments],
+                "work_hours": total_work_hours,
+                "is_night": is_night,
+            }
+            shift = get_or_create_shift(db, shift_info)
+            if shift:
+                created_shifts += 1
+                shift_type_id = shift.id
+
+        schedule = Schedule(
+            emp_id=emp.id,
+            schedule_date=schedule_date,
+            shift_type_id=shift_type_id,
+            shift_name=shift_name,
+            time_segments=time_segments,
+            work_hours=total_work_hours,
+            is_night=is_night,
+            schedule_type=schedule_type,
+            punctuality_rate=overall_punctuality,
+            call_duration=total_call,
+            organize_duration=total_organize,
+            utilization_rate=overall_utilization,
+            attendance_rate=overall_attendance,
+            created_by=current_user["id"],
+        )
+        db.add(schedule)
+        created_schedules += 1
 
     db.commit()
+
+    # Trigger attendance recalculation for covered dates
+    for d in date_objs:
+        emp_ids = db.query(Schedule.emp_id).filter(Schedule.schedule_date == d).distinct().all()
+        for (eid,) in emp_ids:
+            save_daily_report(db, eid, d)
+
     return {
         "message": "导入成功",
         "employees": created_employees,
         "schedules": created_schedules,
         "shift_types": created_shifts,
-        "skipped": skipped_no_match
     }
