@@ -167,7 +167,7 @@ const hoursDistOptions = computed(() => {
         const idx = params[0].dataIndex
         const d = data[idx]
         let s = `<b>${d.date}</b><br/>`
-        const order = ['应到人数', '实到人数', '≥9h（加班）', '8~9h（正常）', '7~8h（略低）', '<7h（不足）']
+        const order = ['应到人数', '实到人数', '公休人数', '请假人数', '缺勤人数', '≥9h（加班）', '8~9h（正常）', '7~8h（略低）', '<7h（不足）']
         const pMap = {}
         params.forEach(p => { pMap[p.seriesName] = p })
         order.forEach(name => {
@@ -177,7 +177,7 @@ const hoursDistOptions = computed(() => {
         return s
       }
     },
-    legend: { data: ['≥9h（加班）', '8~9h（正常）', '7~8h（略低）', '<7h（不足）', '实到人数', '应到人数'], bottom: 0 },
+    legend: { data: ['≥9h（加班）', '8~9h（正常）', '7~8h（略低）', '<7h（不足）', '实到人数', '应到人数', '公休人数', '请假人数', '缺勤人数'], bottom: 0 },
     grid: { left: '3%', right: '4%', bottom: '22%', containLabel: true },
     xAxis: { type: 'category', data: dates },
     yAxis: { type: 'value', minInterval: 1 },
@@ -187,7 +187,10 @@ const hoursDistOptions = computed(() => {
       { name: '7~8h（略低）', type: 'bar', stack: 'total', data: data.map(d => d.slight_short), itemStyle: { color: '#e6a23c' } },
       { name: '<7h（不足）', type: 'bar', stack: 'total', data: data.map(d => d.short_hours), itemStyle: { color: '#909399' } },
       { name: '实到人数', type: 'line', data: data.map(d => d.total_with_hours), smooth: true, lineStyle: { type: 'dashed', color: '#5470c6' }, itemStyle: { color: '#5470c6' }, symbol: 'circle', symbolSize: 4 },
-      { name: '应到人数', type: 'line', data: data.map(d => d.total), smooth: true, lineStyle: { type: 'dotted', color: '#fc8452' }, itemStyle: { color: '#fc8452' }, symbol: 'diamond', symbolSize: 4 },
+      { name: '应到人数', type: 'line', data: data.map(d => d.expected_count), smooth: true, lineStyle: { type: 'dotted', color: '#fc8452' }, itemStyle: { color: '#fc8452' }, symbol: 'diamond', symbolSize: 4 },
+      { name: '公休人数', type: 'line', data: data.map(d => d.timeoff), smooth: true, lineStyle: { type: 'dotted', color: '#b37feb' }, itemStyle: { color: '#b37feb' }, symbol: 'triangle', symbolSize: 4 },
+      { name: '请假人数', type: 'line', data: data.map(d => d.leave), smooth: true, lineStyle: { type: 'dotted', color: '#69b1ff' }, itemStyle: { color: '#69b1ff' }, symbol: 'rect', symbolSize: 4 },
+      { name: '缺勤人数', type: 'line', data: data.map(d => d.absent), smooth: true, lineStyle: { type: 'dotted', color: '#ff7875' }, itemStyle: { color: '#ff7875' }, symbol: 'pin', symbolSize: 4 },
     ],
   }
 })

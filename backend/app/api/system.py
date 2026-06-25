@@ -138,17 +138,22 @@ def get_daily_trend(
         d = r.schedule_date.isoformat()
         if d not in daily:
             daily[d] = {
-                "date": d, "total": 0, "total_with_hours": 0,
+                "date": d, "total": 0, "expected_count": 0, "total_with_hours": 0,
                 "normal": 0, "late": 0, "absent": 0, "leave": 0, "timeoff": 0,
                 "actual_hours": 0.0, "scheduled_hours": 0.0,
                 "long_hours": 0, "normal_hours_count": 0, "slight_short": 0, "short_hours": 0,
             }
         daily[d]["total"] += 1
+        status_raw = r.status or "未知"
+        if status_raw != "公休":
+            daily[d]["expected_count"] += 1
         status = r.status or "未知"
-        if status in daily[d]:
-            daily[d][status] += 1
+        status_key_map = {"正常": "normal", "迟到": "late", "缺勤": "absent", "请假": "leave", "公休": "timeoff"}
+        mapped_status = status_key_map.get(status, status)
+        if mapped_status in daily[d]:
+            daily[d][mapped_status] += 1
         else:
-            daily[d][status] = 1
+            daily[d][mapped_status] = 1
         ah = float(r.actual_hours or 0)
         if ah > 0:
             daily[d]["total_with_hours"] += 1

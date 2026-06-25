@@ -50,24 +50,27 @@
           </el-form>
 
           <el-row :gutter="20" class="stats-row">
-            <el-col :span="4">
+            <el-col :span="3">
               <el-statistic title="应到人数" :value="dailyStats.total" />
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
               <el-statistic title="出勤人数" :value="dailyStats.attend" />
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
               <el-statistic title="正常" :value="dailyStats.normal" >
                 <template #suffix><span class="stat-normal">人</span></template>
               </el-statistic>
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
               <el-statistic title="迟到" :value="dailyStats.late" />
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
               <el-statistic title="缺勤" :value="dailyStats.absent" />
             </el-col>
-            <el-col :span="4">
+            <el-col :span="3">
+              <el-statistic title="公休" :value="dailyStats.rest" />
+            </el-col>
+            <el-col :span="3">
               <el-statistic title="出勤率" :value="dailyStats.rate" :precision="1" suffix="%" />
             </el-col>
           </el-row>
@@ -524,7 +527,7 @@ const rankingData = ref([])
 const teams = ref([])
 const depts = ref([])
 
-const dailyStats = reactive({ total: 0, attend: 0, normal: 0, late: 0, absent: 0, rate: 0 })
+const dailyStats = reactive({ total: 0, attend: 0, normal: 0, late: 0, absent: 0, rest: 0, rate: 0 })
 const monthlyStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
 const rangeStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
 
@@ -671,11 +674,12 @@ function calcDailyStats(data) {
     seen.add(d.emp_id)
     return true
   })
-  dailyStats.total = unique.length
-  dailyStats.attend = unique.filter(d => d.status !== '缺勤').length
+  dailyStats.total = unique.filter(d => d.status !== '公休').length
+  dailyStats.attend = unique.filter(d => d.status !== '缺勤' && d.status !== '公休').length
   dailyStats.normal = unique.filter(d => d.status === '正常').length
   dailyStats.late = unique.filter(d => d.status === '迟到').length
   dailyStats.absent = unique.filter(d => d.status === '缺勤').length
+  dailyStats.rest = unique.filter(d => d.status === '公休').length
   dailyStats.rate = dailyStats.total ? Math.round(dailyStats.attend / dailyStats.total * 100) : 0
 }
 

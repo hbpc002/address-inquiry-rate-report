@@ -357,6 +357,28 @@ class TestDashboardStats:
         assert "2026-05-15" in dates
         assert "2026-05-16" in dates
 
+    def test_daily_trend_expected_count_excludes_rest(self):
+        db = SessionLocal()
+        try:
+            e1 = self._seed_employee(db, "E001", "员工1")
+            e2 = self._seed_employee(db, "E002", "员工2")
+            e3 = self._seed_employee(db, "E003", "员工3")
+            d = date(2026, 5, 20)
+            self._seed_report(db, e1.id, d, "正常", actual_hours=8.0)
+            self._seed_report(db, e2.id, d, "公休", actual_hours=0)
+            self._seed_report(db, e3.id, d, "缺勤", actual_hours=0)
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/daily-trend?year_month=2026-05")
+        data = resp.json()
+        day = next(d for d in data if d["date"] == "2026-05-20")
+        assert day["total"] == 3
+        assert day["expected_count"] == 2
+        assert day["timeoff"] == 1
+        assert day["absent"] == 1
+
     def test_daily_trend_hour_buckets(self):
         db = SessionLocal()
         try:
