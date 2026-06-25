@@ -93,6 +93,37 @@ class TestCheckinImport:
         resp = self._upload_csv(csv_content)
         assert resp.status_code == 400
 
+    def test_import_replaces_old_records_on_same_date(self):
+        # 第一次导入
+        csv_content = (
+            "工号,姓名,签到时间,签退时间,设备号,归属部门\n"
+            "E001,张三,2026-05-30 08:00:00,2026-05-30 17:00:00,D001,"
+            "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+        )
+        resp1 = self._upload_csv(csv_content)
+        assert resp1.status_code == 200
+        assert resp1.json()["count"] == 1
+
+        # 第二次导入同一日期，不同数据
+        csv_content2 = (
+            "工号,姓名,签到时间,签退时间,设备号,归属部门\n"
+            "E001,张三,2026-05-30 09:00:00,2026-05-30 18:00:00,D002,"
+            "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+        )
+        resp2 = self._upload_csv(csv_content2)
+        assert resp2.status_code == 200
+        assert resp2.json()["count"] == 1
+
+        # 验证旧记录被替换，只有 1 条记录
+        db = SessionLocal()
+        try:
+            records = db.query(Checkin).all()
+            assert len(records) == 1
+            assert records[0].checkin_time.hour == 9
+            assert records[0].device_no == "D002"
+        finally:
+            db.close()
+
 
 class TestCheckinDeleteByDate:
 

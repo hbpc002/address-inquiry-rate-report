@@ -75,7 +75,7 @@ def import_checkins(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    """导入签到记录，只取目标部门的员工"""
+    """导入签到记录，只取目标部门的员工。按日期删除旧数据后批量插入。"""
     require_permission(current_user, "checkins.upload")
     
     batch = str(uuid.uuid4())[:8]
@@ -90,9 +90,6 @@ def import_checkins(
     text = content.decode(encoding)
     reader = csv.DictReader(io.StringIO(text))
     
-    count = 0
-    skipped = 0
-    
     rows = list(reader)
     if not rows:
         raise HTTPException(status_code=400, detail="CSV文件为空")
@@ -102,14 +99,15 @@ def import_checkins(
     if not has_required:
         raise HTTPException(status_code=400, detail="CSV文件格式错误：缺少必要字段")
     
+    new_records = []
+    dates = set()
+    
     for row in rows:
         try:
             dept = row.get('所属部门全路径', '') or row.get('归属部门', '') or ''
             dept = str(dept).strip()
             
-            # 检查是否在目标部门下
             if not dept.startswith(TARGET_DEPT):
-                skipped += 1
                 continue
             
             emp_no = row.get('账号', '') or row.get('工号', '') or ''
@@ -140,35 +138,34 @@ def import_checkins(
                 except:
                     pass
 
-            existing = db.query(Checkin).filter(
-                Checkin.name == name,
-                Checkin.checkin_time == checkin_time
-            ).first()
-            if existing:
-                if checkout_time and not existing.checkout_time:
-                    existing.checkout_time = checkout_time
-                skipped += 1
-                continue
-
-            checkin = Checkin(
-                emp_no=emp_no,
-                name=name,
-                checkin_time=checkin_time,
-                checkout_time=checkout_time,
-                device_no=device_no,
-                dept=dept,
-                import_batch=batch
-            )
-            db.add(checkin)
-            count += 1
+            dates.add(checkin_time.date())
+            new_records.append({
+                "emp_no": emp_no,
+                "name": name,
+                "checkin_time": checkin_time,
+                "checkout_time": checkout_time,
+                "device_no": device_no,
+                "dept": dept,
+                "import_batch": batch,
+            })
 
             # 同步更新员工表的部门
             if dept:
                 db.query(Employee).filter(Employee.emp_no == emp_no).update({"dept": dept})
-        except Exception as e:
+        except Exception:
             continue
 
+    # 按日期删除旧数据，再批量插入新数据
+    if dates:
+        db.query(Checkin).filter(
+            func.date(Checkin.checkin_time).in_(dates)
+        ).delete(synchronize_session=False)
+
+    if new_records:
+        db.bulk_insert_mappings(Checkin, new_records)
+
     db.commit()
+    count = len(new_records)
     log_operation(db, current_user["id"], "import_checkins", "checkins", None, {"batch": batch, "count": count})
 
     checkin_emp_nos = db.query(Checkin.emp_no).filter(Checkin.import_batch == batch).distinct().all()
@@ -198,7 +195,6 @@ def import_checkins(
                 ~Checkin.emp_no.like('TEMP_%')
             ).first()
             if checkin_with_real_no:
-                # 检查真实工号是否已被使用
                 existing = db.query(Employee).filter(
                     Employee.emp_no == checkin_with_real_no.emp_no,
                     Employee.id != emp.id
