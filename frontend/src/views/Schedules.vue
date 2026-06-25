@@ -36,7 +36,7 @@
           <el-select v-model="searchForm.schedule_type" placeholder="全部" clearable style="width: 100px">
             <el-option label="正常" value="正常" />
             <el-option label="请假" value="请假" />
-            <el-option label="公休" value="公休" />
+            <el-option label="休息" value="休息" />
             <el-option label="加班" value="加班" />
           </el-select>
         </el-form-item>
@@ -174,7 +174,7 @@
           <el-select v-model="form.schedule_type">
             <el-option label="正常" value="正常" />
             <el-option label="请假" value="请假" />
-            <el-option label="公休" value="公休" />
+            <el-option label="休息" value="休息" />
             <el-option label="加班" value="加班" />
           </el-select>
         </el-form-item>

@@ -328,7 +328,7 @@
         <el-form-item label="类型">
           <el-select v-model="adjustForm.type" placeholder="选择类型">
             <el-option label="签出培训" value="培训" />
-            <el-option label="公休" value="公休" />
+            <el-option label="休息" value="休息" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注">
@@ -419,7 +419,7 @@ const detailHoursOptions = computed(() => {
 
 const detailStatusOptions = computed(() => {
   if (!detailRecords.value.length) return {}
-  const statusCount = { '正常': 0, '迟到': 0, '早退': 0, '缺勤': 0, '请假': 0, '公休': 0 }
+  const statusCount = { '正常': 0, '迟到': 0, '早退': 0, '缺勤': 0, '请假': 0, '休息': 0 }
   detailRecords.value.forEach(d => { if (statusCount[d.status] !== undefined) statusCount[d.status]++ })
   const data = Object.entries(statusCount).filter(([, v]) => v > 0).map(([n, v]) => ({ name: n, value: v }))
   return createPieOptions(data, '考勤状态分布')
@@ -433,7 +433,7 @@ function getRateClass(rate) {
 }
 
 function getStatusType(status) {
-  const map = { '正常': 'success', '迟到': 'warning', '早退': 'warning', '缺勤': 'danger', '请假': 'info', '公休': '' }
+  const map = { '正常': 'success', '迟到': 'warning', '早退': 'warning', '缺勤': 'danger', '请假': 'info', '休息': '' }
   return map[status] || 'info'
 }
 

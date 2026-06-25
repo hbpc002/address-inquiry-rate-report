@@ -66,7 +66,7 @@ def get_stats(
     monthly_late = len([r for r in month_reports if r.status == "迟到"])
     monthly_absent = len([r for r in month_reports if r.status == "缺勤"])
     monthly_leave = len([r for r in month_reports if r.status == "请假"])
-    monthly_timeoff = len([r for r in month_reports if r.status == "公休"])
+    monthly_timeoff = len([r for r in month_reports if r.status == "休息"])
     monthly_actual_hours = sum(float(r.actual_hours or 0) for r in month_reports)
     monthly_scheduled_hours = sum(float(r.scheduled_hours or 0) for r in month_reports)
     monthly_overtime_hours = sum(float(r.overtime_hours or 0) for r in month_reports)
@@ -78,7 +78,7 @@ def get_stats(
     latest_late = len([r for r in latest_reports if r.status == "迟到"])
     latest_absent = len([r for r in latest_reports if r.status == "缺勤"])
     latest_leave = len([r for r in latest_reports if r.status == "请假"])
-    latest_timeoff = len([r for r in latest_reports if r.status == "公休"])
+    latest_timeoff = len([r for r in latest_reports if r.status == "休息"])
 
     attendance_rate = round(monthly_normal / monthly_total * 100, 1) if monthly_total > 0 else 0
     overtime_rate = round(monthly_overtime_hours / monthly_actual_hours * 100, 1) if monthly_actual_hours > 0 else 0
@@ -145,10 +145,10 @@ def get_daily_trend(
             }
         daily[d]["total"] += 1
         status_raw = r.status or "未知"
-        if status_raw != "公休":
+        if status_raw != "休息":
             daily[d]["expected_count"] += 1
         status = r.status or "未知"
-        status_key_map = {"正常": "normal", "迟到": "late", "缺勤": "absent", "请假": "leave", "公休": "timeoff"}
+        status_key_map = {"正常": "normal", "迟到": "late", "缺勤": "absent", "请假": "leave", "休息": "timeoff"}
         mapped_status = status_key_map.get(status, status)
         if mapped_status in daily[d]:
             daily[d][mapped_status] += 1

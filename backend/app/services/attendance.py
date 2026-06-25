@@ -114,7 +114,7 @@ def calculate_daily_attendance(db: Session, emp_id: int, schedule_date: date):
                     return True
         return False
 
-    if schedule.schedule_type in ["请假", "公休", "加班"]:
+    if schedule.schedule_type in ["请假", "休息", "加班"]:
         segments = (shift_info or {}).get("time_segments", [])
         scheduled_hours = shift_info["work_hours"] if shift_info else 0
         segment_details = [{
@@ -428,7 +428,7 @@ def calculate_monthly_summary(db: Session, emp_id: int, year_month: str):
     early_days = len([r for r in daily_reports if r.status == "早退"])
     absent_days = len([r for r in daily_reports if r.status == "缺勤"])
     leave_days = len([r for r in daily_reports if r.status == "请假"])
-    timeoff_days = len([r for r in daily_reports if r.status == "公休"])
+    timeoff_days = len([r for r in daily_reports if r.status == "休息"])
 
     owed_hours = max(0, scheduled - actual - overtime)
 

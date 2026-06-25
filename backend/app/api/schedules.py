@@ -553,7 +553,7 @@ def import_attendance_report(
 
         is_night = '晚' in shift_name
         is_rest = (shift_name == '休息')
-        schedule_type = '公休' if is_rest else '正常'
+        schedule_type = '休息' if is_rest else '正常'
 
         shift_type_id = None
         if not is_rest:

@@ -344,7 +344,7 @@
                 <el-tag v-else-if="row.status === '早退'" type="warning" size="small">早退</el-tag>
                 <el-tag v-else-if="row.status === '缺勤'" type="danger" size="small">缺勤</el-tag>
                 <el-tag v-else-if="row.status === '请假'" type="info" size="small">请假</el-tag>
-                <el-tag v-else-if="row.status === '公休'" type="info" size="small">公休</el-tag>
+                <el-tag v-else-if="row.status === '休息'" type="info" size="small">休息</el-tag>
                 <span v-else>-</span>
               </template>
             </el-table-column>

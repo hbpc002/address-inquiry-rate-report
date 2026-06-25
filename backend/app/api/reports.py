@@ -163,7 +163,7 @@ def get_reports_by_date_range(
             summary["absent_days"] += 1
         elif s == "请假":
             summary["leave_days"] += 1
-        elif s == "公休":
+        elif s == "休息":
             summary["timeoff_days"] += 1
     
     # 计算欠时
@@ -290,7 +290,7 @@ def get_month_summary(
             "early_days": len([r for r in daily_reports if r.status == "早退"]),
             "absent_days": len([r for r in daily_reports if r.status == "缺勤"]),
             "leave_days": len([r for r in daily_reports if r.status == "请假"]),
-            "timeoff_days": len([r for r in daily_reports if r.status == "公休"])
+            "timeoff_days": len([r for r in daily_reports if r.status == "休息"])
         })
 
     return {"items": result, "total": total}
@@ -459,7 +459,7 @@ def export_report(
         if dept:
             employees = employees.filter(Employee.dept == dept)
 
-        writer.writerow(["工号", "姓名", "班组", "部门", "计划工时", "实际工时", "加班工时", "欠时工时", "正常天数", "迟到天数", "早退天数", "缺勤天数", "请假天数", "公休天数"])
+        writer.writerow(["工号", "姓名", "班组", "部门", "计划工时", "实际工时", "加班工时", "欠时工时", "正常天数", "迟到天数", "早退天数", "缺勤天数", "请假天数", "休息天数"])
 
         for emp in employees.all():
             daily_reports = db.query(DailyReport).filter(
@@ -489,7 +489,7 @@ def export_report(
                 len([r for r in daily_reports if r.status == "早退"]),
                 len([r for r in daily_reports if r.status == "缺勤"]),
                 len([r for r in daily_reports if r.status == "请假"]),
-                len([r for r in daily_reports if r.status == "公休"])
+                len([r for r in daily_reports if r.status == "休息"])
             ])
         filename = f"monthly_report_{year_month}.csv"
 

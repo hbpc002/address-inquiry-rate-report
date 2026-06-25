@@ -263,7 +263,7 @@ class TestDashboardStats:
             self._seed_report(db, e2.id, latest, "迟到")
             self._seed_report(db, e3.id, latest, "缺勤")
             self._seed_report(db, e4.id, latest, "请假")
-            self._seed_report(db, e5.id, latest, "公休")
+            self._seed_report(db, e5.id, latest, "休息")
             db.commit()
         finally:
             db.close()
@@ -365,7 +365,7 @@ class TestDashboardStats:
             e3 = self._seed_employee(db, "E003", "员工3")
             d = date(2026, 5, 20)
             self._seed_report(db, e1.id, d, "正常", actual_hours=8.0)
-            self._seed_report(db, e2.id, d, "公休", actual_hours=0)
+            self._seed_report(db, e2.id, d, "休息", actual_hours=0)
             self._seed_report(db, e3.id, d, "缺勤", actual_hours=0)
             db.commit()
         finally:

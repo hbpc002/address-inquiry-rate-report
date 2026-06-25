@@ -40,7 +40,7 @@
                 <el-option label="早退" value="早退" />
                 <el-option label="缺勤" value="缺勤" />
                 <el-option label="请假" value="请假" />
-                <el-option label="公休" value="公休" />
+                <el-option label="休息" value="休息" />
               </el-select>
             </el-form-item>
             <el-form-item>
@@ -68,7 +68,7 @@
               <el-statistic title="缺勤" :value="dailyStats.absent" />
             </el-col>
             <el-col :span="3">
-              <el-statistic title="公休" :value="dailyStats.rest" />
+              <el-statistic title="休息" :value="dailyStats.rest" />
             </el-col>
             <el-col :span="3">
               <el-statistic title="出勤率" :value="dailyStats.rate" :precision="1" suffix="%" />
@@ -260,7 +260,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="leave_days" label="请假" width="65" />
-            <el-table-column prop="timeoff_days" label="公休" width="65" />
+            <el-table-column prop="timeoff_days" label="休息" width="65" />
           </el-table>
           <el-pagination
             v-if="monthlyPagination.total > monthlyPagination.limit"
@@ -375,7 +375,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="leave_days" label="请假" width="65" />
-            <el-table-column prop="timeoff_days" label="公休" width="65" />
+            <el-table-column prop="timeoff_days" label="休息" width="65" />
             <el-table-column prop="work_days" label="出勤天数" width="85" sortable />
           </el-table>
           <el-pagination
@@ -647,7 +647,7 @@ const rangeStatusOptions = computed(() => {
   if (!rangeAllData.value.length) return {}
   const statusCount = {}
   rangeAllData.value.forEach(d => {
-    for (const [key, label] of [['normal_days', '正常'], ['late_days', '迟到'], ['early_days', '早退'], ['absent_days', '缺勤'], ['leave_days', '请假'], ['timeoff_days', '公休']]) {
+    for (const [key, label] of [['normal_days', '正常'], ['late_days', '迟到'], ['early_days', '早退'], ['absent_days', '缺勤'], ['leave_days', '请假'], ['timeoff_days', '休息']]) {
       const v = d[key] || 0
       if (v > 0) statusCount[label] = (statusCount[label] || 0) + v
     }
@@ -663,7 +663,7 @@ const rankingChartOptions = computed(() => {
 })
 
 function getStatusType(status) {
-  const map = { '正常': 'success', '迟到': 'warning', '早退': 'warning', '缺勤': 'danger', '请假': 'info', '公休': '' }
+  const map = { '正常': 'success', '迟到': 'warning', '早退': 'warning', '缺勤': 'danger', '请假': 'info', '休息': '' }
   return map[status] || 'info'
 }
 
@@ -674,12 +674,12 @@ function calcDailyStats(data) {
     seen.add(d.emp_id)
     return true
   })
-  dailyStats.total = unique.filter(d => d.status !== '公休').length
-  dailyStats.attend = unique.filter(d => d.status !== '缺勤' && d.status !== '公休').length
+  dailyStats.total = unique.filter(d => d.status !== '休息').length
+  dailyStats.attend = unique.filter(d => d.status !== '缺勤' && d.status !== '休息').length
   dailyStats.normal = unique.filter(d => d.status === '正常').length
   dailyStats.late = unique.filter(d => d.status === '迟到').length
   dailyStats.absent = unique.filter(d => d.status === '缺勤').length
-  dailyStats.rest = unique.filter(d => d.status === '公休').length
+  dailyStats.rest = unique.filter(d => d.status === '休息').length
   dailyStats.rate = dailyStats.total ? Math.round(dailyStats.attend / dailyStats.total * 100) : 0
 }
 
