@@ -101,15 +101,16 @@ def import_checkins(
     
     new_records = []
     dates = set()
-    
+    dept_updates = {}
+
     for row in rows:
         try:
             dept = row.get('所属部门全路径', '') or row.get('归属部门', '') or ''
             dept = str(dept).strip()
-            
+
             if not dept.startswith(TARGET_DEPT):
                 continue
-            
+
             emp_no = row.get('账号', '') or row.get('工号', '') or ''
             name = row.get('用户名', '') or row.get('姓名', '') or ''
             checkin_time_str = row.get('签入时间', '') or row.get('签到时间', '')
@@ -149,11 +150,14 @@ def import_checkins(
                 "import_batch": batch,
             })
 
-            # 同步更新员工表的部门
             if dept:
-                db.query(Employee).filter(Employee.emp_no == emp_no).update({"dept": dept})
+                dept_updates[emp_no] = dept
         except Exception:
             continue
+
+    # 批量更新员工表的部门（去重后一次提交）
+    for emp_no, dept in dept_updates.items():
+        db.query(Employee).filter(Employee.emp_no == emp_no).update({"dept": dept}, synchronize_session=False)
 
     # 按日期删除旧数据，再批量插入新数据
     if dates:
@@ -175,9 +179,14 @@ def import_checkins(
         Employee.emp_no.in_(checkin_emp_nos)
     ).all()
 
+    processed_reports = set()
     for emp in emp_with_schedule:
         schedules = db.query(Schedule).filter(Schedule.emp_id == emp.id).all()
         for schedule in schedules:
+            key = (emp.id, schedule.schedule_date)
+            if key in processed_reports:
+                continue
+            processed_reports.add(key)
             checkins_exist = db.query(Checkin).filter(
                 Checkin.emp_no == emp.emp_no,
                 func.date(Checkin.checkin_time) == schedule.schedule_date

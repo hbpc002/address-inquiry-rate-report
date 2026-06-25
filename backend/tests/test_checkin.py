@@ -124,6 +124,43 @@ class TestCheckinImport:
         finally:
             db.close()
 
+    def test_import_updates_employee_dept(self):
+        csv_content = (
+            "工号,姓名,签到时间,签退时间,设备号,归属部门\n"
+            "E001,张三,2026-05-30 08:00:00,2026-05-30 17:00:00,D001,"
+            "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+        )
+        resp = self._upload_csv(csv_content)
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
+            assert emp is not None
+            assert emp.dept == "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+        finally:
+            db.close()
+
+    def test_import_dedup_employee_dept_multiple_rows(self):
+        # 同一员工多行导入，dept 只更新一次（验证不会报错）
+        csv_content = (
+            "工号,姓名,签到时间,签退时间,设备号,归属部门\n"
+            "E001,张三,2026-05-30 08:00:00,2026-05-30 12:00:00,D001,"
+            "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表\n"
+            "E001,张三,2026-05-30 13:00:00,2026-05-30 17:00:00,D001,"
+            "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+        )
+        resp = self._upload_csv(csv_content)
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 2
+
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
+            assert emp.dept == "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+        finally:
+            db.close()
+
 
 class TestCheckinDeleteByDate:
 
