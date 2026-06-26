@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, extract
 from datetime import datetime, timedelta, date
+from calendar import monthrange
 from app.models.database import get_db
 from app.models.employee import Employee
 from app.models.schedule import Schedule
@@ -168,6 +169,21 @@ def get_daily_trend(
             daily[d]["slight_short"] += 1
         elif ah > 0:
             daily[d]["short_hours"] += 1
+
+    _zero_template = {
+        "date": "", "total": 0, "expected_count": 0, "total_with_hours": 0,
+        "normal": 0, "late": 0, "absent": 0, "leave": 0, "timeoff": 0,
+        "actual_hours": 0.0, "scheduled_hours": 0.0,
+        "long_hours": 0, "normal_hours_count": 0, "slight_short": 0, "short_hours": 0,
+    }
+
+    _, last_day = monthrange(year, month)
+    all_dates = [f"{year}-{month:02d}-{day:02d}" for day in range(1, last_day + 1)]
+    for d in all_dates:
+        if d not in daily:
+            entry = dict(_zero_template)
+            entry["date"] = d
+            daily[d] = entry
 
     return [daily[d] for d in sorted(daily.keys())]
 

@@ -459,4 +459,35 @@ class TestDashboardStats:
     def test_daily_trend_empty_month(self):
         resp = client.get("/api/daily-trend?year_month=2026-05")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert len(data) == 31
+        for d in data:
+            assert d["total"] == 0
+            assert d["actual_hours"] == 0.0
+
+    def test_daily_trend_partial_month_fills_gaps(self):
+        db = SessionLocal()
+        try:
+            emp = self._seed_employee(db)
+            self._seed_report(db, emp.id, date(2026, 5, 8), "正常", actual_hours=9.0)
+            self._seed_report(db, emp.id, date(2026, 5, 10), "正常", actual_hours=8.0)
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/daily-trend?year_month=2026-05")
+        assert resp.status_code == 200
+        data = resp.json()
+        dates = [d["date"] for d in data]
+        assert "2026-05-08" in dates
+        assert "2026-05-09" in dates
+        assert "2026-05-10" in dates
+        day8 = next(d for d in data if d["date"] == "2026-05-08")
+        day9 = next(d for d in data if d["date"] == "2026-05-09")
+        day10 = next(d for d in data if d["date"] == "2026-05-10")
+        assert day8["total"] == 1
+        assert day8["actual_hours"] == 9.0
+        assert day9["total"] == 0
+        assert day9["actual_hours"] == 0.0
+        assert day10["total"] == 1
+        assert day10["actual_hours"] == 8.0
