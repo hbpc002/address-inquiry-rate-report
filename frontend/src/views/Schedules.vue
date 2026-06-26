@@ -50,6 +50,9 @@
         <el-button v-if="userStore.hasPermission('schedules.delete')" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">
           批量删除 ({{ selectedIds.length }})
         </el-button>
+        <el-button v-if="userStore.hasPermission('schedules.delete')" type="danger" @click="deleteByDateVisible = true">
+          按日期删除
+        </el-button>
       </el-space>
       <el-table :data="tableData" border stripe :row-class-name="segmentRowClass" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="40" :selectable="row => row._isFirst" />
@@ -199,6 +202,15 @@
         <el-button type="primary" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 按日期删除对话框 -->
+    <el-dialog v-model="deleteByDateVisible" title="按日期删除" width="360px">
+      <el-date-picker v-model="deleteDate" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+      <template #footer>
+        <el-button @click="deleteByDateVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deletingByDate" @click="handleDeleteByDate">确认删除</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -225,6 +237,9 @@ const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const fileList = ref([])
 const importResults = ref([])
 const selectedIds = ref([])
+const deleteByDateVisible = ref(false)
+const deleteDate = ref('')
+const deletingByDate = ref(false)
 
 async function loadData() {
   selectedIds.value = []
@@ -405,6 +420,28 @@ async function handleBatchDelete() {
     if (e !== 'cancel') {
       ElMessage.error(e.response?.data?.detail || '批量删除失败')
     }
+  }
+}
+
+async function handleDeleteByDate() {
+  if (!deleteDate.value) {
+    ElMessage.warning('请选择日期')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定要删除 ${deleteDate.value} 的所有排班记录吗？`, '提示', { type: 'warning' })
+    deletingByDate.value = true
+    const res = await api.delete('/schedules/by-date', { params: { date: deleteDate.value } })
+    ElMessage.success(res.data.message || `已删除${res.data.count}条记录`)
+    deleteByDateVisible.value = false
+    deleteDate.value = ''
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.response?.data?.detail || '删除失败')
+    }
+  } finally {
+    deletingByDate.value = false
   }
 }
 

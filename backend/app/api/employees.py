@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/employees", tags=["员工管理"])
 @router.get("", response_model=EmployeeListResponse)
 def get_employees(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=10000),
     team: Optional[str] = None,
     dept: Optional[str] = None,
     status: Optional[str] = None,

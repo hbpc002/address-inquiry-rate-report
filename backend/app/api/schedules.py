@@ -438,6 +438,32 @@ def batch_delete_schedules(
     log_operation(db, current_user["id"], "batch_delete_schedules", "schedules", None, {"ids": ids, "count": len(schedules)})
     return {"message": f"批量删除成功，共删除{len(schedules)}条", "count": len(schedules)}
 
+@router.delete("/by-date", response_model=dict)
+def delete_schedules_by_date(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """按日期删除排班记录"""
+    require_permission(current_user, "schedules.delete")
+    try:
+        target = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
+    schedules = db.query(Schedule).filter(Schedule.schedule_date == target).all()
+    if not schedules:
+        return {"message": "该日期没有排班记录", "count": 0}
+    affected = set()
+    for s in schedules:
+        affected.add((s.emp_id, s.schedule_date))
+        db.delete(s)
+    db.commit()
+    for emp_id, schedule_date in affected:
+        save_daily_report(db, emp_id, schedule_date)
+    log_operation(db, current_user["id"], "delete_by_date", "schedules", None, {"date": date, "count": len(schedules)})
+    return {"message": f"已删除 {date} 的 {len(schedules)} 条排班记录", "count": len(schedules)}
+
+
 @router.post("/import-attendance-report", response_model=dict)
 def import_attendance_report(
     file: UploadFile = File(...),
