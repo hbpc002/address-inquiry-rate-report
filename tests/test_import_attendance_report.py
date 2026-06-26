@@ -436,6 +436,76 @@ class TestImportAttendanceReport:
         assert float(schedule.utilization_rate) == expected_util
         assert float(schedule.attendance_rate) == expected_attend
 
+    def test_import_dedup_duplicate_segments(self, db):
+        clear_tables(db)
+        from app.api.schedules import import_attendance_report
+        from fastapi import UploadFile
+
+        emp = Employee(emp_no='KF010', name='去重测试', team='一班2组', dept='客服中心', role='组员', status='在职')
+        db.add(emp)
+        db.commit()
+
+        rows_data = [
+            # 4 rows, but only 2 unique segments (12:30~17:00 and 18:30~22:00)
+            ['2026-05-02', '热线运营组', '一班2组', '去重测试', 'KF010',
+             '晚二', '12:30~17:00', '', '', '12:30', '是',
+             4.5, 4.5, 0.0, 88.0, 3.04, 0.01, 77.1, 87.6],
+            ['2026-05-02', '热线运营组', '一班2组', '去重测试', 'KF010',
+             '晚二', '12:30~17:00', '', '', '12:30', '是',
+             4.5, 4.5, 0.0, 88.0, 3.04, 0.01, 77.1, 87.6],
+            ['2026-05-02', '热线运营组', '一班2组', '去重测试', 'KF010',
+             '晚二', '18:30~22:00', '', '', '18:30', '是',
+             3.5, 3.5, 0.0, 98.0, 2.80, 0.01, 82.0, 95.4],
+            ['2026-05-02', '热线运营组', '一班2组', '去重测试', 'KF010',
+             '晚二', '18:30~22:00', '', '', '18:30', '是',
+             3.5, 3.5, 0.0, 98.0, 2.80, 0.01, 82.0, 95.4],
+        ]
+        xlsx = _build_test_xlsx(rows_data)
+        file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+
+        assert result["schedules"] == 1
+        schedule = db.query(Schedule).first()
+        # Should have 2 time_segments, not 4
+        assert len(schedule.time_segments) == 2, f"Expected 2 segments, got {len(schedule.time_segments)}"
+        # Verify the correct segments
+        starts = {seg['start'] for seg in schedule.time_segments}
+        assert '12:30' in starts
+        assert '18:30' in starts
+        # Verify weighted aggregation (4.5 + 3.5 = 8.0)
+        assert float(schedule.work_hours) == 8.0
+        expected_punctuality = round((88.0 * 4.5 + 98.0 * 3.5) / 8.0, 2)
+        assert float(schedule.punctuality_rate) == expected_punctuality
+
+    def test_import_dedup_does_not_remove_different_segments(self, db):
+        clear_tables(db)
+        from app.api.schedules import import_attendance_report
+        from fastapi import UploadFile
+
+        emp = Employee(emp_no='KF011', name='去重测试2', team='一班1组', dept='客服中心', role='组员', status='在职')
+        db.add(emp)
+        db.commit()
+
+        rows_data = [
+            # 3 unique segments, no duplicates
+            ['2026-06-22', '热线运营组', '一班1组', '去重测试2', 'KF011',
+             '行政9', '08:00~12:30', '', '', '08:00', '是',
+             4.5, 4.5, 0.0, 100.0, 3.0, 0.5, 77.78, 100.0],
+            ['2026-06-22', '热线运营组', '一班1组', '去重测试2', 'KF011',
+             '行政9', '13:30~18:00', '', '', '13:30', '是',
+             4.5, 4.5, 0.0, 100.0, 3.0, 0.5, 77.78, 100.0],
+            ['2026-06-22', '热线运营组', '一班1组', '去重测试2', 'KF011',
+             '晚班', '18:30~22:00', '', '', '18:30', '是',
+             3.5, 3.5, 0.0, 100.0, 2.0, 0.3, 85.71, 100.0],
+        ]
+        xlsx = _build_test_xlsx(rows_data)
+        file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+
+        assert result["schedules"] == 1
+        schedule = db.query(Schedule).first()
+        assert len(schedule.time_segments) == 3, f"Expected 3 segments, got {len(schedule.time_segments)}"
+
 
 @pytest.fixture(autouse=True)
 def db():

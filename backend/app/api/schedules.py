@@ -495,7 +495,12 @@ def import_attendance_report(
         weighted_utilization = 0.0
         weighted_attendance = 0.0
 
+        seen_segments = set()
         for seg in segments:
+            seg_key = (seg['shift_name'], seg['time_start'], seg['time_end'])
+            if seg_key in seen_segments:
+                continue
+            seen_segments.add(seg_key)
             seg_hours = seg['work_hours']
             seg_entry = {
                 "start": seg['time_start'],
