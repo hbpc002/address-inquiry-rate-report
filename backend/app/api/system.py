@@ -48,7 +48,7 @@ def get_stats(
 ):
     employee_count = db.query(Employee).filter(Employee.status == "在职").count()
 
-    latest_date = db.query(func.max(func.date(Checkin.checkin_time))).scalar()
+    latest_date = db.query(func.max(DailyReport.schedule_date)).scalar()
 
     if year_month:
         parts = year_month.split("-")
@@ -74,7 +74,7 @@ def get_stats(
     latest_reports = []
     if latest_date:
         latest_reports = db.query(DailyReport).filter(DailyReport.schedule_date == latest_date).all()
-    latest_attendance = len([r for r in latest_reports if r.status == "正常"])
+    latest_attendance = len([r for r in latest_reports if r.status in ("正常", "迟到", "早退", "加班")])
     latest_late = len([r for r in latest_reports if r.status == "迟到"])
     latest_absent = len([r for r in latest_reports if r.status == "缺勤"])
     latest_leave = len([r for r in latest_reports if r.status == "请假"])

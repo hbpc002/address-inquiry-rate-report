@@ -172,27 +172,16 @@ def import_checkins(
     count = len(new_records)
     log_operation(db, current_user["id"], "import_checkins", "checkins", None, {"batch": batch, "count": count})
 
-    checkin_emp_nos = db.query(Checkin.emp_no).filter(Checkin.import_batch == batch).distinct().all()
-    checkin_emp_nos = [n[0] for n in checkin_emp_nos if n[0]]
-    
-    emp_with_schedule = db.query(Employee).join(Schedule).filter(
-        Employee.emp_no.in_(checkin_emp_nos)
-    ).all()
-
+    # 重算受影响日期上所有有排班员工的考勤日报（无论有无打卡记录）
     processed_reports = set()
-    for emp in emp_with_schedule:
-        schedules = db.query(Schedule).filter(Schedule.emp_id == emp.id).all()
-        for schedule in schedules:
-            key = (emp.id, schedule.schedule_date)
+    for d in dates:
+        emp_ids = db.query(Schedule.emp_id).filter(Schedule.schedule_date == d).distinct().all()
+        for (eid,) in emp_ids:
+            key = (eid, d)
             if key in processed_reports:
                 continue
             processed_reports.add(key)
-            checkins_exist = db.query(Checkin).filter(
-                Checkin.emp_no == emp.emp_no,
-                func.date(Checkin.checkin_time) == schedule.schedule_date
-            ).first()
-            if checkins_exist:
-                save_daily_report(db, emp.id, schedule.schedule_date)
+            save_daily_report(db, eid, d)
 
     # 更新员工工号：签到记录导入后，将 TEMP_ 开头的工号更新为真实工号
     updated_count = 0

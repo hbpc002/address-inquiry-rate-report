@@ -5,8 +5,8 @@
         <div class="date-info">
           <el-tag type="success" effect="dark">数据</el-tag>
           <span class="date-text">数据已更新至：<strong>{{ stats.latest_data_date || '暂无数据' }}</strong></span>
-          <span class="report-count" v-if="stats.latest_attendance + stats.latest_late + stats.latest_absent > 0">
-            （最新日出勤 {{ stats.latest_attendance }} / 迟到 {{ stats.latest_late }} / 缺勤 {{ stats.latest_absent }}）
+          <span class="report-count" v-if="stats.latest_attendance + stats.latest_leave + stats.latest_timeoff + stats.latest_absent > 0">
+            （最新日出勤 {{ stats.latest_attendance }} / 请假 {{ stats.latest_leave }} / 休息 {{ stats.latest_timeoff }} / 缺勤 {{ stats.latest_absent }}）
           </span>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
