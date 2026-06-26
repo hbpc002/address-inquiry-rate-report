@@ -3,7 +3,10 @@ import { ref, computed } from 'vue'
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api'
+  baseURL: '/api',
+  paramsSerializer: {
+    indexes: null
+  }
 })
 
 api.interceptors.request.use(config => {

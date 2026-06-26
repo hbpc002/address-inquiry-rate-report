@@ -343,79 +343,6 @@ def update_schedule(
     save_daily_report(db, db_schedule.emp_id, db_schedule.schedule_date)
     return {"id": db_schedule.id}
 
-@router.delete("/{schedule_id}", response_model=dict)
-def delete_schedule(
-    schedule_id: int,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
-    require_permission(current_user, "schedules.delete")
-    db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
-    if not db_schedule:
-        raise HTTPException(status_code=404, detail="排班记录不存在")
-    emp_id = db_schedule.emp_id
-    schedule_date = db_schedule.schedule_date
-    db.delete(db_schedule)
-    db.commit()
-    save_daily_report(db, emp_id, schedule_date)
-    log_operation(db, current_user["id"], "delete_schedule", "schedules", schedule_id)
-    return {"message": "删除成功"}
-
-@router.post("/batch", response_model=dict)
-def batch_schedule(
-    request: BatchScheduleRequest,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
-    require_permission(current_user, "schedules.create")
-    success_count = 0
-    for emp_id in request.emp_ids:
-        existing = db.query(Schedule).filter(
-            and_(
-                Schedule.emp_id == emp_id,
-                Schedule.schedule_date == request.schedule_date
-            )
-        ).first()
-        if existing:
-            existing.shift_type_id = request.shift_type_id
-        else:
-            db_schedule = Schedule(
-                emp_id=emp_id,
-                schedule_date=request.schedule_date,
-                shift_type_id=request.shift_type_id,
-                created_by=current_user["id"]
-            )
-            db.add(db_schedule)
-        success_count += 1
-    db.commit()
-    for emp_id in request.emp_ids:
-        save_daily_report(db, emp_id, request.schedule_date)
-    return {"success_count": success_count}
-
-@router.post("/swap", response_model=dict)
-def swap_schedule(
-    request: SwapScheduleRequest,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
-    require_permission(current_user, "schedules.edit")
-    schedule_a = db.query(Schedule).filter(Schedule.id == request.schedule_a_id).first()
-    schedule_b = db.query(Schedule).filter(Schedule.id == request.schedule_b_id).first()
-    if not schedule_a or not schedule_b:
-        raise HTTPException(status_code=404, detail="排班记录不存在")
-    if schedule_a.schedule_date != schedule_b.schedule_date:
-        raise HTTPException(status_code=400, detail="只能交换同一天的班次")
-    temp_shift = schedule_a.shift_type_id
-    schedule_a.shift_type_id = schedule_b.shift_type_id
-    schedule_b.shift_type_id = temp_shift
-    schedule_a.schedule_type = "换班"
-    schedule_b.schedule_type = "换班"
-    db.commit()
-    save_daily_report(db, schedule_a.emp_id, schedule_a.schedule_date)
-    save_daily_report(db, schedule_b.emp_id, schedule_b.schedule_date)
-    log_operation(db, current_user["id"], "swap_schedule", "schedules", None, {"schedule_a_id": request.schedule_a_id, "schedule_b_id": request.schedule_b_id})
-    return {"message": "换班成功"}
-
 @router.delete("/batch", response_model=dict)
 def batch_delete_schedules(
     ids: list[int] = Query(...),
@@ -437,6 +364,7 @@ def batch_delete_schedules(
         save_daily_report(db, emp_id, schedule_date)
     log_operation(db, current_user["id"], "batch_delete_schedules", "schedules", None, {"ids": ids, "count": len(schedules)})
     return {"message": f"批量删除成功，共删除{len(schedules)}条", "count": len(schedules)}
+
 
 @router.delete("/by-date", response_model=dict)
 def delete_schedules_by_date(
@@ -462,6 +390,25 @@ def delete_schedules_by_date(
         save_daily_report(db, emp_id, schedule_date)
     log_operation(db, current_user["id"], "delete_by_date", "schedules", None, {"date": date, "count": len(schedules)})
     return {"message": f"已删除 {date} 的 {len(schedules)} 条排班记录", "count": len(schedules)}
+
+
+@router.delete("/{schedule_id}", response_model=dict)
+def delete_schedule(
+    schedule_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "schedules.delete")
+    db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
+    if not db_schedule:
+        raise HTTPException(status_code=404, detail="排班记录不存在")
+    emp_id = db_schedule.emp_id
+    schedule_date = db_schedule.schedule_date
+    db.delete(db_schedule)
+    db.commit()
+    save_daily_report(db, emp_id, schedule_date)
+    log_operation(db, current_user["id"], "delete_schedule", "schedules", schedule_id)
+    return {"message": "删除成功"}
 
 
 @router.post("/import-attendance-report", response_model=dict)
