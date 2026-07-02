@@ -33,6 +33,14 @@
           <el-icon><Tickets /></el-icon>
           <span>签入签出报表</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('workload')" index="/workloads">
+          <el-icon><Document /></el-icon>
+          <span>工作量详单</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.canView('workload_report')" index="/workload-report">
+          <el-icon><DataBoard /></el-icon>
+          <span>工作量报表</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
           <el-icon><Warning /></el-icon>
           <span>工时预警设置</span>
@@ -94,7 +102,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()

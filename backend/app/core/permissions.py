@@ -33,6 +33,20 @@ PERMISSION_REGISTRY = {
             "view": "查看",
         },
     },
+    "workload": {
+        "label": "工作量详单",
+        "permissions": {
+            "view": "查看",
+            "upload": "导入",
+            "delete": "删除",
+        },
+    },
+    "workload_report": {
+        "label": "工作量报表",
+        "permissions": {
+            "view": "查看",
+        },
+    },
     "reports": {
         "label": "考勤报表",
         "permissions": {

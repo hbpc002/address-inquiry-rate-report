@@ -42,6 +42,18 @@ const routes = [
         meta: { permission: 'checkin_report.view' }
       },
       {
+        path: 'workloads',
+        name: 'Workloads',
+        component: () => import('../views/Workloads.vue'),
+        meta: { permission: 'workload.view' }
+      },
+      {
+        path: 'workload-report',
+        name: 'WorkloadReport',
+        component: () => import('../views/WorkloadReport.vue'),
+        meta: { permission: 'workload_report.view' }
+      },
+      {
         path: 'work-hour-settings',
         name: 'WorkHourSettings',
         component: () => import('../views/WorkHourSettings.vue'),

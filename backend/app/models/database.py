@@ -34,6 +34,7 @@ def init_db():
     from app.models.work_hour_threshold import WorkHourThreshold
     from app.models.attendance_config import AttendanceConfig
     from app.models.announcement import Announcement
+    from app.models.workload import Workload
 
     Base.metadata.create_all(bind=engine)
     _migrate_db()

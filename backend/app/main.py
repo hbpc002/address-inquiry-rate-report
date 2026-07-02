@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.models.database import init_db
-from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements
+from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads
 from app.models.database import SessionLocal
 import asyncio
 import traceback
@@ -62,6 +62,7 @@ app.include_router(work_hour_thresholds.router)
 app.include_router(attendance_config.router)
 app.include_router(roles.router)
 app.include_router(announcements.router)
+app.include_router(workloads.router)
 
 
 @app.on_event("startup")
