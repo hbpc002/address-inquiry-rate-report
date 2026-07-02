@@ -72,12 +72,11 @@ def get_workloads(
 
     response_items = []
     for w in items:
-        real_name = w.name
-        emp = db.query(Employee).filter(Employee.emp_no == w.account).first()
-        if emp and emp.name:
-            real_name = emp.name
         item = WorkloadResponse.model_validate(w)
-        item.name = real_name
+        emp = db.query(Employee).filter(Employee.emp_no == w.account).first()
+        if emp:
+            item.name = emp.name or item.name
+            item.team_desc = emp.team or item.team_desc
         response_items.append(item)
 
     return WorkloadListResponse(
@@ -130,11 +129,12 @@ def import_workloads(
             province_val = str(row[1]).strip() if pd.notna(row[1]) else ''
             name_val = str(row[3]).strip() if pd.notna(row[3]) else ''
             emp_no_val = str(row[4]).strip() if pd.notna(row[4]) else ''
-            team_desc_val = str(row[5]).strip() if pd.notna(row[5]) else ''
 
             emp = db.query(Employee).filter(Employee.emp_no == account_val).first()
-            if emp and emp.name:
-                name_val = emp.name
+            if not emp:
+                continue
+            name_val = emp.name or name_val
+            team_desc_val = emp.team or ''
 
             metrics = {}
             for col_idx in range(6, len(header)):
@@ -298,12 +298,15 @@ def get_workload_report(
     emp_agg = {}
     for r in records:
         key = r.account
+        emp = db.query(Employee).filter(Employee.emp_no == r.account).first()
+        real_name = emp.name if emp else (r.name or '')
+        real_team = emp.team if emp else (r.team_desc or '')
         if key not in emp_agg:
             emp_agg[key] = {
                 "account": r.account,
-                "name": r.name or '',
+                "name": real_name,
                 "emp_no": r.emp_no or '',
-                "team_desc": r.team_desc or '',
+                "team_desc": real_team,
                 "province": r.province or '',
                 "date_count": 0,
                 "agg": {}
@@ -338,14 +341,9 @@ def get_workload_report(
             else:
                 aggregated[field] = None
 
-        real_name = data["name"]
-        emp = db.query(Employee).filter(Employee.emp_no == data["account"]).first()
-        if emp and emp.name:
-            real_name = emp.name
-
         items.append(WorkloadReportItem(
             account=data["account"],
-            name=real_name,
+            name=data["name"],
             emp_no=data["emp_no"],
             team_desc=data["team_desc"],
             province=data["province"],

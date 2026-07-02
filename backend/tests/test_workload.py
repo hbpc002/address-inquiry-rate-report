@@ -44,7 +44,22 @@ def teardown_module():
 
 
 def _clean_tables(db):
-    db.execute(text("DELETE FROM workloads"))
+    for table in ["workloads", "employees"]:
+        db.execute(text(f"DELETE FROM {table}"))
+    db.commit()
+
+def _create_test_employees(db):
+    from app.models.employee import Employee
+    employees_data = [
+        ("STTR00001", "张三", "热线一组"),
+        ("STTR00002", "李四", "热线二组"),
+        ("STTR00003", "王五", "热线一组"),
+        ("STTR00004", "赵六", "热线二组"),
+    ]
+    for emp_no, name, team in employees_data:
+        existing = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+        if not existing:
+            db.add(Employee(emp_no=emp_no, name=name, team=team, dept="客服中心"))
     db.commit()
 
 
@@ -84,6 +99,7 @@ class TestWorkloadImport:
         db = SessionLocal()
         try:
             _clean_tables(db)
+            _create_test_employees(db)
         finally:
             db.close()
 
@@ -133,6 +149,14 @@ class TestWorkloadImport:
         resp = client.post("/api/workloads/import", files=data)
         assert resp.status_code == 400
 
+    def test_import_skips_not_in_employee_table(self):
+        rows = [
+            ["20260628", "广西", "NOT_EXIST", "未知人", "9999", "未知组", 1, 1, 3600, 0.5, 5, 900, 180, 100, 2, 90.0, 1, 0, 5, 0],
+        ]
+        resp = self._upload_xlsx(_make_xlsx(rows))
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 0
+
     def test_import_replaces_old_records_on_same_date(self):
         rows1 = [
             ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
@@ -157,17 +181,8 @@ class TestWorkloadImport:
             db.close()
 
     def test_import_overrides_name_from_employee(self):
-        db = SessionLocal()
-        try:
-            from app.models.employee import Employee
-            emp = Employee(emp_no="STTR00001", name="张真实", team="热线一组", dept="客服中心")
-            db.add(emp)
-            db.commit()
-        finally:
-            db.close()
-
         rows = [
-            ["20260628", "广西", "STTR00001", "张**", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+            ["20260628", "广西", "STTR00001", "张***", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 200
@@ -176,7 +191,8 @@ class TestWorkloadImport:
         db = SessionLocal()
         try:
             record = db.query(Workload).first()
-            assert record.name == "张真实"
+            assert record.name == "张三"
+            assert record.team_desc == "热线一组"
         finally:
             db.close()
 

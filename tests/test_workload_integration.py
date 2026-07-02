@@ -45,6 +45,19 @@ def _build_xlsx(rows: list[list]) -> bytes:
     return buf.getvalue()
 
 
+def _create_test_employees(db):
+    employees_data = [
+        ("STTR00001", "张三", "热线一组"),
+        ("STTR00002", "李四", "热线二组"),
+        ("STTR00003", "王五", "热线一组"),
+    ]
+    for emp_no, name, team in employees_data:
+        existing = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+        if not existing:
+            db.add(Employee(emp_no=emp_no, name=name, team=team, dept="客服中心"))
+    db.commit()
+
+
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
@@ -74,6 +87,8 @@ def test_import_single_employee(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
+    _create_test_employees(db)
+
     rows = [
         ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
@@ -99,6 +114,8 @@ def test_import_multiple_employees(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
+    _create_test_employees(db)
+
     rows = [
         ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
@@ -118,6 +135,8 @@ def test_import_multiple_employees(db):
 def test_import_replaces_old_records(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
+
+    _create_test_employees(db)
 
     old = Workload(date=date(2026, 6, 28), province="广西", account="STTR00001",
                    name="张三", emp_no="1001", team_desc="热线一组",
@@ -144,6 +163,8 @@ def test_import_skips_heji_row(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
+    _create_test_employees(db)
+
     rows = [
         ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
@@ -158,6 +179,8 @@ def test_import_skips_heji_row(db):
 def test_import_multiple_dates_preserves_other_dates(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
+
+    _create_test_employees(db)
 
     existing = Workload(date=date(2026, 6, 27), province="广西", account="STTR00099",
                         name="旧员工", emp_no="1999", team_desc="热线一组",
@@ -180,12 +203,9 @@ def test_import_multiple_dates_preserves_other_dates(db):
 
 def test_import_overrides_name_from_employee(db):
     from app.api.workloads import import_workloads
-    from app.models.employee import Employee
     from fastapi import UploadFile
 
-    emp = Employee(emp_no="STTR00001", name="张真实姓名", team="热线一组", dept="客服中心")
-    db.add(emp)
-    db.commit()
+    _create_test_employees(db)
 
     rows = [
         ["20260628", "广西", "STTR00001", "张***", "1001", "热线一组",
@@ -197,7 +217,8 @@ def test_import_overrides_name_from_employee(db):
 
     assert result.count == 1
     record = db.query(Workload).first()
-    assert record.name == "张真实姓名"
+    assert record.name == "张三"
+    assert record.team_desc == "热线一组"
 
 
 @pytest.fixture

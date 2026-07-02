@@ -271,6 +271,7 @@ import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
+import { usePersistedFilters } from '../composables/usePersistedFilters'
 
 const tableData = ref([])
 const teams = ref([])
@@ -284,16 +285,19 @@ const filterValue = ref('')
 const sortBy = ref('')
 const sortOrder = ref('')
 
-const searchForm = reactive({
-  type: 'day',
-  date: getYesterday(),
-  month: new Date().toISOString().slice(0, 7),
-  start_date: '',
-  end_date: '',
-  name: '',
-  account: '',
-  team_desc: ''
-})
+const { filters: searchForm, isRestored: searchFormRestored } = usePersistedFilters(
+  'workload-report-filters',
+  {
+    type: 'day',
+    date: getYesterday(),
+    month: new Date().toISOString().slice(0, 7),
+    start_date: '',
+    end_date: '',
+    name: '',
+    account: '',
+    team_desc: ''
+  }
+)
 
 const stats = reactive({
   total_people: 0,
@@ -576,6 +580,9 @@ async function openDetail(row) {
 }
 
 onMounted(() => {
+  if (!searchFormRestored) {
+    handleTypeChange()
+  }
   loadData()
 })
 </script>
