@@ -11,9 +11,11 @@ import pytest
 from app.models.database import SessionLocal, engine, Base
 from app.models.workload import Workload
 from app.models.employee import Employee
-from app.models.employee import Employee
 from datetime import date
 import openpyxl
+
+TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心"
+TEAM_DESC = f"{TARGET_DEPT}>>热线运营组>>10010热线客服代表"
 
 
 def _build_xlsx(rows: list[list]) -> bytes:
@@ -87,10 +89,8 @@ def test_import_single_employee(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
-    _create_test_employees(db)
-
     rows = [
-        ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
+        ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC,
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
     ]
     xlsx = _build_xlsx(rows)
@@ -114,14 +114,12 @@ def test_import_multiple_employees(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
-    _create_test_employees(db)
-
     rows = [
-        ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
+        ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC,
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
-        ["20260628", "广西", "STTR00002", "李四", "1002", "热线二组",
+        ["20260628", "广西", "STTR00002", "李四", "1002", TEAM_DESC,
          3, 3, 25200, 0.75, 20, 3600, 180, 400, 18, 95.0, 5, 3, 23, 2],
-        ["20260628", "广东", "STTR00003", "王五", "1003", "热线一组",
+        ["20260628", "广东", "STTR00003", "王五", "1003", TEAM_DESC,
          4, 4, 27000, 0.80, 25, 4500, 180, 500, 20, 96.0, 8, 5, 29, 4],
     ]
     xlsx = _build_xlsx(rows)
@@ -136,16 +134,14 @@ def test_import_replaces_old_records(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
-    _create_test_employees(db)
-
     old = Workload(date=date(2026, 6, 28), province="广西", account="STTR00001",
-                   name="张三", emp_no="1001", team_desc="热线一组",
+                   name="张三", emp_no="1001", team_desc=TEAM_DESC,
                    metrics={"签入次数": 3}, import_batch="old_batch")
     db.add(old)
     db.commit()
 
     rows = [
-        ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
+        ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC,
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
     ]
     xlsx = _build_xlsx(rows)
@@ -163,10 +159,8 @@ def test_import_skips_heji_row(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
-    _create_test_employees(db)
-
     rows = [
-        ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
+        ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC,
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
         ["合计", "", "", "", "", "", 8, 8, 54000, 0, 50, 9000, 0, 0, 0, 0, 0, 0, 0, 0],
     ]
@@ -180,16 +174,14 @@ def test_import_multiple_dates_preserves_other_dates(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
-    _create_test_employees(db)
-
     existing = Workload(date=date(2026, 6, 27), province="广西", account="STTR00099",
-                        name="旧员工", emp_no="1999", team_desc="热线一组",
+                        name="旧员工", emp_no="1999", team_desc=TEAM_DESC,
                         metrics={"通话次数": 10}, import_batch="preserve_me")
     db.add(existing)
     db.commit()
 
     rows = [
-        ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组",
+        ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC,
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
     ]
     xlsx = _build_xlsx(rows)
@@ -205,10 +197,8 @@ def test_import_overrides_name_from_employee(db):
     from app.api.workloads import import_workloads
     from fastapi import UploadFile
 
-    _create_test_employees(db)
-
     rows = [
-        ["20260628", "广西", "STTR00001", "张***", "1001", "热线一组",
+        ["20260628", "广西", "STTR00001", "张***", "1001", TEAM_DESC,
          5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
     ]
     xlsx = _build_xlsx(rows)
@@ -217,8 +207,8 @@ def test_import_overrides_name_from_employee(db):
 
     assert result.count == 1
     record = db.query(Workload).first()
-    assert record.name == "张三"
-    assert record.team_desc == "热线一组"
+    assert record.name == "张***"
+    assert TARGET_DEPT in record.team_desc
 
 
 @pytest.fixture

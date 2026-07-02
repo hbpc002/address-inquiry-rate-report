@@ -20,6 +20,8 @@ from app.core.security import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/workloads", tags=["工作量统计"])
 
+TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心"
+
 CORE_METRICS_FIELDS = [
     "总体-签入次数",
     "总体-签出次数",
@@ -66,6 +68,12 @@ def get_workloads(
         query = query.filter(Workload.name.ilike(f'%{name}%'))
     if account:
         query = query.filter(Workload.account == account)
+
+    emp_accounts = [e[0] for e in db.query(Employee.emp_no).all()]
+    if emp_accounts:
+        query = query.filter(Workload.account.in_(emp_accounts))
+    else:
+        return WorkloadListResponse(items=[], total=0)
 
     total = query.count()
     items = query.order_by(Workload.date.desc(), Workload.account).offset((page - 1) * limit).limit(limit).all()
@@ -129,12 +137,10 @@ def import_workloads(
             province_val = str(row[1]).strip() if pd.notna(row[1]) else ''
             name_val = str(row[3]).strip() if pd.notna(row[3]) else ''
             emp_no_val = str(row[4]).strip() if pd.notna(row[4]) else ''
+            team_desc_val = str(row[5]).strip() if pd.notna(row[5]) else ''
 
-            emp = db.query(Employee).filter(Employee.emp_no == account_val).first()
-            if not emp:
+            if TARGET_DEPT not in team_desc_val:
                 continue
-            name_val = emp.name or name_val
-            team_desc_val = emp.team or ''
 
             metrics = {}
             for col_idx in range(6, len(header)):
@@ -285,6 +291,9 @@ def get_workload_report(
     )
 
     records = query.all()
+
+    emp_accounts = {e[0] for e in db.query(Employee.emp_no).all()}
+    records = [r for r in records if r.account in emp_accounts]
 
     if province:
         records = [r for r in records if r.province == province]

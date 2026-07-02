@@ -16,6 +16,9 @@ import io
 import pandas as pd
 import openpyxl
 
+TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心"
+TEAM_DESC = f"{TARGET_DEPT}>>热线运营组>>10010热线客服代表"
+
 
 _admin_user = {
     "id": 1,
@@ -99,7 +102,6 @@ class TestWorkloadImport:
         db = SessionLocal()
         try:
             _clean_tables(db)
-            _create_test_employees(db)
         finally:
             db.close()
 
@@ -109,7 +111,7 @@ class TestWorkloadImport:
 
     def test_import_normal(self):
         rows = [
-            ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+            ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC, 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 200
@@ -119,9 +121,9 @@ class TestWorkloadImport:
 
     def test_import_multiple_rows(self):
         rows = [
-            ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
-            ["20260628", "广西", "STTR00002", "李四", "1002", "热线二组", 3, 3, 25200, 0.75, 20, 3600, 180, 400, 18, 95.0, 5, 3, 23, 2],
-            ["20260628", "广东", "STTR00003", "王五", "1003", "热线一组", 4, 4, 27000, 0.80, 25, 4500, 180, 500, 20, 96.0, 8, 5, 29, 4],
+            ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC, 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+            ["20260628", "广西", "STTR00002", "李四", "1002", TEAM_DESC, 3, 3, 25200, 0.75, 20, 3600, 180, 400, 18, 95.0, 5, 3, 23, 2],
+            ["20260628", "广东", "STTR00003", "王五", "1003", TEAM_DESC, 4, 4, 27000, 0.80, 25, 4500, 180, 500, 20, 96.0, 8, 5, 29, 4],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 200
@@ -129,7 +131,7 @@ class TestWorkloadImport:
 
     def test_import_skips_heji_row(self):
         rows = [
-            ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+            ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC, 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
             ["合计", "", "", "", "", "", 8, 8, 54000, 0.00, 50, 9000, 0, 0, 0, 0, 0, 0, 0, 0],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
@@ -149,9 +151,9 @@ class TestWorkloadImport:
         resp = client.post("/api/workloads/import", files=data)
         assert resp.status_code == 400
 
-    def test_import_skips_not_in_employee_table(self):
+    def test_import_skips_non_target_dept(self):
         rows = [
-            ["20260628", "广西", "NOT_EXIST", "未知人", "9999", "未知组", 1, 1, 3600, 0.5, 5, 900, 180, 100, 2, 90.0, 1, 0, 5, 0],
+            ["20260628", "广西", "NOT_EXIST", "未知人", "9999", "其他部门>>其他组", 1, 1, 3600, 0.5, 5, 900, 180, 100, 2, 90.0, 1, 0, 5, 0],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 200
@@ -159,14 +161,14 @@ class TestWorkloadImport:
 
     def test_import_replaces_old_records_on_same_date(self):
         rows1 = [
-            ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+            ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC, 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
         ]
         resp1 = self._upload_xlsx(_make_xlsx(rows1))
         assert resp1.status_code == 200
         assert resp1.json()["count"] == 1
 
         rows2 = [
-            ["20260628", "广西", "STTR00001", "张三", "1001", "热线一组", 6, 6, 30000, 0.90, 35, 6000, 180, 700, 28, 99.0, 12, 10, 40, 5],
+            ["20260628", "广西", "STTR00001", "张三", "1001", TEAM_DESC, 6, 6, 30000, 0.90, 35, 6000, 180, 700, 28, 99.0, 12, 10, 40, 5],
         ]
         resp2 = self._upload_xlsx(_make_xlsx(rows2))
         assert resp2.status_code == 200
@@ -180,9 +182,9 @@ class TestWorkloadImport:
         finally:
             db.close()
 
-    def test_import_overrides_name_from_employee(self):
+    def test_import_keeps_excel_name(self):
         rows = [
-            ["20260628", "广西", "STTR00001", "张***", "1001", "热线一组", 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+            ["20260628", "广西", "STTR00001", "张**", "1001", TEAM_DESC, 5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 200
@@ -191,8 +193,8 @@ class TestWorkloadImport:
         db = SessionLocal()
         try:
             record = db.query(Workload).first()
-            assert record.name == "张三"
-            assert record.team_desc == "热线一组"
+            assert record.name == "张**"
+            assert TARGET_DEPT in record.team_desc
         finally:
             db.close()
 
@@ -203,6 +205,7 @@ class TestWorkloadList:
         db = SessionLocal()
         try:
             _clean_tables(db)
+            _create_test_employees(db)
             records = [
                 Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001", team_desc="热线一组", metrics={"通话次数": 30}, import_batch="batch001"),
                 Workload(date=date(2026, 6, 28), province="广东", account="STTR00002", name="李四", emp_no="1002", team_desc="热线二组", metrics={"通话次数": 20}, import_batch="batch001"),
@@ -255,6 +258,12 @@ class TestWorkloadDelete:
         db = SessionLocal()
         try:
             _clean_tables(db)
+            from app.models.employee import Employee
+            for i in range(3):
+                existing = db.query(Employee).filter(Employee.emp_no == f"STTR{i:05d}").first()
+                if not existing:
+                    db.add(Employee(emp_no=f"STTR{i:05d}", name=f"员工{i+1}", team="热线一组", dept="客服中心"))
+            db.commit()
             for i, day in enumerate([28, 29, 30]):
                 w = Workload(
                     date=date(2026, 6, day),
@@ -327,6 +336,7 @@ class TestWorkloadReport:
         db = SessionLocal()
         try:
             _clean_tables(db)
+            _create_test_employees(db)
             records = [
                 Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001", team_desc="热线一组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 28800, "呼入人工服务-人工服务-通话次数": 30,
