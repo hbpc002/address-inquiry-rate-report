@@ -10,6 +10,7 @@ import math
 
 from app.models.database import get_db
 from app.models.workload import Workload
+from app.models.employee import Employee
 from app.utils.logger import log_operation
 from app.schemas.workload import (
     WorkloadResponse, WorkloadListResponse, ImportWorkloadResponse,
@@ -68,8 +69,19 @@ def get_workloads(
 
     total = query.count()
     items = query.order_by(Workload.date.desc(), Workload.account).offset((page - 1) * limit).limit(limit).all()
+
+    response_items = []
+    for w in items:
+        real_name = w.name
+        emp = db.query(Employee).filter(Employee.emp_no == w.account).first()
+        if emp and emp.name:
+            real_name = emp.name
+        item = WorkloadResponse.model_validate(w)
+        item.name = real_name
+        response_items.append(item)
+
     return WorkloadListResponse(
-        items=[WorkloadResponse.model_validate(w) for w in items],
+        items=response_items,
         total=total
     )
 
@@ -119,6 +131,10 @@ def import_workloads(
             name_val = str(row[3]).strip() if pd.notna(row[3]) else ''
             emp_no_val = str(row[4]).strip() if pd.notna(row[4]) else ''
             team_desc_val = str(row[5]).strip() if pd.notna(row[5]) else ''
+
+            emp = db.query(Employee).filter(Employee.emp_no == account_val).first()
+            if emp and emp.name:
+                name_val = emp.name
 
             metrics = {}
             for col_idx in range(6, len(header)):
@@ -322,9 +338,14 @@ def get_workload_report(
             else:
                 aggregated[field] = None
 
+        real_name = data["name"]
+        emp = db.query(Employee).filter(Employee.emp_no == data["account"]).first()
+        if emp and emp.name:
+            real_name = emp.name
+
         items.append(WorkloadReportItem(
             account=data["account"],
-            name=data["name"],
+            name=real_name,
             emp_no=data["emp_no"],
             team_desc=data["team_desc"],
             province=data["province"],

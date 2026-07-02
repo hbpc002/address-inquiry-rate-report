@@ -11,6 +11,7 @@ import pytest
 from app.models.database import SessionLocal, engine, Base
 from app.models.workload import Workload
 from app.models.employee import Employee
+from app.models.employee import Employee
 from datetime import date
 import openpyxl
 
@@ -47,10 +48,18 @@ def _build_xlsx(rows: list[list]) -> bytes:
 @pytest.fixture(autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        db.query(Workload).delete()
+        db.query(Employee).delete()
+        db.commit()
+    finally:
+        db.close()
     yield
     db = SessionLocal()
     try:
         db.query(Workload).delete()
+        db.query(Employee).delete()
         db.commit()
     finally:
         db.close()
@@ -167,6 +176,28 @@ def test_import_multiple_dates_preserves_other_dates(db):
     assert result.count == 1
     assert db.query(Workload).count() == 2
     assert db.query(Workload).filter(Workload.account == "STTR00099").count() == 1
+
+
+def test_import_overrides_name_from_employee(db):
+    from app.api.workloads import import_workloads
+    from app.models.employee import Employee
+    from fastapi import UploadFile
+
+    emp = Employee(emp_no="STTR00001", name="张真实姓名", team="热线一组", dept="客服中心")
+    db.add(emp)
+    db.commit()
+
+    rows = [
+        ["20260628", "广西", "STTR00001", "张***", "1001", "热线一组",
+         5, 5, 28800, 0.85, 30, 5400, 180, 600, 25, 98.5, 10, 8, 35, 3],
+    ]
+    xlsx = _build_xlsx(rows)
+    file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
+    result = import_workloads(file=file, db=db, current_user={"id": 1})
+
+    assert result.count == 1
+    record = db.query(Workload).first()
+    assert record.name == "张真实姓名"
 
 
 @pytest.fixture
