@@ -298,7 +298,10 @@ def get_workload_report(
     if province:
         records = [r for r in records if r.province == province]
     if team_desc:
-        records = [r for r in records if team_desc.lower() in (r.team_desc or '').lower()]
+        team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(
+            Employee.team == team_desc, Employee.status == "在职"
+        ).all()}
+        records = [r for r in records if r.account in team_emp_nos]
     if name:
         records = [r for r in records if name.lower() in (r.name or '').lower()]
     if account:
@@ -377,7 +380,15 @@ def get_workload_report(
     )
 
     provinces = list(set(r.province for r in records if r.province))
-    teams = list(set(r.team_desc for r in records if r.team_desc))
+    emp_accounts_in_range = list(set(r.account for r in records))
+    if emp_accounts_in_range:
+        teams = [row[0] for row in db.query(Employee.team).filter(
+            Employee.emp_no.in_(emp_accounts_in_range),
+            Employee.team.isnot(None),
+            Employee.team != ''
+        ).distinct().all()]
+    else:
+        teams = []
 
     return WorkloadReportResponse(
         stats={

@@ -41,6 +41,7 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button @click="columnSelectorVisible = true">自定义列</el-button>
         </el-form-item>
       </el-form>
 
@@ -81,8 +82,16 @@
               <el-table-column label="姓名" width="80" prop="name" />
               <el-table-column label="通话次数" width="85" sortable :sort-method="sortMetric('呼入人工服务-人工服务-通话次数')" prop="call_count" />
               <el-table-column label="通话均长" width="85" sortable :sort-method="sortMetric('呼入人工服务-人工服务-通话均长(秒)')" prop="avg_duration" />
-              <el-table-column label="满意率" width="75" sortable :sort-method="sortMetric('人工服务-满意度-满意率')" prop="satisfaction" />
-              <el-table-column label="解决率" width="75" sortable :sort-method="sortMetric('呼入人工服务-解决率-解决率')" prop="resolve_rate" />
+              <el-table-column label="满意率" width="75" sortable :sort-method="sortMetric('人工服务-满意度-满意率')" prop="satisfaction">
+                <template #default="{ row }">
+                  {{ formatRate(row.satisfaction) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="解决率" width="75" sortable :sort-method="sortMetric('呼入人工服务-解决率-解决率')" prop="resolve_rate">
+                <template #default="{ row }">
+                  {{ formatRate(row.resolve_rate) }}
+                </template>
+              </el-table-column>
               <el-table-column label="工单量" width="70" sortable :sort-method="sortMetric('呼入人工服务-工单-生成总量')" prop="ticket_count" />
               <el-table-column label="呼出量" width="70" sortable :sort-method="sortMetric('呼出服务-人工呼出呼叫量')" prop="outbound" />
             </el-table>
@@ -104,7 +113,11 @@
               <el-table-column label="人数" width="55" prop="count" />
               <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
               <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
-              <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction" />
+              <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
+                <template #default="{ row }">
+                  {{ formatRate(row.avg_satisfaction) }}
+                </template>
+              </el-table-column>
             </el-table>
           </el-card>
         </el-col>
@@ -146,54 +159,9 @@
         <el-table-column prop="emp_no" label="工号" width="80" />
         <el-table-column prop="team_desc" label="班组" min-width="140" sortable="custom" />
         <el-table-column prop="date_count" label="天数" width="60" sortable="custom" />
-        <el-table-column label="通话次数" width="80" sortable="custom" prop="call_count">
+        <el-table-column v-for="col in visibleMetricColumns" :key="col.field" :label="col.label" :width="col.width" sortable="custom" :prop="col.field">
           <template #default="{ row }">
-            {{ formatMetric(row, '呼入人工服务-人工服务-通话次数') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="通话总时长" width="90" sortable="custom" prop="call_duration">
-          <template #default="{ row }">
-            {{ formatMetric(row, '呼入人工服务-人工服务-通话总时长(秒)') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="通话均长" width="80" sortable="custom" prop="avg_duration">
-          <template #default="{ row }">
-            {{ formatMetric(row, '呼入人工服务-人工服务-通话均长(秒)') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="整理总时长" width="90" sortable="custom" prop="organize_duration">
-          <template #default="{ row }">
-            {{ formatMetric(row, '呼入人工服务-人工服务-服务后整理总时长(秒)') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="工单总量" width="70" sortable="custom" prop="ticket_count">
-          <template #default="{ row }">
-            {{ formatMetric(row, '呼入人工服务-工单-生成总量') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="满意率" width="70" sortable="custom" prop="satisfaction">
-          <template #default="{ row }">
-            {{ formatMetric(row, '人工服务-满意度-满意率', '%') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="解决率" width="70" sortable="custom" prop="resolve_rate">
-          <template #default="{ row }">
-            {{ formatMetric(row, '呼入人工服务-解决率-解决率', '%') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="呼出呼叫量" width="80" sortable="custom" prop="outbound">
-          <template #default="{ row }">
-            {{ formatMetric(row, '呼出服务-人工呼出呼叫量') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="工时利用率" width="80" sortable="custom" prop="utilization">
-          <template #default="{ row }">
-            {{ formatMetric(row, '总体-工时利用率', '%') }}
-          </template>
-        </el-table-column>
-        <el-table-column label="示忙次数" width="70" sortable="custom" prop="busy_count">
-          <template #default="{ row }">
-            {{ formatMetric(row, '操作次数及时长-示忙次数') }}
+            {{ formatMetric(row, col.field, col.isRate) }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="60" fixed="right">
@@ -214,6 +182,17 @@
       />
     </el-card>
 
+    <el-dialog v-model="columnSelectorVisible" title="自定义显示列" width="600px">
+      <el-checkbox-group v-model="selectedColumns">
+        <el-checkbox v-for="col in allMetricFields" :key="col.field" :label="col.field" style="margin: 4px 12px; width: 200px">
+          <span :title="col.field">{{ col.label }}</span>
+        </el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="columnSelectorVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <el-drawer v-model="drawerVisible" :title="drawerTitle" size="50%" direction="rtl">
       <template v-if="personalRecords.length">
         <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
@@ -226,35 +205,10 @@
         <div style="overflow-x: auto;">
           <el-table :data="personalRecords" border stripe size="small" max-height="500">
             <el-table-column prop="date" label="日期" width="90" />
-            <el-table-column label="通话次数" width="70">
-              <template #default="{ row }">{{ getMetric(row, '呼入人工服务-人工服务-通话次数') }}</template>
-            </el-table-column>
-            <el-table-column label="通话总时长" width="80">
-              <template #default="{ row }">{{ getMetric(row, '呼入人工服务-人工服务-通话总时长(秒)') }}s</template>
-            </el-table-column>
-            <el-table-column label="通话均长" width="70">
-              <template #default="{ row }">{{ getMetric(row, '呼入人工服务-人工服务-通话均长(秒)') }}s</template>
-            </el-table-column>
-            <el-table-column label="整理时长" width="70">
-              <template #default="{ row }">{{ getMetric(row, '呼入人工服务-人工服务-服务后整理总时长(秒)') }}s</template>
-            </el-table-column>
-            <el-table-column label="工单总量" width="65">
-              <template #default="{ row }">{{ getMetric(row, '呼入人工服务-工单-生成总量') }}</template>
-            </el-table-column>
-            <el-table-column label="非常满意" width="65">
-              <template #default="{ row }">{{ getMetric(row, '人工服务-满意度-非常满意量') }}</template>
-            </el-table-column>
-            <el-table-column label="呼出量" width="65">
-              <template #default="{ row }">{{ getMetric(row, '呼出服务-人工呼出呼叫量') }}</template>
-            </el-table-column>
-            <el-table-column label="示忙次数" width="65">
-              <template #default="{ row }">{{ getMetric(row, '操作次数及时长-示忙次数') }}</template>
-            </el-table-column>
-            <el-table-column label="总工时(秒)" width="75">
-              <template #default="{ row }">{{ getMetric(row, '总体-工作总时长(秒)') }}</template>
-            </el-table-column>
-            <el-table-column label="工时利用率" width="70">
-              <template #default="{ row }">{{ getMetric(row, '总体-工时利用率') }}%</template>
+            <el-table-column v-for="col in visibleDetailColumns" :key="col.field" :label="col.label" :width="col.width">
+              <template #default="{ row }">
+                {{ formatDetailValue(row, col) }}
+              </template>
             </el-table-column>
           </el-table>
         </div>
@@ -265,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
@@ -308,28 +262,97 @@ const stats = reactive({
   total_outbound: 0
 })
 
+const allMetricFields = ref([])
+const columnSelectorVisible = ref(false)
+const selectedColumns = ref(loadSelectedColumns())
+const COLUMNS_KEY = 'workload-report-columns'
+const DEFAULT_COLUMNS = [
+  '呼入人工服务-人工服务-通话次数',
+  '呼入人工服务-人工服务-通话总时长(秒)',
+  '呼入人工服务-人工服务-通话均长(秒)',
+  '呼入人工服务-人工服务-服务后整理总时长(秒)',
+  '呼入人工服务-工单-生成总量',
+  '人工服务-满意度-满意率',
+  '呼入人工服务-解决率-解决率',
+  '呼出服务-人工呼出呼叫量',
+  '总体-工时利用率',
+  '操作次数及时长-示忙次数'
+]
+const DETAIL_COLUMNS = [
+  '呼入人工服务-人工服务-通话次数',
+  '呼入人工服务-人工服务-通话总时长(秒)',
+  '呼入人工服务-人工服务-通话均长(秒)',
+  '呼入人工服务-人工服务-服务后整理总时长(秒)',
+  '呼入人工服务-工单-生成总量',
+  '人工服务-满意度-非常满意量',
+  '呼出服务-人工呼出呼叫量',
+  '操作次数及时长-示忙次数',
+  '总体-工作总时长(秒)',
+  '总体-工时利用率'
+]
+
+function loadSelectedColumns() {
+  try {
+    const saved = localStorage.getItem(COLUMNS_KEY)
+    return saved ? JSON.parse(saved) : [...DEFAULT_COLUMNS]
+  } catch { return [...DEFAULT_COLUMNS] }
+}
+
+watch(selectedColumns, (val) => {
+  localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))
+}, { deep: true })
+
+function displayLabel(field) {
+  return field.split('-').pop()
+}
+
+function isRateField(field) {
+  return field.includes('率') || field.includes('均长')
+}
+
 function getMetricValue(row, field) {
   const val = row.aggregated_metrics?.[field]
   if (val === null || val === undefined) return null
   return typeof val === 'number' ? val : parseFloat(val) || 0
 }
 
-function formatMetric(row, field, suffix = '') {
+function formatMetric(row, field, isRate = false) {
   const val = getMetricValue(row, field)
   if (val === null) return '-'
-  if (Number.isInteger(val)) return val + suffix
-  return val.toFixed(1) + suffix
+  if (isRate) return (val * 100).toFixed(2) + '%'
+  if (Number.isInteger(val)) return String(val)
+  return val.toFixed(1)
 }
 
-function getMetric(row, field) {
-  const val = row.metrics?.[field]
+function formatRate(val) {
   if (val === null || val === undefined) return '-'
-  if (typeof val === 'number') {
-    if (Number.isInteger(val)) return val
-    return val.toFixed(1)
-  }
-  return val
+  const num = typeof val === 'number' ? val : parseFloat(val)
+  if (isNaN(num)) return '-'
+  return (num * 100).toFixed(2) + '%'
 }
+
+function formatDetailValue(row, col) {
+  const val = row.metrics?.[col.field]
+  if (val === null || val === undefined) return '-'
+  const num = typeof val === 'number' ? val : parseFloat(val)
+  if (isNaN(num)) return val
+  if (col.isRate) return (num * 100).toFixed(2) + '%'
+  if (Number.isInteger(num)) return String(num)
+  return num.toFixed(1)
+}
+
+const visibleMetricColumns = computed(() => {
+  return allMetricFields.value.filter(f => selectedColumns.value.includes(f.field))
+})
+
+const visibleDetailColumns = computed(() => {
+  return allMetricFields.value
+    .filter(f => DETAIL_COLUMNS.includes(f.field))
+    .map(f => ({
+      ...f,
+      width: f.width + 5
+    }))
+})
 
 const personalRanking = computed(() => {
   return [...tableData.value]
@@ -370,7 +393,7 @@ const teamRanking = computed(() => {
       count: data.count,
       total_calls: data.total_calls,
       avg_duration: data.count > 0 ? (data.total_duration / data.count).toFixed(1) : 0,
-      avg_satisfaction: data.sat_count > 0 ? (data.total_satisfaction / data.sat_count).toFixed(2) : 0
+      avg_satisfaction: data.sat_count > 0 ? (data.total_satisfaction / data.sat_count) : null
     }))
     .sort((a, b) => b.total_calls - a.total_calls)
 })
@@ -417,13 +440,8 @@ const paginatedData = computed(() => {
         bVal = (b[sortBy.value] || '').toLowerCase()
         return sortOrder.value === 'ascending' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
       }
-      if (sortBy.value === 'date_count') {
-        aVal = a.date_count || 0
-        bVal = b.date_count || 0
-      } else {
-        aVal = getMetricValue(a, METRIC_MAP[sortBy.value] || '') || 0
-        bVal = getMetricValue(b, METRIC_MAP[sortBy.value] || '') || 0
-      }
+      aVal = (sortBy.value === 'date_count') ? (a.date_count || 0) : (getMetricValue(a, sortBy.value) || 0)
+      bVal = (sortBy.value === 'date_count') ? (b.date_count || 0) : (getMetricValue(b, sortBy.value) || 0)
       return sortOrder.value === 'ascending' ? aVal - bVal : bVal - aVal
     })
   }
@@ -431,19 +449,6 @@ const paginatedData = computed(() => {
   const end = start + pageSize.value
   return data.slice(start, end)
 })
-
-const METRIC_MAP = {
-  call_count: '呼入人工服务-人工服务-通话次数',
-  call_duration: '呼入人工服务-人工服务-通话总时长(秒)',
-  avg_duration: '呼入人工服务-人工服务-通话均长(秒)',
-  organize_duration: '呼入人工服务-人工服务-服务后整理总时长(秒)',
-  ticket_count: '呼入人工服务-工单-生成总量',
-  satisfaction: '人工服务-满意度-满意率',
-  resolve_rate: '呼入人工服务-解决率-解决率',
-  outbound: '呼出服务-人工呼出呼叫量',
-  utilization: '总体-工时利用率',
-  busy_count: '操作次数及时长-示忙次数'
-}
 
 function sortMetric(field) {
   return (a, b) => {
@@ -503,6 +508,20 @@ function clearFilter() {
   filterType.value = ''
   filterValue.value = ''
   currentPage.value = 1
+}
+
+async function loadMetricsFields() {
+  try {
+    const res = await api.get('/workloads/metrics-fields')
+    allMetricFields.value = (res.data || []).map(f => ({
+      field: f,
+      label: displayLabel(f),
+      isRate: isRateField(f),
+      width: 80
+    }))
+  } catch {
+    allMetricFields.value = []
+  }
 }
 
 async function loadData() {
@@ -584,6 +603,7 @@ onMounted(() => {
     handleTypeChange()
   }
   loadData()
+  loadMetricsFields()
 })
 </script>
 

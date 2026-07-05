@@ -337,14 +337,18 @@ class TestWorkloadReport:
         try:
             _clean_tables(db)
             _create_test_employees(db)
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
             records = [
-                Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001", team_desc="热线一组",
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                         team_desc=f"{ORG_PREFIX}热线一组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 28800, "呼入人工服务-人工服务-通话次数": 30,
                                   "呼入人工服务-工单-生成总量": 10, "人工服务-满意度-满意率": 98.5}, import_batch="batch001"),
-                Workload(date=date(2026, 6, 28), province="广西", account="STTR00002", name="李四", emp_no="1002", team_desc="热线二组",
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00002", name="李四", emp_no="1002",
+                         team_desc=f"{ORG_PREFIX}热线二组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 25200, "呼入人工服务-人工服务-通话次数": 20,
                                   "呼入人工服务-工单-生成总量": 5, "人工服务-满意度-满意率": 95.0}, import_batch="batch001"),
-                Workload(date=date(2026, 6, 28), province="广东", account="STTR00003", name="王五", emp_no="1003", team_desc="热线一组",
+                Workload(date=date(2026, 6, 28), province="广东", account="STTR00003", name="王五", emp_no="1003",
+                         team_desc=f"{ORG_PREFIX}热线一组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 27000, "呼入人工服务-人工服务-通话次数": 25,
                                   "呼入人工服务-工单-生成总量": 8, "人工服务-满意度-满意率": 96.0}, import_batch="batch001"),
             ]
@@ -390,6 +394,24 @@ class TestWorkloadReport:
         assert resp.status_code == 200
         data = resp.json()
         assert data["stats"]["total_people"] == 1
+
+    def test_report_filter_by_team(self):
+        """Filter by Employee.team (not Workload.team_desc org path)"""
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "team_desc": "热线一组"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 2
+
+    def test_report_teams_from_employee(self):
+        """teams list should come from Employee.team, not Workload.team_desc"""
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        data = resp.json()
+        teams = data["stats"].get("teams", [])
+        assert "热线一组" in teams
+        assert "热线二组" in teams
 
 
 class TestWorkloadMetricsFields:

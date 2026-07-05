@@ -4,7 +4,12 @@
       <template #header>
         <div class="card-header">
           <span>工作量详单</span>
-          <el-button v-if="userStore.hasPermission('workload.upload')" type="primary" @click="dialogVisible = true">导入工作量</el-button>
+          <div>
+            <el-button @click="columnSelectorVisible = true">
+              自定义列
+            </el-button>
+            <el-button v-if="userStore.hasPermission('workload.upload')" type="primary" @click="dialogVisible = true">导入工作量</el-button>
+          </div>
         </div>
       </template>
 
@@ -32,7 +37,7 @@
         <el-button v-if="userStore.hasPermission('workload.delete')" type="danger" :disabled="!searchForm.batch" @click="handleDeleteBatch">按批次删除</el-button>
       </el-space>
 
-      <el-table :data="tableData" border stripe>
+      <el-table :data="tableData" border stripe max-height="calc(100vh - 280px)">
         <el-table-column prop="date" label="日期" width="100">
           <template #default="{ row }">
             {{ row.date?.slice(0, 10) }}
@@ -44,7 +49,12 @@
         <el-table-column prop="emp_no" label="工号" width="80" />
         <el-table-column prop="team_desc" label="班组" min-width="160" />
         <el-table-column prop="import_batch" label="批次号" width="100" />
-        <el-table-column label="操作" width="150">
+        <el-table-column v-for="col in visibleMetricColumns" :key="col.field" :label="col.label" :width="col.width" :prop="col.field">
+          <template #default="{ row }">
+            {{ formatMetricValue(row.metrics?.[col.field], col.isRate) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button v-if="userStore.hasPermission('workload.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
             <el-button v-if="userStore.hasPermission('workload.delete')" type="danger" link @click="handleDeleteBatchByValue(row.import_batch)">删除本批次</el-button>
@@ -60,6 +70,18 @@
         @current-change="loadData"
       />
     </el-card>
+
+    <el-dialog v-model="columnSelectorVisible" title="自定义显示列" width="500px">
+      <el-checkbox-group v-model="selectedColumns">
+        <el-checkbox v-for="col in allMetricFields" :key="col.field" :label="col.field" style="margin: 4px 8px; width: 180px">
+          <span :title="col.field">{{ col.label }}</span>
+        </el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="selectedColumns = []; columnSelectorVisible = false">取消</el-button>
+        <el-button @click="columnSelectorVisible = false">确定</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-if="userStore.hasPermission('workload.upload')" v-model="dialogVisible" title="导入工作量数据" width="500px" @closed="closeDialog">
       <el-upload
@@ -100,7 +122,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
@@ -116,6 +138,57 @@ const searchForm = reactive({ batch: '', date: '', name: '', account: '' })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const fileList = ref([])
 const uploadResults = ref([])
+
+const allMetricFields = ref([])
+const columnSelectorVisible = ref(false)
+const selectedColumns = ref(loadSelectedColumns())
+const COLUMNS_KEY = 'workload-detail-columns'
+
+function loadSelectedColumns() {
+  try {
+    const saved = localStorage.getItem(COLUMNS_KEY)
+    return saved ? JSON.parse(saved) : []
+  } catch { return [] }
+}
+
+watch(selectedColumns, (val) => {
+  localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))
+}, { deep: true })
+
+const visibleMetricColumns = computed(() => {
+  return allMetricFields.value.filter(f => selectedColumns.value.includes(f.field))
+})
+
+function displayLabel(field) {
+  return field.split('-').pop()
+}
+
+function isRateField(field) {
+  return field.includes('率') || field.includes('均长')
+}
+
+function formatMetricValue(val, isRate) {
+  if (val === null || val === undefined) return '-'
+  const num = typeof val === 'number' ? val : parseFloat(val)
+  if (isNaN(num)) return val
+  if (isRate) return (num * 100).toFixed(2) + '%'
+  if (Number.isInteger(num)) return String(num)
+  return num.toFixed(1)
+}
+
+async function loadMetricsFields() {
+  try {
+    const res = await api.get('/workloads/metrics-fields')
+    allMetricFields.value = (res.data || []).map(f => ({
+      field: f,
+      label: displayLabel(f),
+      isRate: isRateField(f),
+      width: f.includes('均长') ? 80 : 70
+    }))
+  } catch {
+    allMetricFields.value = []
+  }
+}
 
 async function loadData() {
   try {
@@ -246,6 +319,7 @@ async function handleDeleteByDate() {
 
 onMounted(() => {
   loadData()
+  loadMetricsFields()
 })
 </script>
 
