@@ -307,7 +307,7 @@ function displayLabel(field) {
 }
 
 function isRateField(field) {
-  return field.includes('率') || field.includes('均长')
+  return field.includes('率')
 }
 
 function getMetricValue(row, field) {
@@ -319,7 +319,7 @@ function getMetricValue(row, field) {
 function formatMetric(row, field, isRate = false) {
   const val = getMetricValue(row, field)
   if (val === null) return '-'
-  if (isRate) return (val * 100).toFixed(2) + '%'
+  if (isRate) return val.toFixed(2) + '%'
   if (Number.isInteger(val)) return String(val)
   return val.toFixed(1)
 }
@@ -328,7 +328,7 @@ function formatRate(val) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return '-'
-  return (num * 100).toFixed(2) + '%'
+  return num.toFixed(2) + '%'
 }
 
 function formatDetailValue(row, col) {
@@ -336,7 +336,7 @@ function formatDetailValue(row, col) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return val
-  if (col.isRate) return (num * 100).toFixed(2) + '%'
+  if (col.isRate) return num.toFixed(2) + '%'
   if (Number.isInteger(num)) return String(num)
   return num.toFixed(1)
 }
@@ -510,17 +510,34 @@ function clearFilter() {
   currentPage.value = 1
 }
 
+const FALLBACK_FIELDS = [
+  '呼入人工服务-人工服务-通话次数', '呼入人工服务-人工服务-通话总时长(秒)',
+  '呼入人工服务-人工服务-通话均长(秒)', '呼入人工服务-人工服务-服务后整理总时长(秒)',
+  '呼入人工服务-工单-生成总量', '人工服务-满意度-满意率',
+  '呼入人工服务-解决率-解决率', '呼出服务-人工呼出呼叫量',
+  '总体-工时利用率', '操作次数及时长-示忙次数',
+]
+
 async function loadMetricsFields() {
   try {
     const res = await api.get('/workloads/metrics-fields')
-    allMetricFields.value = (res.data || []).map(f => ({
+    const fields = res.data
+    if (!Array.isArray(fields) || fields.length === 0) {
+      allMetricFields.value = FALLBACK_FIELDS.map(f => ({
+        field: f, label: displayLabel(f), isRate: isRateField(f), width: 80
+      }))
+      return
+    }
+    allMetricFields.value = fields.map(f => ({
       field: f,
       label: displayLabel(f),
       isRate: isRateField(f),
       width: 80
     }))
   } catch {
-    allMetricFields.value = []
+    allMetricFields.value = FALLBACK_FIELDS.map(f => ({
+      field: f, label: displayLabel(f), isRate: isRateField(f), width: 80
+    }))
   }
 }
 

@@ -5,21 +5,21 @@ function displayLabel(field) {
 }
 
 function isRateField(field) {
-  return field.includes('率') || field.includes('均长')
+  return field.includes('率')
 }
 
 function formatRate(val) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return '-'
-  return (num * 100).toFixed(2) + '%'
+  return num.toFixed(2) + '%'
 }
 
 function formatMetricValue(val, isRate) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return val
-  if (isRate) return (num * 100).toFixed(2) + '%'
+  if (isRate) return num.toFixed(2) + '%'
   if (Number.isInteger(num)) return String(num)
   return num.toFixed(1)
 }
@@ -50,8 +50,8 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(isRateField('呼入人工服务-解决率-解决率')).toBe(true)
       expect(isRateField('总体-工时利用率')).toBe(true)
     })
-    it('should detect rate fields containing 均长', () => {
-      expect(isRateField('呼入人工服务-人工服务-通话均长(秒)')).toBe(true)
+    it('should not flag avg duration fields as rate', () => {
+      expect(isRateField('呼入人工服务-人工服务-通话均长(秒)')).toBe(false)
     })
     it('should return false for non-rate fields', () => {
       expect(isRateField('呼入人工服务-人工服务-通话次数')).toBe(false)
@@ -61,17 +61,17 @@ describe('WorkloadReport - 格式化函数测试', () => {
   })
 
   describe('formatRate', () => {
-    it('should format decimal rate as percentage with 2 decimals', () => {
-      expect(formatRate(0.8567)).toBe('85.67%')
-      expect(formatRate(0.95)).toBe('95.00%')
-      expect(formatRate(1.0)).toBe('100.00%')
+    it('should format rate as percentage with 2 decimals', () => {
+      expect(formatRate(85.67)).toBe('85.67%')
+      expect(formatRate(95.0)).toBe('95.00%')
+      expect(formatRate(100.0)).toBe('100.00%')
     })
     it('should return dash for null/undefined', () => {
       expect(formatRate(null)).toBe('-')
       expect(formatRate(undefined)).toBe('-')
     })
     it('should handle string numbers', () => {
-      expect(formatRate('0.8567')).toBe('85.67%')
+      expect(formatRate('85.67')).toBe('85.67%')
     })
     it('should return dash for NaN', () => {
       expect(formatRate(NaN)).toBe('-')
@@ -80,7 +80,7 @@ describe('WorkloadReport - 格式化函数测试', () => {
 
   describe('formatMetricValue', () => {
     it('should format rate fields with percentage', () => {
-      expect(formatMetricValue(0.8567, true)).toBe('85.67%')
+      expect(formatMetricValue(85.67, true)).toBe('85.67%')
     })
     it('should format non-rate integer fields as string', () => {
       expect(formatMetricValue(30, false)).toBe('30')
@@ -101,7 +101,7 @@ describe('WorkloadReport - 格式化函数测试', () => {
     const row = {
       aggregated_metrics: {
         '通话次数': 30,
-        '满意率': 0.95,
+        '满意率': 95.0,
         '空值字段': null
       }
     }
@@ -109,7 +109,7 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(getMetricValue(row, '通话次数')).toBe(30)
     })
     it('should handle rate values', () => {
-      expect(getMetricValue(row, '满意率')).toBe(0.95)
+      expect(getMetricValue(row, '满意率')).toBe(95.0)
     })
     it('should return null for null values in metrics', () => {
       expect(getMetricValue(row, '空值字段')).toBeNull()
