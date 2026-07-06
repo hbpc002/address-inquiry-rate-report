@@ -239,12 +239,15 @@ const filterValue = ref('')
 const sortBy = ref('')
 const sortOrder = ref('')
 
+const now = new Date()
+const defaultMonth = now.toISOString().slice(0, 7)
+
 const { filters: searchForm, isRestored: searchFormRestored } = usePersistedFilters(
   'workload-report-filters',
   {
-    type: 'day',
-    date: getYesterday(),
-    month: new Date().toISOString().slice(0, 7),
+    type: 'month',
+    date: '',
+    month: defaultMonth,
     start_date: '',
     end_date: '',
     name: '',
@@ -260,6 +263,12 @@ const stats = reactive({
   total_work_duration: 0,
   total_ticket_count: 0,
   total_outbound: 0
+})
+
+const queryInfo = reactive({
+  params: {},
+  itemCount: 0,
+  apiOk: false
 })
 
 const allMetricFields = ref([])
@@ -465,7 +474,7 @@ function handleSortChange({ prop, order }) {
 }
 
 function handleTypeChange() {
-  const now = new Date()
+  const d = new Date()
   if (searchForm.type === 'day') {
     searchForm.date = getYesterday()
     searchForm.month = ''
@@ -473,13 +482,13 @@ function handleTypeChange() {
     searchForm.end_date = ''
   } else if (searchForm.type === 'month') {
     searchForm.date = ''
-    searchForm.month = now.toISOString().slice(0, 7)
+    searchForm.month = d.toISOString().slice(0, 7)
     searchForm.start_date = ''
     searchForm.end_date = ''
   } else {
     searchForm.date = ''
     searchForm.month = ''
-    searchForm.start_date = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+    searchForm.start_date = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
     searchForm.end_date = getYesterday()
   }
 }
@@ -559,6 +568,10 @@ async function loadData() {
 
     const res = await api.get('/workloads/report', { params })
     const data = res.data.items || []
+    queryInfo.params = { ...params }
+    queryInfo.itemCount = data.length
+    queryInfo.apiOk = true
+    console.log('[WorkloadReport] API response:', res.data)
     stats.total_people = res.data.stats.total_people
     stats.total_records = res.data.stats.total_records
     stats.total_call_count = res.data.stats.total_call_count
@@ -572,7 +585,9 @@ async function loadData() {
     }
 
     if (data.length === 0) {
-      const range = params.start_date ? params.start_date + (params.end_date !== params.start_date ? ' ~ ' + params.end_date : '') : (params.year_month || '当前')
+      const range = params.start_date
+        ? params.start_date + (params.end_date !== params.start_date ? ' ~ ' + params.end_date : '')
+        : (params.year_month || '当前')
       ElMessage.info(`所选日期(${range})没有工作量数据，请调整查询条件`)
     }
   } catch (e) {
