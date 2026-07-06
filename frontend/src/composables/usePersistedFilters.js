@@ -1,9 +1,18 @@
 import { reactive, onBeforeUnmount } from 'vue'
 
 export function usePersistedFilters(storageKey, defaults) {
-  const saved = sessionStorage.getItem(storageKey)
-  const isRestored = !!saved
-  const initial = isRestored ? { ...defaults, ...JSON.parse(saved) } : { ...defaults }
+  let initial = { ...defaults }
+  let isRestored = false
+  try {
+    const saved = sessionStorage.getItem(storageKey)
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      isRestored = true
+      initial = { ...defaults, ...parsed }
+    }
+  } catch {
+    sessionStorage.removeItem(storageKey)
+  }
   const filters = reactive(initial)
 
   function save() {
