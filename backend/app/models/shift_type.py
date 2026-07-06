@@ -7,7 +7,7 @@ class ShiftType(Base):
     __tablename__ = "shift_types"
 
     id = Column(Integer, primary_key=True, index=True)
-    shift_name = Column(String(20), unique=True, nullable=False)
+    shift_name = Column(String(100), unique=True, nullable=False)
     time_segments = Column(JSON, nullable=False)
     work_hours = Column(DECIMAL(4, 1), nullable=False)
     color = Column(String(20), default="#409EFF")

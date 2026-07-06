@@ -95,6 +95,16 @@ def _migrate_db():
                     except Exception as e:
                         print(f"Failed to add column {col_name}: {e}")
 
+        if 'shift_types' in tables:
+            shift_type_cols = {col['name']: col for col in inspector.get_columns('shift_types')}
+            shift_name_col = shift_type_cols.get('shift_name')
+            if shift_name_col and str(shift_name_col.get('type')) == 'VARCHAR(20)':
+                try:
+                    db.execute(text("ALTER TABLE shift_types ALTER COLUMN shift_name TYPE VARCHAR(100)"))
+                    print("Altered shift_types.shift_name to VARCHAR(100)")
+                except Exception as e:
+                    print(f"Failed to alter shift_name column: {e}")
+
         if 'daily_reports' in tables:
             report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}
             if 'segment_details' not in report_cols:

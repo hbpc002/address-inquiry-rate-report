@@ -1,10 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
 
 class ShiftTypeBase(BaseModel):
-    shift_name: str
+    shift_name: str = Field(..., max_length=100)
     start_time: str
     end_time: str
     work_hours: float
@@ -17,7 +17,7 @@ class ShiftTypeCreate(ShiftTypeBase):
 
 
 class ShiftTypeUpdate(BaseModel):
-    shift_name: Optional[str] = None
+    shift_name: Optional[str] = Field(None, max_length=100)
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     work_hours: Optional[float] = None

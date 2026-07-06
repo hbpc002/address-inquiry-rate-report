@@ -133,7 +133,7 @@ def get_or_create_shift(db: Session, shift_info: dict) -> Optional[ShiftType]:
     if shift:
         return shift
     shift = ShiftType(
-        shift_name=shift_info["name"],
+        shift_name=shift_info["name"][:100],
         time_segments=shift_info.get("time_segments", [{"start": "08:00", "end": "18:00"}]),
         work_hours=shift_info.get("work_hours", 8.0),
         color="#409EFF" if not shift_info.get("is_night") else "#909399",
