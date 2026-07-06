@@ -558,16 +558,22 @@ async function loadData() {
     if (searchForm.team_desc) params.team_desc = searchForm.team_desc
 
     const res = await api.get('/workloads/report', { params })
+    const data = res.data.items || []
     stats.total_people = res.data.stats.total_people
     stats.total_records = res.data.stats.total_records
     stats.total_call_count = res.data.stats.total_call_count
     stats.total_work_duration = res.data.stats.total_work_duration
     stats.total_ticket_count = res.data.stats.total_ticket_count
     stats.total_outbound = res.data.stats.total_outbound
-    tableData.value = res.data.items || []
+    tableData.value = data
 
     if (res.data.stats.teams) {
       teams.value = res.data.stats.teams
+    }
+
+    if (data.length === 0) {
+      const range = params.start_date ? params.start_date + (params.end_date !== params.start_date ? ' ~ ' + params.end_date : '') : (params.year_month || '当前')
+      ElMessage.info(`所选日期(${range})没有工作量数据，请调整查询条件`)
     }
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
