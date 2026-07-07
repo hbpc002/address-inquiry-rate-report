@@ -92,15 +92,15 @@ function calcCallSalary(callCount, tiers) {
 }
 
 function calcSatSalary(row) {
-  const sat = getMetricValue(row, '人工服务-满意度-非经常满意量')
-  const weight = getMetricValue(row, '人工服务-满意度-满意权重')
+  const sat = getMetricValue(row, '人工服务-满意度-非常满意量')
+  const weight = getMetricValue(row, '人工服务-满意度-满意量')
   if (sat === null || weight === null) return null
   return (sat + weight) * 0.5
 }
 
 function calcSatDiff(row, coeffA, coeffB) {
-  const e = getMetricValue(row, '人工服务-满意度-非经常满意量')
-  const f = getMetricValue(row, '人工服务-满意度-满意权重')
+  const e = getMetricValue(row, '人工服务-满意度-非常满意量')
+  const f = getMetricValue(row, '人工服务-满意度-满意量')
   const g = getMetricValue(row, '人工服务-满意度-一般量')
   const h = getMetricValue(row, '人工服务-满意度-不满意量')
   const i = getMetricValue(row, '人工服务-满意度-非常不满意量')
@@ -299,10 +299,10 @@ describe('WorkloadReport - 格式化函数测试', () => {
   })
 
   describe('calcSatSalary', () => {
-    it('should compute (non-regular-sat + weight) * 0.5', () => {
+    it('should compute (非常满意量 + 满意量) * 0.5', () => {
       const row = { aggregated_metrics: {
-        '人工服务-满意度-非经常满意量': 0.8,
-        '人工服务-满意度-满意权重': 0.9
+        '人工服务-满意度-非常满意量': 0.8,
+        '人工服务-满意度-满意量': 0.9
       }}
       expect(calcSatSalary(row)).toBeCloseTo(0.85)
     })
@@ -313,8 +313,8 @@ describe('WorkloadReport - 格式化函数测试', () => {
 
   describe('calcSatDiff', () => {
     const row = { aggregated_metrics: {
-      '人工服务-满意度-非经常满意量': 10,
-      '人工服务-满意度-满意权重': 20,
+      '人工服务-满意度-非常满意量': 10,
+      '人工服务-满意度-满意量': 20,
       '人工服务-满意度-一般量': 5,
       '人工服务-满意度-不满意量': 3,
       '人工服务-满意度-非常不满意量': 2

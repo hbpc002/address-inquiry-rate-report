@@ -296,8 +296,8 @@ const DEFAULT_COLUMNS = [
   '呼出服务-人工呼出呼叫量',
   '总体-工时利用率',
   '操作次数及时长-示忙次数',
-  '人工服务-满意度-非经常满意量',
-  '人工服务-满意度-满意权重',
+  '人工服务-满意度-非常满意量',
+  '人工服务-满意度-满意量',
   '人工服务-满意度-一般量',
   '人工服务-满意度-不满意量',
   '人工服务-满意度-非常不满意量'
@@ -313,8 +313,8 @@ const DETAIL_COLUMNS = [
   '操作次数及时长-示忙次数',
   '总体-工作总时长(秒)',
   '总体-工时利用率',
-  '人工服务-满意度-非经常满意量',
-  '人工服务-满意度-满意权重',
+  '人工服务-满意度-非常满意量',
+  '人工服务-满意度-满意量',
   '人工服务-满意度-一般量',
   '人工服务-满意度-不满意量',
   '人工服务-满意度-非常不满意量'
@@ -504,15 +504,15 @@ function calcCallSalary(callCount) {
 }
 
 function calcSatSalary(row) {
-  const sat = getMetricValue(row, '人工服务-满意度-非经常满意量')
-  const weight = getMetricValue(row, '人工服务-满意度-满意权重')
+  const sat = getMetricValue(row, '人工服务-满意度-非常满意量')
+  const weight = getMetricValue(row, '人工服务-满意度-满意量')
   if (sat === null || weight === null) return null
   return (sat + weight) * salaryCfg.satCoefficient
 }
 
 function calcSatDiff(row) {
-  const e = getMetricValue(row, '人工服务-满意度-非经常满意量')
-  const f = getMetricValue(row, '人工服务-满意度-满意权重')
+  const e = getMetricValue(row, '人工服务-满意度-非常满意量')
+  const f = getMetricValue(row, '人工服务-满意度-满意量')
   const g = getMetricValue(row, '人工服务-满意度-一般量')
   const h = getMetricValue(row, '人工服务-满意度-不满意量')
   const i = getMetricValue(row, '人工服务-满意度-非常不满意量')
@@ -660,7 +660,7 @@ const FALLBACK_FIELDS = [
   '呼入人工服务-工单-生成总量', '人工服务-满意度-满意率',
   '呼入人工服务-解决率-解决率', '呼出服务-人工呼出呼叫量',
   '总体-工时利用率', '操作次数及时长-示忙次数',
-  '人工服务-满意度-非经常满意量', '人工服务-满意度-满意权重',
+  '人工服务-满意度-非常满意量', '人工服务-满意度-满意量',
   '人工服务-满意度-一般量', '人工服务-满意度-不满意量',
   '人工服务-满意度-非常不满意量',
 ]
