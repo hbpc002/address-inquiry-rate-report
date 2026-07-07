@@ -82,6 +82,12 @@ const routes = [
         name: 'Roles',
         component: () => import('../views/Roles.vue'),
         meta: { permission: 'roles.view' }
+      },
+      {
+        path: 'salary-settings',
+        name: 'SalarySettings',
+        component: () => import('../views/SalarySettings.vue'),
+        meta: { permission: 'salary_config.view' }
       }
     ]
   }

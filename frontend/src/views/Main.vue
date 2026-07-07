@@ -61,6 +61,10 @@
           <el-icon><Management /></el-icon>
           <span>角色管理</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('salary_config')" index="/salary-settings">
+          <el-icon><Coin /></el-icon>
+          <span>绩效配置</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -102,7 +106,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()

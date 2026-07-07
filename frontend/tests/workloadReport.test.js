@@ -71,6 +71,47 @@ function resolveRateField(d) {
   return getMetricValue(d, '人工服务-解决率-转解决情况调查率')
 }
 
+const DEFAULT_TIERS = [
+  { min: 0, max: 1000, rate: 1.0 },
+  { min: 1000, max: 2000, rate: 1.5 },
+  { min: 2000, max: 3500, rate: 1.2 },
+  { min: 3500, max: null, rate: 1.0 }
+]
+
+function calcCallSalary(callCount, tiers) {
+  const t = tiers || DEFAULT_TIERS
+  let remaining = callCount
+  let total = 0
+  for (const tier of t) {
+    if (remaining <= 0) break
+    const bracketSize = tier.max === null ? remaining : Math.min(remaining, tier.max - tier.min)
+    total += bracketSize * tier.rate
+    remaining -= bracketSize
+  }
+  return total
+}
+
+function calcSatSalary(row) {
+  const sat = getMetricValue(row, '人工服务-满意度-非经常满意量')
+  const weight = getMetricValue(row, '人工服务-满意度-满意权重')
+  if (sat === null || weight === null) return null
+  return (sat + weight) * 0.5
+}
+
+function calcSatDiff(row, coeffA, coeffB) {
+  const e = getMetricValue(row, '人工服务-满意度-非经常满意量')
+  const f = getMetricValue(row, '人工服务-满意度-满意权重')
+  const g = getMetricValue(row, '人工服务-满意度-一般量')
+  const h = getMetricValue(row, '人工服务-满意度-不满意量')
+  const i = getMetricValue(row, '人工服务-满意度-非常不满意量')
+  if (e === null || f === null) return null
+  const sumAll = [e, f, g, h, i].filter(v => v !== null).reduce((a, b) => a + b, 0)
+  const sumEF = (e || 0) + (f || 0)
+  const a = coeffA ?? 19
+  const b = coeffB ?? 20
+  return sumAll * a - sumEF * b
+}
+
 describe('WorkloadReport - 格式化函数测试', () => {
 
   describe('displayLabel', () => {
@@ -229,6 +270,67 @@ describe('WorkloadReport - 格式化函数测试', () => {
     it('should return null for missing field', () => {
       const d = {}
       expect(resolveRateField(d)).toBeNull()
+    })
+  })
+
+  describe('calcCallSalary', () => {
+    it('should calculate tier 1 (< 1000)', () => {
+      expect(calcCallSalary(500)).toBeCloseTo(500)
+    })
+    it('should calculate tier 2 (1000-2000)', () => {
+      const total = 1000 * 1.0 + 500 * 1.5
+      expect(calcCallSalary(1500)).toBeCloseTo(total)
+    })
+    it('should calculate tier 3 (2000-3500)', () => {
+      const total = 1000 * 1.0 + 1000 * 1.5 + 500 * 1.2
+      expect(calcCallSalary(2500)).toBeCloseTo(total)
+    })
+    it('should calculate tier 4 (> 3500)', () => {
+      const total = 1000 * 1.0 + 1000 * 1.5 + 1500 * 1.2 + 500 * 1.0
+      expect(calcCallSalary(4000)).toBeCloseTo(total)
+    })
+    it('should return 0 for 0 calls', () => {
+      expect(calcCallSalary(0)).toBe(0)
+    })
+    it('should handle custom tiers', () => {
+      const customTiers = [{ min: 0, max: null, rate: 2.0 }]
+      expect(calcCallSalary(100, customTiers)).toBe(200)
+    })
+  })
+
+  describe('calcSatSalary', () => {
+    it('should compute (non-regular-sat + weight) * 0.5', () => {
+      const row = { aggregated_metrics: {
+        '人工服务-满意度-非经常满意量': 0.8,
+        '人工服务-满意度-满意权重': 0.9
+      }}
+      expect(calcSatSalary(row)).toBeCloseTo(0.85)
+    })
+    it('should return null when fields missing', () => {
+      expect(calcSatSalary({})).toBeNull()
+    })
+  })
+
+  describe('calcSatDiff', () => {
+    const row = { aggregated_metrics: {
+      '人工服务-满意度-非经常满意量': 10,
+      '人工服务-满意度-满意权重': 20,
+      '人工服务-满意度-一般量': 5,
+      '人工服务-满意度-不满意量': 3,
+      '人工服务-满意度-非常不满意量': 2
+    }}
+    it('should compute ((all) * A - (E+F) * B)', () => {
+      const result = calcSatDiff(row, 19, 20)
+      const expected = (10 + 20 + 5 + 3 + 2) * 19 - (10 + 20) * 20
+      expect(result).toBeCloseTo(expected)
+    })
+    it('should use default coefficients when not provided', () => {
+      const result = calcSatDiff(row)
+      const expected = (10 + 20 + 5 + 3 + 2) * 19 - (10 + 20) * 20
+      expect(result).toBeCloseTo(expected)
+    })
+    it('should return null when E or F missing', () => {
+      expect(calcSatDiff({})).toBeNull()
     })
   })
 

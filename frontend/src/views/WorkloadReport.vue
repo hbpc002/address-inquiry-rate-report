@@ -147,6 +147,36 @@
             {{ formatMetric(row, col.field, col.isRate) }}
           </template>
         </el-table-column>
+        <el-table-column label="提单率" width="85" sortable="custom" prop="_ti_dan_lv">
+          <template #default="{ row }">
+            {{ (row._ti_dan_lv * 100).toFixed(2) + '%' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="接话绩效" width="100" sortable="custom" prop="_call_salary">
+          <template #default="{ row }">
+            {{ row._call_salary.toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="满意度绩效" width="100" sortable="custom" prop="_sat_salary">
+          <template #default="{ row }">
+            {{ row._sat_salary !== null ? row._sat_salary.toFixed(2) : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="合计绩效" width="100" sortable="custom" prop="_total_salary">
+          <template #default="{ row }">
+            {{ row._total_salary.toFixed(2) }}
+          </template>
+        </el-table-column>
+        <el-table-column v-for="target in salaryCfg.gapTargets" :key="target" :label="`话务量差额(${target})`" width="110" sortable="custom" :prop="`gap_${target}`">
+          <template #default="{ row }">
+            {{ row[`gap_${target}`] }}
+          </template>
+        </el-table-column>
+        <el-table-column label="满意度差额" width="100" sortable="custom" prop="_sat_diff">
+          <template #default="{ row }">
+            {{ row._sat_diff !== null ? row._sat_diff.toFixed(2) : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="60" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openDetail(row)">详情</el-button>
@@ -265,7 +295,12 @@ const DEFAULT_COLUMNS = [
   '呼入人工服务-解决率-解决率',
   '呼出服务-人工呼出呼叫量',
   '总体-工时利用率',
-  '操作次数及时长-示忙次数'
+  '操作次数及时长-示忙次数',
+  '人工服务-满意度-非经常满意量',
+  '人工服务-满意度-满意权重',
+  '人工服务-满意度-一般量',
+  '人工服务-满意度-不满意量',
+  '人工服务-满意度-非常不满意量'
 ]
 const DETAIL_COLUMNS = [
   '呼入人工服务-人工服务-通话次数',
@@ -277,7 +312,12 @@ const DETAIL_COLUMNS = [
   '呼出服务-人工呼出呼叫量',
   '操作次数及时长-示忙次数',
   '总体-工作总时长(秒)',
-  '总体-工时利用率'
+  '总体-工时利用率',
+  '人工服务-满意度-非经常满意量',
+  '人工服务-满意度-满意权重',
+  '人工服务-满意度-一般量',
+  '人工服务-满意度-不满意量',
+  '人工服务-满意度-非常不满意量'
 ]
 
 function loadSelectedColumns() {
@@ -417,10 +457,70 @@ const averageCallDuration = computed(() => {
   return Math.round(sum / vals.length * 10) / 10
 })
 
-const teamChartOptions = computed(() => {
-  if (!teamChartData.value.length) return {}
-  return createPieOptions(teamChartData.value, '班组产量占比')
+const salaryCfg = reactive({
+  callTiers: [
+    { min: 0, max: 1000, rate: 1.0 },
+    { min: 1000, max: 2000, rate: 1.5 },
+    { min: 2000, max: 3500, rate: 1.2 },
+    { min: 3500, max: null, rate: 1.0 }
+  ],
+  satCoefficient: 0.5,
+  satDiffA: 19,
+  satDiffB: 20,
+  gapTargets: [2000, 2500, 3000]
 })
+
+async function loadSalaryConfig() {
+  try {
+    const res = await api.get('/salary-config')
+    const items = res.data.items || []
+    for (const item of items) {
+      if (item.rule_key === 'call_salary_tiers' && item.rule_data?.tiers) {
+        salaryCfg.callTiers = item.rule_data.tiers
+      } else if (item.rule_key === 'sat_salary') {
+        salaryCfg.satCoefficient = item.rule_data.coefficient ?? 0.5
+      } else if (item.rule_key === 'sat_diff') {
+        salaryCfg.satDiffA = item.rule_data.coeff_a ?? 19
+        salaryCfg.satDiffB = item.rule_data.coeff_b ?? 20
+      } else if (item.rule_key === 'call_gap_targets') {
+        salaryCfg.gapTargets = item.rule_data.targets || [2000, 2500, 3000]
+      }
+    }
+  } catch { /* use defaults */ }
+}
+
+function calcCallSalary(callCount) {
+  const tiers = salaryCfg.callTiers
+  if (!tiers || tiers.length === 0) return 0
+  let remaining = callCount
+  let total = 0
+  for (const tier of tiers) {
+    if (remaining <= 0) break
+    const bracketSize = tier.max === null ? remaining : Math.min(remaining, tier.max - tier.min)
+    total += bracketSize * tier.rate
+    remaining -= bracketSize
+  }
+  return total
+}
+
+function calcSatSalary(row) {
+  const sat = getMetricValue(row, '人工服务-满意度-非经常满意量')
+  const weight = getMetricValue(row, '人工服务-满意度-满意权重')
+  if (sat === null || weight === null) return null
+  return (sat + weight) * salaryCfg.satCoefficient
+}
+
+function calcSatDiff(row) {
+  const e = getMetricValue(row, '人工服务-满意度-非经常满意量')
+  const f = getMetricValue(row, '人工服务-满意度-满意权重')
+  const g = getMetricValue(row, '人工服务-满意度-一般量')
+  const h = getMetricValue(row, '人工服务-满意度-不满意量')
+  const i = getMetricValue(row, '人工服务-满意度-非常不满意量')
+  if (e === null || f === null) return null
+  const sumAll = [e, f, g, h, i].filter(v => v !== null).reduce((a, b) => a + b, 0)
+  const sumEF = (e || 0) + (f || 0)
+  return sumAll * salaryCfg.satDiffA - sumEF * salaryCfg.satDiffB
+}
 
 const filteredData = computed(() => {
   let data = tableData.value
@@ -432,8 +532,37 @@ const filteredData = computed(() => {
   return data
 })
 
+const enrichedData = computed(() => {
+  return filteredData.value.map(row => {
+    const callCount = getMetricValue(row, '呼入人工服务-人工服务-通话次数') || 0
+    const ticketCount = getMetricValue(row, '呼入人工服务-工单-生成总量') || 0
+    const callSalary = calcCallSalary(callCount)
+    const satSalary = calcSatSalary(row)
+    const totalSalary = satSalary !== null ? callSalary + satSalary : callSalary
+
+    const gapValues = {}
+    for (const target of salaryCfg.gapTargets) {
+      gapValues[`gap_${target}`] = target - callCount
+    }
+
+    const satDiffVal = calcSatDiff(row)
+
+    return {
+      ...row,
+      _call_count: callCount,
+      _ticket_count: ticketCount,
+      _ti_dan_lv: callCount > 0 ? ticketCount / callCount : 0,
+      _call_salary: callSalary,
+      _sat_salary: satSalary,
+      _total_salary: totalSalary,
+      _sat_diff: satDiffVal,
+      ...gapValues
+    }
+  })
+})
+
 const paginatedData = computed(() => {
-  let data = filteredData.value
+  let data = enrichedData.value
   if (sortBy.value && sortOrder.value) {
     data = [...data].sort((a, b) => {
       let aVal, bVal
@@ -442,14 +571,27 @@ const paginatedData = computed(() => {
         bVal = (b[sortBy.value] || '').toLowerCase()
         return sortOrder.value === 'ascending' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
       }
-      aVal = (sortBy.value === 'date_count') ? (a.date_count || 0) : (getMetricValue(a, sortBy.value) || 0)
-      bVal = (sortBy.value === 'date_count') ? (b.date_count || 0) : (getMetricValue(b, sortBy.value) || 0)
+      if (sortBy.value === 'date_count') {
+        aVal = a.date_count || 0
+        bVal = b.date_count || 0
+      } else if (sortBy.value.startsWith('gap_') || sortBy.value.startsWith('_')) {
+        aVal = a[sortBy.value] ?? 0
+        bVal = b[sortBy.value] ?? 0
+      } else {
+        aVal = getMetricValue(a, sortBy.value) || 0
+        bVal = getMetricValue(b, sortBy.value) || 0
+      }
       return sortOrder.value === 'ascending' ? aVal - bVal : bVal - aVal
     })
   }
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
   return data.slice(start, end)
+})
+
+const teamChartOptions = computed(() => {
+  if (!teamChartData.value.length) return {}
+  return createPieOptions(teamChartData.value, '班组产量占比')
 })
 
 function sortMetric(field) {
@@ -518,6 +660,9 @@ const FALLBACK_FIELDS = [
   '呼入人工服务-工单-生成总量', '人工服务-满意度-满意率',
   '呼入人工服务-解决率-解决率', '呼出服务-人工呼出呼叫量',
   '总体-工时利用率', '操作次数及时长-示忙次数',
+  '人工服务-满意度-非经常满意量', '人工服务-满意度-满意权重',
+  '人工服务-满意度-一般量', '人工服务-满意度-不满意量',
+  '人工服务-满意度-非常不满意量',
 ]
 
 async function loadMetricsFields() {
@@ -629,7 +774,8 @@ async function openDetail(row) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadSalaryConfig()
   if (!searchFormRestored) {
     handleTypeChange()
   }

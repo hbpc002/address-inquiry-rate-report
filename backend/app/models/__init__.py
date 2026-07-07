@@ -9,6 +9,7 @@ from app.models.monthly_report import MonthlyReport
 from app.models.operation_log import OperationLog
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
+from app.models.salary_config import SalaryConfig
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "OperationLog",
     "WorkHourThreshold",
     "AttendanceConfig",
+    "SalaryConfig",
 ]
