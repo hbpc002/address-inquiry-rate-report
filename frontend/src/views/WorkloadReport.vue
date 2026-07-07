@@ -56,7 +56,7 @@
           <el-statistic title="呼入通话量" :value="stats.total_call_count" :precision="0" />
         </el-col>
         <el-col :span="4">
-          <el-statistic title="总工时(秒)" :value="stats.total_work_duration" :precision="0" />
+          <el-statistic title="平均通话均长" :value="averageCallDuration" :precision="1" />
         </el-col>
         <el-col :span="4">
           <el-statistic title="工单总量" :value="stats.total_ticket_count" :precision="0" />
@@ -67,7 +67,7 @@
       </el-row>
 
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
-        <el-col :span="14">
+        <el-col :span="24">
           <el-card shadow="hover">
             <template #header>
               <div style="display: flex; justify-content: space-between; align-items: center">
@@ -87,37 +87,13 @@
                   {{ formatRate(row.satisfaction) }}
                 </template>
               </el-table-column>
-              <el-table-column label="解决率" width="75" sortable :sort-method="sortMetric('呼入人工服务-解决率-解决率')" prop="resolve_rate">
+              <el-table-column label="解决率" width="85" sortable :sort-method="sortMetric('人工服务-解决率-转解决情况调查率')" prop="resolve_rate">
                 <template #default="{ row }">
                   {{ formatRate(row.resolve_rate) }}
                 </template>
               </el-table-column>
               <el-table-column label="工单量" width="70" sortable :sort-method="sortMetric('呼入人工服务-工单-生成总量')" prop="ticket_count" />
               <el-table-column label="呼出量" width="70" sortable :sort-method="sortMetric('呼出服务-人工呼出呼叫量')" prop="outbound" />
-            </el-table>
-          </el-card>
-        </el-col>
-        <el-col :span="10">
-          <el-card shadow="hover">
-            <template #header>
-              <div style="display: flex; justify-content: space-between; align-items: center">
-                <span>班组排名</span>
-                <el-tag v-if="filterType === 'team'" closable @close="clearFilter" type="warning">
-                  已筛选: {{ filterValue }}
-                </el-tag>
-              </div>
-            </template>
-            <el-table :data="teamRanking" size="small" max-height="320" border stripe @row-click="handleTeamRowClick">
-              <el-table-column label="#" width="45" type="index" />
-              <el-table-column label="班组" width="100" prop="team" />
-              <el-table-column label="人数" width="55" prop="count" />
-              <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
-              <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
-              <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
-                <template #default="{ row }">
-                  {{ formatRate(row.avg_satisfaction) }}
-                </template>
-              </el-table-column>
             </el-table>
           </el-card>
         </el-col>
@@ -132,12 +108,19 @@
                 <Echart :options="teamChartOptions" height="280px" />
               </el-col>
               <el-col :span="16">
-                <el-table :data="teamChartData" size="small" border stripe max-height="280">
-                  <el-table-column label="班组" prop="name" />
-                  <el-table-column label="通话量" prop="value" sortable />
-                  <el-table-column label="占比" width="100">
+                <el-table :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
+                  <el-table-column label="班组" prop="team" />
+                  <el-table-column label="人数" width="55" prop="count" />
+                  <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
+                  <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
+                  <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
                     <template #default="{ row }">
-                      <span>{{ (row.value / totalCallSum * 100).toFixed(1) }}%</span>
+                      {{ formatRate(row.avg_satisfaction) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="占比" width="100" sortable prop="total_calls">
+                    <template #default="{ row }">
+                      <span>{{ (row.total_calls / totalCallSum * 100).toFixed(1) }}%</span>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -329,7 +312,7 @@ function getMetricValue(row, field) {
 function formatMetric(row, field, isRate = false) {
   const val = getMetricValue(row, field)
   if (val === null) return '-'
-  if (isRate) return val.toFixed(2) + '%'
+  if (isRate) return (val * 100).toFixed(2) + '%'
   if (Number.isInteger(val)) return String(val)
   return val.toFixed(1)
 }
@@ -338,7 +321,7 @@ function formatRate(val) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return '-'
-  return num.toFixed(2) + '%'
+  return (num * 100).toFixed(2) + '%'
 }
 
 function formatDetailValue(row, col) {
@@ -346,7 +329,7 @@ function formatDetailValue(row, col) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return val
-  if (col.isRate) return num.toFixed(2) + '%'
+  if (col.isRate) return (num * 100).toFixed(2) + '%'
   if (Number.isInteger(num)) return String(num)
   return num.toFixed(1)
 }
@@ -371,7 +354,7 @@ const personalRanking = computed(() => {
       call_count: getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0,
       avg_duration: getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)'),
       satisfaction: getMetricValue(d, '人工服务-满意度-满意率'),
-      resolve_rate: getMetricValue(d, '呼入人工服务-解决率-解决率'),
+      resolve_rate: getMetricValue(d, '人工服务-解决率-转解决情况调查率'),
       ticket_count: getMetricValue(d, '呼入人工服务-工单-生成总量') || 0,
       outbound: getMetricValue(d, '呼出服务-人工呼出呼叫量') || 0
     }))
@@ -422,7 +405,16 @@ const teamChartData = computed(() => {
 })
 
 const totalCallSum = computed(() => {
-  return teamChartData.value.reduce((s, d) => s + d.value, 0)
+  return teamRanking.value.reduce((s, d) => s + d.total_calls, 0)
+})
+
+const averageCallDuration = computed(() => {
+  const vals = tableData.value
+    .map(d => getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)'))
+    .filter(v => v !== null && v !== undefined)
+  if (vals.length === 0) return 0
+  const sum = vals.reduce((a, b) => a + b, 0)
+  return Math.round(sum / vals.length * 10) / 10
 })
 
 const teamChartOptions = computed(() => {

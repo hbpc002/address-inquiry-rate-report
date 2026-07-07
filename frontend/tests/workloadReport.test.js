@@ -12,14 +12,14 @@ function formatRate(val) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return '-'
-  return num.toFixed(2) + '%'
+  return (num * 100).toFixed(2) + '%'
 }
 
 function formatMetricValue(val, isRate) {
   if (val === null || val === undefined) return '-'
   const num = typeof val === 'number' ? val : parseFloat(val)
   if (isNaN(num)) return val
-  if (isRate) return num.toFixed(2) + '%'
+  if (isRate) return (num * 100).toFixed(2) + '%'
   if (Number.isInteger(num)) return String(num)
   return num.toFixed(1)
 }
@@ -28,6 +28,47 @@ function getMetricValue(row, field) {
   const val = row.aggregated_metrics?.[field]
   if (val === null || val === undefined) return null
   return typeof val === 'number' ? val : parseFloat(val) || 0
+}
+
+function getAvgDuration(data) {
+  const vals = data
+    .map(d => getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)'))
+    .filter(v => v !== null && v !== undefined)
+  if (vals.length === 0) return 0
+  const sum = vals.reduce((a, b) => a + b, 0)
+  return Math.round(sum / vals.length * 10) / 10
+}
+
+function makeTeamRanking(data) {
+  const teamMap = {}
+  data.forEach(d => {
+    const team = d.team_desc || '未知班组'
+    if (!teamMap[team]) {
+      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_satisfaction: 0, sat_count: 0 }
+    }
+    teamMap[team].count++
+    teamMap[team].total_calls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
+    if (avgDur !== null) teamMap[team].total_duration += avgDur
+    const sat = getMetricValue(d, '人工服务-满意度-满意率')
+    if (sat !== null) {
+      teamMap[team].total_satisfaction += sat
+      teamMap[team].sat_count++
+    }
+  })
+  return Object.entries(teamMap)
+    .map(([team, data]) => ({
+      team,
+      count: data.count,
+      total_calls: data.total_calls,
+      avg_duration: data.count > 0 ? (data.total_duration / data.count).toFixed(1) : 0,
+      avg_satisfaction: data.sat_count > 0 ? (data.total_satisfaction / data.sat_count) : null
+    }))
+    .sort((a, b) => b.total_calls - a.total_calls)
+}
+
+function resolveRateField(d) {
+  return getMetricValue(d, '人工服务-解决率-转解决情况调查率')
 }
 
 describe('WorkloadReport - 格式化函数测试', () => {
@@ -61,17 +102,17 @@ describe('WorkloadReport - 格式化函数测试', () => {
   })
 
   describe('formatRate', () => {
-    it('should format rate as percentage with 2 decimals', () => {
-      expect(formatRate(85.67)).toBe('85.67%')
-      expect(formatRate(95.0)).toBe('95.00%')
-      expect(formatRate(100.0)).toBe('100.00%')
+    it('should multiply by 100 and format as percentage with 2 decimals', () => {
+      expect(formatRate(0.8567)).toBe('85.67%')
+      expect(formatRate(0.95)).toBe('95.00%')
+      expect(formatRate(1.0)).toBe('100.00%')
     })
     it('should return dash for null/undefined', () => {
       expect(formatRate(null)).toBe('-')
       expect(formatRate(undefined)).toBe('-')
     })
     it('should handle string numbers', () => {
-      expect(formatRate('85.67')).toBe('85.67%')
+      expect(formatRate('0.8567')).toBe('85.67%')
     })
     it('should return dash for NaN', () => {
       expect(formatRate(NaN)).toBe('-')
@@ -79,8 +120,9 @@ describe('WorkloadReport - 格式化函数测试', () => {
   })
 
   describe('formatMetricValue', () => {
-    it('should format rate fields with percentage', () => {
-      expect(formatMetricValue(85.67, true)).toBe('85.67%')
+    it('should multiply by 100 for rate fields', () => {
+      expect(formatMetricValue(0.8567, true)).toBe('85.67%')
+      expect(formatMetricValue(0.95, true)).toBe('95.00%')
     })
     it('should format non-rate integer fields as string', () => {
       expect(formatMetricValue(30, false)).toBe('30')
@@ -101,15 +143,15 @@ describe('WorkloadReport - 格式化函数测试', () => {
     const row = {
       aggregated_metrics: {
         '通话次数': 30,
-        '满意率': 95.0,
+        '满意率': 0.95,
         '空值字段': null
       }
     }
     it('should extract numeric value from aggregated_metrics', () => {
       expect(getMetricValue(row, '通话次数')).toBe(30)
     })
-    it('should handle rate values', () => {
-      expect(getMetricValue(row, '满意率')).toBe(95.0)
+    it('should handle rate values (0-1 scale)', () => {
+      expect(getMetricValue(row, '满意率')).toBe(0.95)
     })
     it('should return null for null values in metrics', () => {
       expect(getMetricValue(row, '空值字段')).toBeNull()
@@ -120,6 +162,73 @@ describe('WorkloadReport - 格式化函数测试', () => {
     it('should return 0 for undefined metrics', () => {
       const emptyRow = {}
       expect(getMetricValue(emptyRow, '通话次数')).toBeNull()
+    })
+  })
+
+  describe('averageCallDuration', () => {
+    it('should compute average from 通话均长 values', () => {
+      const data = [
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 180 } },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 220 } },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 200 } }
+      ]
+      expect(getAvgDuration(data)).toBe(200)
+    })
+    it('should skip null/undefined values', () => {
+      const data = [
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 180 } },
+        { aggregated_metrics: {} },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': null } }
+      ]
+      expect(getAvgDuration(data)).toBe(180)
+    })
+    it('should return 0 for empty data', () => {
+      expect(getAvgDuration([])).toBe(0)
+    })
+    it('should return 0 when all values are null', () => {
+      const data = [
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': null } },
+        { aggregated_metrics: {} }
+      ]
+      expect(getAvgDuration(data)).toBe(0)
+    })
+  })
+
+  describe('teamRanking merge', () => {
+    it('should aggregate team data with count, calls, duration, satisfaction', () => {
+      const data = [
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话均长(秒)': 180, '人工服务-满意度-满意率': 0.95 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话均长(秒)': 200, '人工服务-满意度-满意率': 0.90 } },
+        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话均长(秒)': 150, '人工服务-满意度-满意率': 0.85 } }
+      ]
+      const result = makeTeamRanking(data)
+      expect(result).toHaveLength(2)
+      const teamA = result.find(r => r.team === 'A组')
+      expect(teamA.count).toBe(2)
+      expect(teamA.total_calls).toBe(30)
+      expect(teamA.avg_duration).toBe('190.0')
+      expect(teamA.avg_satisfaction).toBe(0.925)
+      const teamB = result.find(r => r.team === 'B组')
+      expect(teamB.count).toBe(1)
+      expect(teamB.total_calls).toBe(30)
+    })
+    it('should handle unknown team_desc', () => {
+      const data = [
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5 } }
+      ]
+      const result = makeTeamRanking(data)
+      expect(result[0].team).toBe('未知班组')
+    })
+  })
+
+  describe('resolveRate field replacement', () => {
+    it('should extract 转解决情况调查率 value', () => {
+      const d = { aggregated_metrics: { '人工服务-解决率-转解决情况调查率': 0.88 } }
+      expect(resolveRateField(d)).toBe(0.88)
+    })
+    it('should return null for missing field', () => {
+      const d = {}
+      expect(resolveRateField(d)).toBeNull()
     })
   })
 
