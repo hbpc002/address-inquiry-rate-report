@@ -271,9 +271,6 @@ const queryInfo = reactive({
   apiOk: false
 })
 
-const allMetricFields = ref([])
-const columnSelectorVisible = ref(false)
-const selectedColumns = ref(loadSelectedColumns())
 const COLUMNS_KEY = 'workload-report-columns'
 const DEFAULT_COLUMNS = [
   '呼入人工服务-人工服务-通话次数',
@@ -306,6 +303,10 @@ function loadSelectedColumns() {
     return saved ? JSON.parse(saved) : [...DEFAULT_COLUMNS]
   } catch { return [...DEFAULT_COLUMNS] }
 }
+
+const allMetricFields = ref([])
+const columnSelectorVisible = ref(false)
+const selectedColumns = ref(loadSelectedColumns())
 
 watch(selectedColumns, (val) => {
   localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))

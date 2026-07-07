@@ -139,9 +139,6 @@ const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const fileList = ref([])
 const uploadResults = ref([])
 
-const allMetricFields = ref([])
-const columnSelectorVisible = ref(false)
-const selectedColumns = ref(loadSelectedColumns())
 const COLUMNS_KEY = 'workload-detail-columns'
 
 function loadSelectedColumns() {
@@ -150,6 +147,10 @@ function loadSelectedColumns() {
     return saved ? JSON.parse(saved) : []
   } catch { return [] }
 }
+
+const allMetricFields = ref([])
+const columnSelectorVisible = ref(false)
+const selectedColumns = ref(loadSelectedColumns())
 
 watch(selectedColumns, (val) => {
   localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))
