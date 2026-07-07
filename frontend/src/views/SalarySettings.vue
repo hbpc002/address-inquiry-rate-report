@@ -113,7 +113,7 @@ async function loadConfig() {
 function getDefaults() {
   return {
     callTiers: JSON.parse(JSON.stringify(DEFAULT_CALL_TIERS)),
-    satSalary: { field_e: '人工服务-满意度-非常满意量', field_f: '人工服务-满意度-满意量', coefficient: 0.5 },
+    satSalary: { field_e: '呼入人工服务-满意度-非常满意量', field_f: '呼入人工服务-满意度-满意量', coefficient: 0.5 },
     callGapTargets: [2000, 2500, 3000],
     satDiff: { coeff_a: 19, coeff_b: 20 }
   }

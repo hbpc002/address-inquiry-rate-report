@@ -296,11 +296,11 @@ const DEFAULT_COLUMNS = [
   '呼出服务-人工呼出呼叫量',
   '总体-工时利用率',
   '操作次数及时长-示忙次数',
-  '人工服务-满意度-非常满意量',
-  '人工服务-满意度-满意量',
-  '人工服务-满意度-一般量',
-  '人工服务-满意度-不满意量',
-  '人工服务-满意度-非常不满意量'
+  '呼入人工服务-满意度-非常满意量',
+  '呼入人工服务-满意度-满意量',
+  '呼入人工服务-满意度-一般量',
+  '呼入人工服务-满意度-不满意量',
+  '呼入人工服务-满意度-非常不满意量'
 ]
 const DETAIL_COLUMNS = [
   '呼入人工服务-人工服务-通话次数',
@@ -308,16 +308,16 @@ const DETAIL_COLUMNS = [
   '呼入人工服务-人工服务-通话均长(秒)',
   '呼入人工服务-人工服务-服务后整理总时长(秒)',
   '呼入人工服务-工单-生成总量',
-  '人工服务-满意度-非常满意量',
+  '呼入人工服务-满意度-非常满意量',
   '呼出服务-人工呼出呼叫量',
   '操作次数及时长-示忙次数',
   '总体-工作总时长(秒)',
   '总体-工时利用率',
-  '人工服务-满意度-非常满意量',
-  '人工服务-满意度-满意量',
-  '人工服务-满意度-一般量',
-  '人工服务-满意度-不满意量',
-  '人工服务-满意度-非常不满意量'
+  '呼入人工服务-满意度-非常满意量',
+  '呼入人工服务-满意度-满意量',
+  '呼入人工服务-满意度-一般量',
+  '呼入人工服务-满意度-不满意量',
+  '呼入人工服务-满意度-非常不满意量'
 ]
 
 function loadSelectedColumns() {
@@ -504,18 +504,18 @@ function calcCallSalary(callCount) {
 }
 
 function calcSatSalary(row) {
-  const sat = getMetricValue(row, '人工服务-满意度-非常满意量')
-  const weight = getMetricValue(row, '人工服务-满意度-满意量')
+  const sat = getMetricValue(row, '呼入人工服务-满意度-非常满意量')
+  const weight = getMetricValue(row, '呼入人工服务-满意度-满意量')
   if (sat === null || weight === null) return null
   return (sat + weight) * salaryCfg.satCoefficient
 }
 
 function calcSatDiff(row) {
-  const e = getMetricValue(row, '人工服务-满意度-非常满意量')
-  const f = getMetricValue(row, '人工服务-满意度-满意量')
-  const g = getMetricValue(row, '人工服务-满意度-一般量')
-  const h = getMetricValue(row, '人工服务-满意度-不满意量')
-  const i = getMetricValue(row, '人工服务-满意度-非常不满意量')
+  const e = getMetricValue(row, '呼入人工服务-满意度-非常满意量')
+  const f = getMetricValue(row, '呼入人工服务-满意度-满意量')
+  const g = getMetricValue(row, '呼入人工服务-满意度-一般量')
+  const h = getMetricValue(row, '呼入人工服务-满意度-不满意量')
+  const i = getMetricValue(row, '呼入人工服务-满意度-非常不满意量')
   if (e === null || f === null) return null
   const sumAll = [e, f, g, h, i].filter(v => v !== null).reduce((a, b) => a + b, 0)
   const sumEF = (e || 0) + (f || 0)
@@ -660,9 +660,9 @@ const FALLBACK_FIELDS = [
   '呼入人工服务-工单-生成总量', '人工服务-满意度-满意率',
   '呼入人工服务-解决率-解决率', '呼出服务-人工呼出呼叫量',
   '总体-工时利用率', '操作次数及时长-示忙次数',
-  '人工服务-满意度-非常满意量', '人工服务-满意度-满意量',
-  '人工服务-满意度-一般量', '人工服务-满意度-不满意量',
-  '人工服务-满意度-非常不满意量',
+  '呼入人工服务-满意度-非常满意量', '呼入人工服务-满意度-满意量',
+  '呼入人工服务-满意度-一般量', '呼入人工服务-满意度-不满意量',
+  '呼入人工服务-满意度-非常不满意量',
 ]
 
 async function loadMetricsFields() {
