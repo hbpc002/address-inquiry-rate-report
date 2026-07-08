@@ -80,6 +80,7 @@
               </el-col>
               <el-col :span="16">
                 <el-table :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
+                  <el-table-column label="排名" width="55" type="index" />
                   <el-table-column label="班组" prop="team" />
                   <el-table-column label="人数" width="55" prop="count" />
                   <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
