@@ -46,10 +46,10 @@
       </el-form>
 
       <el-row :gutter="20" class="stats-row">
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="总人数" :value="stats.total_people" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="记录条数" :value="stats.total_records" />
         </el-col>
         <el-col :span="4">
@@ -58,46 +58,17 @@
         <el-col :span="4">
           <el-statistic title="平均通话均长" :value="averageCallDuration" :precision="1" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="工单总量" :value="stats.total_ticket_count" :precision="0" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="呼出量" :value="stats.total_outbound" :precision="0" />
+        </el-col>
+        <el-col :span="4">
+          <el-statistic title="提单率(%)" :value="totalTiDanLv" :precision="2" />
         </el-col>
       </el-row>
 
-      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
-        <el-col :span="24">
-          <el-card shadow="hover">
-            <template #header>
-              <div style="display: flex; justify-content: space-between; align-items: center">
-                <span>个人排名</span>
-                <el-tag v-if="filterType === 'name'" closable @close="clearFilter" type="warning">
-                  已筛选: {{ filterValue }}
-                </el-tag>
-              </div>
-            </template>
-            <el-table :data="personalRanking" size="small" max-height="320" border stripe @row-click="handlePersonRowClick">
-              <el-table-column label="#" width="45" type="index" />
-              <el-table-column label="姓名" width="80" prop="name" />
-              <el-table-column label="通话次数" width="85" sortable :sort-method="sortMetric('呼入人工服务-人工服务-通话次数')" prop="call_count" />
-              <el-table-column label="通话均长" width="85" sortable :sort-method="sortMetric('呼入人工服务-人工服务-通话均长(秒)')" prop="avg_duration" />
-              <el-table-column label="满意率" width="75" sortable :sort-method="sortMetric('人工服务-满意度-满意率')" prop="satisfaction">
-                <template #default="{ row }">
-                  {{ formatRate(row.satisfaction) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="解决率" width="85" sortable :sort-method="sortMetric('人工服务-解决率-转解决情况调查率')" prop="resolve_rate">
-                <template #default="{ row }">
-                  {{ formatRate(row.resolve_rate) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="工单量" width="70" sortable :sort-method="sortMetric('呼入人工服务-工单-生成总量')" prop="ticket_count" />
-              <el-table-column label="呼出量" width="70" sortable :sort-method="sortMetric('呼出服务-人工呼出呼叫量')" prop="outbound" />
-            </el-table>
-          </el-card>
-        </el-col>
-      </el-row>
 
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
         <el-col :span="24">
@@ -123,6 +94,13 @@
                       <span>{{ (row.total_calls / totalCallSum * 100).toFixed(1) }}%</span>
                     </template>
                   </el-table-column>
+                  <el-table-column label="提单率" width="85" sortable prop="ti_dan_lv">
+                    <template #default="{ row }">
+                      {{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="生成总量" width="85" sortable prop="total_ticket_count" />
+                  <el-table-column label="人工呼出呼叫量" width="105" sortable prop="total_outbound" />
                 </el-table>
               </el-col>
             </el-row>
@@ -387,29 +365,18 @@ const visibleDetailColumns = computed(() => {
     }))
 })
 
-const personalRanking = computed(() => {
-  return [...tableData.value]
-    .map(d => ({
-      ...d,
-      call_count: getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0,
-      avg_duration: getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)'),
-      satisfaction: getMetricValue(d, '人工服务-满意度-满意率'),
-      resolve_rate: getMetricValue(d, '人工服务-解决率-转解决情况调查率'),
-      ticket_count: getMetricValue(d, '呼入人工服务-工单-生成总量') || 0,
-      outbound: getMetricValue(d, '呼出服务-人工呼出呼叫量') || 0
-    }))
-    .sort((a, b) => b.call_count - a.call_count)
-})
 
 const teamRanking = computed(() => {
   const teamMap = {}
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
     if (!teamMap[team]) {
-      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_satisfaction: 0, sat_count: 0 }
+      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_satisfaction: 0, sat_count: 0, total_ticket_count: 0, total_outbound: 0 }
     }
     teamMap[team].count++
     teamMap[team].total_calls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    teamMap[team].total_ticket_count += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
+    teamMap[team].total_outbound += getMetricValue(d, '呼出服务-人工呼出呼叫量') || 0
     const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
     if (avgDur !== null) {
       teamMap[team].total_duration += avgDur
@@ -425,6 +392,9 @@ const teamRanking = computed(() => {
       team,
       count: data.count,
       total_calls: data.total_calls,
+      total_ticket_count: data.total_ticket_count,
+      total_outbound: data.total_outbound,
+      ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
       avg_duration: data.count > 0 ? (data.total_duration / data.count).toFixed(1) : 0,
       avg_satisfaction: data.sat_count > 0 ? (data.total_satisfaction / data.sat_count) : null
     }))
@@ -455,6 +425,11 @@ const averageCallDuration = computed(() => {
   if (vals.length === 0) return 0
   const sum = vals.reduce((a, b) => a + b, 0)
   return Math.round(sum / vals.length * 10) / 10
+})
+
+const totalTiDanLv = computed(() => {
+  if (!stats.total_call_count) return 0
+  return +(stats.total_ticket_count / stats.total_call_count * 100).toFixed(2)
 })
 
 const salaryCfg = reactive({
@@ -594,13 +569,6 @@ const teamChartOptions = computed(() => {
   return createPieOptions(teamChartData.value, '班组产量占比')
 })
 
-function sortMetric(field) {
-  return (a, b) => {
-    const aVal = getMetricValue(a, field) || 0
-    const bVal = getMetricValue(b, field) || 0
-    return aVal - bVal
-  }
-}
 
 function handleSortChange({ prop, order }) {
   sortBy.value = prop || ''
