@@ -5,6 +5,7 @@
         <div class="card-header">
           <span>用户管理</span>
           <el-button v-if="userStore.hasPermission('users.manage')" type="primary" @click="handleAdd">新增用户</el-button>
+          <el-button v-if="userStore.hasPermission('users.manage')" type="success" @click="importVisible = true">批量导入</el-button>
         </div>
       </template>
 
@@ -62,6 +63,28 @@
       />
     </el-card>
 
+    <el-dialog v-model="importVisible" title="批量导入用户" width="500px">
+      <el-upload
+        ref="uploadRef"
+        :auto-upload="false"
+        :limit="1"
+        accept=".xlsx,.xls"
+        :on-change="handleFileChange"
+        :file-list="importFileList"
+      >
+        <el-button type="primary">选择Excel文件</el-button>
+        <template #tip>
+          <div class="el-upload__tip">
+            请上传 .xlsx 文件，<el-link type="primary" :underline="false" @click="handleDownloadTemplate">下载模板</el-link>
+          </div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="handleImport">导入</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="用户名">
@@ -104,6 +127,51 @@ const isEdit = ref(false)
 const searchForm = reactive({ search: '', role: '' })
 const form = reactive({ id: null, username: '', password: '', display_name: '', role_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
+
+const importVisible = ref(false)
+const importing = ref(false)
+const uploadRef = ref(null)
+const importFileList = ref([])
+let importFile = null
+
+function handleFileChange(file) {
+  importFile = file.raw
+}
+
+async function handleImport() {
+  if (!importFile) {
+    ElMessage.warning('请先选择文件')
+    return
+  }
+  importing.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', importFile)
+    const res = await api.post('/users/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    const data = res.data
+    let msg = `导入完成！新增${data.created}人`
+    if (data.skipped > 0) msg += `，跳过${data.skipped}人`
+    if (data.errors && data.errors.length > 0) {
+      msg += `\n${data.errors.slice(0, 5).join('\n')}`
+      if (data.errors.length > 5) msg += `\n...等${data.errors.length}条错误`
+    }
+    ElMessage.success(msg)
+    importVisible.value = false
+    importFile = null
+    importFileList.value = []
+    loadData()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '导入失败')
+  } finally {
+    importing.value = false
+  }
+}
+
+function handleDownloadTemplate() {
+  window.open(`${import.meta.env.VITE_API_BASE_URL || '/api'}/users/import-template`, '_blank')
+}
 
 function handleRoleChange(roleId) {
 }

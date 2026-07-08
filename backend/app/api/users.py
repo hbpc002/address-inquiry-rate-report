@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import io
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from urllib.parse import quote
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -9,7 +12,7 @@ from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse,
     UserListResponse, ChangePasswordRequest, SetPermissionsRequest
 )
-from app.core.security import get_current_user, get_password_hash, verify_password, check_permission
+from app.core.security import get_current_user, get_password_hash, verify_password, check_permission, require_permission
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/users", tags=["用户管理"])
@@ -259,3 +262,106 @@ def get_user_roles(
     from app.models.role import Role
     roles = db.query(Role).all()
     return [{"id": r.id, "name": r.name, "description": r.description, "is_system": r.is_system} for r in roles]
+
+
+@router.post("/import", response_model=dict)
+def import_users(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """批量导入用户Excel"""
+    require_permission(current_user, "users.manage")
+
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="请上传Excel文件(.xlsx或.xls)")
+
+    import pandas as pd
+    contents = file.file.read()
+    try:
+        xlsx = pd.ExcelFile(io.BytesIO(contents))
+        df = pd.read_excel(xlsx, sheet_name=0)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"无法解析Excel文件: {str(e)}")
+
+    cols = df.columns.tolist()
+    required_cols = ['用户名', '密码']
+    for col in required_cols:
+        if col not in cols:
+            raise HTTPException(status_code=400, detail=f"缺少必需列: {col}")
+
+    role_cache = {}
+    roles_list = db.query(Role).all()
+    for r in roles_list:
+        role_cache[r.name] = r
+
+    created = 0
+    skipped = 0
+    errors = []
+
+    for idx, row in df.iterrows():
+        username = str(row.get('用户名', '')).strip()
+        password = str(row.get('密码', '')).strip()
+        display_name = str(row.get('显示名', '')).strip() if pd.notna(row.get('显示名')) else ''
+        role_name = str(row.get('角色', '')).strip() if pd.notna(row.get('角色')) else ''
+
+        if not username or not password or username == 'nan' or password == 'nan':
+            skipped += 1
+            continue
+
+        existing = db.query(User).filter(User.username == username).first()
+        if existing:
+            errors.append(f"第{idx+2}行: 用户名'{username}'已存在")
+            skipped += 1
+            continue
+
+        role_id = None
+        if role_name:
+            role = role_cache.get(role_name)
+            if role:
+                role_id = role.id
+            else:
+                role_cache[role_name] = None
+
+        db_user = User(
+            username=username,
+            password_hash=get_password_hash(password),
+            display_name=display_name or None,
+            role=role_name or 'user',
+            role_id=role_id,
+        )
+        db.add(db_user)
+        created += 1
+
+    db.commit()
+    log_operation(db, current_user["id"], "import_users", "users", None, {"created": created, "skipped": skipped, "errors": errors})
+    return {
+        "message": "导入完成",
+        "created": created,
+        "skipped": skipped,
+        "errors": errors
+    }
+
+
+@router.get("/import-template")
+def download_import_template(
+    current_user: dict = Depends(get_current_user)
+):
+    """下载用户导入模板"""
+    require_permission(current_user, "users.manage")
+
+    import pandas as pd
+    df = pd.DataFrame(columns=['用户名', '密码', '显示名', '角色'])
+    df.loc[0] = ['张三', 'password123', '张三', 'user']
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='用户导入模板')
+    output.seek(0)
+
+    filename = quote('用户导入模板.xlsx')
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
+    )
