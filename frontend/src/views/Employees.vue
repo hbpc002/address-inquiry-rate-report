@@ -5,7 +5,7 @@
         <div class="card-header">
           <span>员工管理</span>
           <el-space>
-            <el-button @click="handleExport">导出员工</el-button>
+            <el-button v-if="userStore.hasPermission('employees.export')" @click="handleExport">导出员工</el-button>
             <el-button v-if="userStore.hasPermission('employees.upload')" type="success" @click="importVisible = true">导入员工</el-button>
             <el-button v-if="userStore.hasPermission('employees.create')" type="primary" @click="handleAdd">新增员工</el-button>
           </el-space>

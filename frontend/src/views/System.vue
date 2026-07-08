@@ -1,45 +1,6 @@
 <template>
   <div class="system">
     <el-tabs v-model="activeTab">
-      <el-tab-pane label="班次类型" name="shifts">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>班次类型管理</span>
-              <el-button v-if="userStore.hasPermission('shift_types.create')" type="primary" @click="handleAddShift">新增班次</el-button>
-            </div>
-          </template>
-
-          <el-table :data="shiftTypes" border stripe>
-            <el-table-column prop="shift_name" label="班次名称" width="120" />
-            <el-table-column prop="start_time" label="开始时间" width="100" />
-            <el-table-column prop="end_time" label="结束时间" width="100" />
-            <el-table-column prop="work_hours" label="工作时长" width="100" />
-            <el-table-column prop="color" label="颜色" width="100">
-              <template #default="{ row }">
-                <div :style="{ backgroundColor: row.color, width: '20px', height: '20px' }"></div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="is_night" label="夜班" width="80">
-              <template #default="{ row }">
-                <el-tag :type="row.is_night ? 'danger' : 'info'">{{ row.is_night ? '是' : '否' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="is_active" label="状态" width="80">
-              <template #default="{ row }">
-                <el-tag :type="row.is_active ? 'success' : 'info'">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="150">
-              <template #default="{ row }">
-                <el-button v-if="userStore.hasPermission('shift_types.edit')" type="primary" link @click="handleEditShift(row)">编辑</el-button>
-                <el-button v-if="userStore.hasPermission('shift_types.delete')" type="danger" link @click="handleDeleteShift(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-card>
-      </el-tab-pane>
-
       <el-tab-pane label="操作日志" name="logs">
         <el-card>
           <el-form inline>
@@ -50,7 +11,7 @@
               <el-button type="primary" @click="loadLogs">查询</el-button>
             </el-form-item>
             <el-form-item>
-              <el-button @click="exportLogs">导出日志</el-button>
+              <el-button v-if="userStore.hasPermission('system.export_logs')" @click="exportLogs">导出日志</el-button>
             </el-form-item>
             <el-form-item>
               <el-select v-model="manualCleanupMonths" placeholder="清理月份" style="width:120px">
@@ -140,33 +101,6 @@
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑班次' : '新增班次'" width="500px">
-      <el-form :model="form" label-width="80px">
-        <el-form-item label="班次名称">
-          <el-input v-model="form.shift_name" />
-        </el-form-item>
-        <el-form-item label="开始时间">
-          <el-time-picker v-model="form.start_time" value-format="HH:mm" placeholder="选择时间" />
-        </el-form-item>
-        <el-form-item label="结束时间">
-          <el-time-picker v-model="form.end_time" value-format="HH:mm" placeholder="选择时间" />
-        </el-form-item>
-        <el-form-item label="工作时长">
-          <el-input-number v-model="form.work_hours" :min="0" :max="24" :step="0.5" />
-        </el-form-item>
-        <el-form-item label="颜色">
-          <el-color-picker v-model="form.color" />
-        </el-form-item>
-        <el-form-item label="夜班">
-          <el-switch v-model="form.is_night" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmitShift">确定</el-button>
-      </template>
-    </el-dialog>
-
     <el-dialog v-model="changelogDialogVisible" :title="changelogDialogTitle" width="600px">
       <el-form :model="changelogForm" label-width="80px">
         <el-form-item label="标题">
@@ -192,38 +126,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
 
-const activeTab = ref('shifts')
-const shiftTypes = ref([])
+const activeTab = ref('logs')
 const logs = ref([])
 const changelogs = ref([])
 const manualCleanupMonths = ref(3)
-const dialogVisible = ref(false)
-const isEdit = ref(false)
 const searchLog = reactive({ operation: '' })
 const selectedTables = ref([])
 const logPagination = reactive({ page: 1, limit: 20, total: 0 })
-const form = reactive({
-  id: null,
-  shift_name: '',
-  start_time: '',
-  end_time: '',
-  work_hours: 8,
-  color: '#409EFF',
-  is_night: false
-})
 const changelogDialogVisible = ref(false)
 const changelogDialogTitle = ref('')
 const changelogForm = ref({ id: null, title: '', content: '' })
 const savingChangelog = ref(false)
-
-async function loadShiftTypes() {
-  try {
-    const res = await api.get('/shift-types')
-    shiftTypes.value = res.data
-  } catch (e) {
-    ElMessage.error('加载失败')
-  }
-}
 
 async function loadLogs() {
   try {
@@ -258,47 +171,6 @@ async function manualCleanup() {
     ElMessage.success(`清理完成，删除 ${res.data.deleted} 条日志`)
   } catch (e) {
     ElMessage.error('清理失败')
-  }
-}
-
-function handleAddShift() {
-  Object.assign(form, { id: null, shift_name: '', start_time: '', end_time: '', work_hours: 8, color: '#409EFF', is_night: false })
-  isEdit.value = false
-  dialogVisible.value = true
-}
-
-function handleEditShift(row) {
-  Object.assign(form, { ...row })
-  isEdit.value = true
-  dialogVisible.value = true
-}
-
-async function handleSubmitShift() {
-  try {
-    if (isEdit.value) {
-      await api.put(`/shift-types/${form.id}`, form)
-      ElMessage.success('更新成功')
-    } else {
-      await api.post('/shift-types', form)
-      ElMessage.success('创建成功')
-    }
-    dialogVisible.value = false
-    loadShiftTypes()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '操作失败')
-  }
-}
-
-async function handleDeleteShift(row) {
-  try {
-    await ElMessageBox.confirm('确定要删除该班次吗?', '提示', { type: 'warning' })
-    await api.delete(`/shift-types/${row.id}`)
-    ElMessage.success('删除成功')
-    loadShiftTypes()
-  } catch (e) {
-    if (e !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
   }
 }
 
@@ -377,7 +249,6 @@ async function handleDeleteChangelog(row) {
 }
 
 onMounted(() => {
-  loadShiftTypes()
   loadChangelogs()
 })
 </script>

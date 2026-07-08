@@ -38,6 +38,14 @@ def test_all_keys_contains_workload():
     assert "workload.delete" in keys
 
 
+def test_all_keys_contains_new_permissions():
+    keys = get_all_permission_keys()
+    assert "reports.recalculate" in keys
+    assert "reports.export" in keys
+    assert "employees.export" in keys
+    assert "system.export_logs" in keys
+
+
 def test_all_keys_count():
     keys = get_all_permission_keys()
     expected = 0
@@ -65,3 +73,25 @@ def test_default_permissions_user():
     assert perms["salary_config.view"] is True
     assert perms["workload.view"] is True
     assert perms["workload_report.view"] is True
+
+
+def test_default_permissions_new_keys_admin():
+    perms = get_default_permissions("admin")
+    assert perms["reports.recalculate"] is True
+    assert perms["reports.export"] is True
+    assert perms["employees.export"] is True
+    assert perms["system.export_logs"] is True
+
+
+def test_default_permissions_new_keys_manager():
+    perms = get_default_permissions("manager")
+    assert perms["reports.recalculate"] is True
+    assert perms["reports.export"] is True
+    assert perms["employees.export"] is True
+
+
+def test_default_permissions_new_keys_user():
+    perms = get_default_permissions("user")
+    assert perms["reports.recalculate"] is False
+    assert perms["reports.export"] is False
+    assert perms["employees.export"] is False

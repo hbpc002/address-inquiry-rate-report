@@ -17,6 +17,19 @@ describe('PERMISSION_REGISTRY', () => {
     expect(PERMISSION_REGISTRY.workload_report).toBeDefined()
     expect(PERMISSION_REGISTRY.workload_report.label).toBe('工作量报表')
   })
+
+  it('should include reports.recalculate and reports.export', () => {
+    expect(PERMISSION_REGISTRY.reports.permissions.recalculate).toBe('重算考勤')
+    expect(PERMISSION_REGISTRY.reports.permissions.export).toBe('导出报表')
+  })
+
+  it('should include employees.export', () => {
+    expect(PERMISSION_REGISTRY.employees.permissions.export).toBe('导出')
+  })
+
+  it('should include system.export_logs', () => {
+    expect(PERMISSION_REGISTRY.system.permissions.export_logs).toBe('导出日志')
+  })
 })
 
 describe('getAllPermissionKeys', () => {
@@ -35,6 +48,14 @@ describe('getAllPermissionKeys', () => {
   it('should contain workload_report.view', () => {
     const keys = getAllPermissionKeys()
     expect(keys).toContain('workload_report.view')
+  })
+
+  it('should contain new permission keys', () => {
+    const keys = getAllPermissionKeys()
+    expect(keys).toContain('reports.recalculate')
+    expect(keys).toContain('reports.export')
+    expect(keys).toContain('employees.export')
+    expect(keys).toContain('system.export_logs')
   })
 
   it('should return all keys for all pages', () => {
@@ -73,5 +94,27 @@ describe('getDefaultPermissions', () => {
   it('should enable salary_config.view for user', () => {
     const perms = getDefaultPermissions('user')
     expect(perms['salary_config.view']).toBe(true)
+  })
+
+  it('should enable new report permissions for admin', () => {
+    const perms = getDefaultPermissions('admin')
+    expect(perms['reports.recalculate']).toBe(true)
+    expect(perms['reports.export']).toBe(true)
+    expect(perms['employees.export']).toBe(true)
+    expect(perms['system.export_logs']).toBe(true)
+  })
+
+  it('should enable new report permissions for manager', () => {
+    const perms = getDefaultPermissions('manager')
+    expect(perms['reports.recalculate']).toBe(true)
+    expect(perms['reports.export']).toBe(true)
+    expect(perms['employees.export']).toBe(true)
+  })
+
+  it('should disable new report permissions for user', () => {
+    const perms = getDefaultPermissions('user')
+    expect(perms['reports.recalculate']).toBe(false)
+    expect(perms['reports.export']).toBe(false)
+    expect(perms['employees.export']).toBe(false)
   })
 })

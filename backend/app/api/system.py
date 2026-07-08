@@ -434,6 +434,7 @@ def export_logs_csv(
     user_id: Optional[int] = None,
     operation: Optional[str] = None,
 ):
+    require_permission(current_user, "system.export_logs")
     query = db.query(OperationLog)
     if user_id:
         query = query.filter(OperationLog.user_id == user_id)

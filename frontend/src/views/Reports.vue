@@ -5,8 +5,8 @@
         <div class="card-header">
           <span>考勤报表</span>
           <el-space>
-            <el-button type="warning" @click="handleRecalculate">重算考勤</el-button>
-            <el-button type="success" @click="handleExport">导出报表</el-button>
+            <el-button v-if="userStore.hasPermission('reports.recalculate')" type="warning" @click="handleRecalculate">重算考勤</el-button>
+            <el-button v-if="userStore.hasPermission('reports.export')" type="success" @click="handleExport">导出报表</el-button>
           </el-space>
         </div>
       </template>
@@ -506,7 +506,10 @@
 <script setup>
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
 import { ElMessage } from 'element-plus'
+
+const userStore = useUserStore()
 import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions } from '../utils/echarts'
 import { getYesterday } from '../utils/date'

@@ -213,6 +213,7 @@ def export_employees(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "employees.export")
     query = db.query(Employee)
     if team:
         query = query.filter(Employee.team == team)

@@ -12,7 +12,7 @@ from app.models.daily_report import DailyReport
 from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
 from app.schemas.daily_report import DailyReportResponse, DailyReportListResponse
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
 from app.services.attendance import save_daily_report
 
@@ -376,6 +376,7 @@ def export_report(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "reports.export")
     output = io.StringIO()
     writer = csv.writer(output)
 
@@ -510,6 +511,7 @@ def recalculate_attendance(
     current_user: dict = Depends(get_current_user)
 ):
     """重算指定日期范围内的考勤报表"""
+    require_permission(current_user, "reports.recalculate")
     start = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
 

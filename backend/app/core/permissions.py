@@ -7,6 +7,7 @@ PERMISSION_REGISTRY = {
             "edit": "编辑",
             "delete": "删除",
             "upload": "导入",
+            "export": "导出",
         },
     },
     "schedules": {
@@ -51,6 +52,8 @@ PERMISSION_REGISTRY = {
         "label": "考勤报表",
         "permissions": {
             "view": "查看",
+            "recalculate": "重算考勤",
+            "export": "导出报表",
         },
     },
     "shift_types": {
@@ -77,6 +80,7 @@ PERMISSION_REGISTRY = {
             "view": "查看",
             "clear_data": "清除数据",
             "changelogs": "管理更新日志",
+            "export_logs": "导出日志",
         },
     },
     "users": {
