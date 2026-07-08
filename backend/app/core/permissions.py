@@ -93,6 +93,12 @@ PERMISSION_REGISTRY = {
             "manage": "管理角色",
         },
     },
+    "salary_config": {
+        "label": "绩效配置",
+        "permissions": {
+            "view": "查看",
+        },
+    },
 }
 
 

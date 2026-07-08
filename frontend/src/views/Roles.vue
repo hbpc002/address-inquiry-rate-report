@@ -20,15 +20,15 @@
             <el-tag v-if="row.is_system" type="danger">全部权限</el-tag>
             <template v-else>
               <el-tag
-                v-for="(val, key) in parsePermissions(row.permissions)"
-                :key="key"
+                v-for="item in getPermissionSummary(row.permissions)"
+                :key="item.pageKey"
                 size="small"
-                style="margin: 2px"
-                :type="val ? 'success' : 'info'"
+                style="margin: 2px; cursor: default"
+                :type="item.enabled === 0 ? 'info' : item.enabled === item.total ? 'success' : 'warning'"
               >
-                {{ permissionLabel(key) }}
+                {{ item.label }} ({{ item.enabled }}/{{ item.total }})
               </el-tag>
-              <span v-if="!row.permissions || Object.keys(parsePermissions(row.permissions)).length === 0">无</span>
+              <span v-if="!row.permissions">无</span>
             </template>
           </template>
         </el-table-column>
@@ -41,7 +41,7 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑角色' : '新增角色'" width="700px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑角色' : '新增角色'" width="780px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="角色名称">
           <el-input v-model="form.name" :disabled="isEdit" />
@@ -50,15 +50,33 @@
           <el-input v-model="form.description" />
         </el-form-item>
         <el-form-item label="权限">
-          <el-checkbox :indeterminate="isIndeterminate" :model-value="checkAll" @change="handleCheckAll">全选</el-checkbox>
-          <el-divider />
+          <div style="margin-bottom: 12px">
+            <el-checkbox :indeterminate="isIndeterminate" :model-value="checkAll" @change="handleCheckAll">全选所有权限</el-checkbox>
+          </div>
           <div v-for="(pageInfo, pageKey) in PERMISSION_REGISTRY" :key="pageKey" style="margin-bottom: 12px">
-            <div style="font-weight: bold; margin-bottom: 6px; color: #606266">{{ pageInfo.label }}</div>
-            <el-checkbox-group v-model="form.permissions">
-              <el-checkbox v-for="(label, action) in pageInfo.permissions" :key="`${pageKey}.${action}`" :label="`${pageKey}.${action}`">
-                {{ label }}
-              </el-checkbox>
-            </el-checkbox-group>
+            <el-card shadow="hover" body-style="padding: 12px">
+              <template #header>
+                <div style="display: flex; align-items: center; justify-content: space-between">
+                  <span style="font-weight: bold">{{ pageInfo.label }}</span>
+                  <el-checkbox
+                    :indeterminate="isGroupIndeterminate(pageKey)"
+                    :model-value="isGroupAllChecked(pageKey)"
+                    @change="val => handleGroupCheckAll(pageKey, val)"
+                    size="small"
+                  >全选</el-checkbox>
+                </div>
+              </template>
+              <el-checkbox-group v-model="form.permissions">
+                <el-checkbox
+                  v-for="(label, action) in pageInfo.permissions"
+                  :key="`${pageKey}.${action}`"
+                  :label="`${pageKey}.${action}`"
+                  size="small"
+                >
+                  {{ label }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </el-card>
           </div>
         </el-form-item>
       </el-form>
@@ -75,7 +93,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PERMISSION_REGISTRY, getAllPermissionKeys, permissionLabel } from '../permissions'
+import { PERMISSION_REGISTRY, getAllPermissionKeys } from '../permissions'
 
 const userStore = useUserStore()
 
@@ -104,6 +122,46 @@ function parsePermissions(permissions) {
     return sorted
   } catch {
     return {}
+  }
+}
+
+function getPermissionSummary(permissionsStr) {
+  try {
+    const obj = JSON.parse(permissionsStr || '{}')
+    return Object.entries(PERMISSION_REGISTRY).map(([pageKey, pageInfo]) => {
+      const actions = Object.keys(pageInfo.permissions)
+      const enabledCount = actions.filter(a => obj[`${pageKey}.${a}`] === true).length
+      return { pageKey, label: pageInfo.label, enabled: enabledCount, total: actions.length }
+    })
+  } catch {
+    return []
+  }
+}
+
+function getGroupKeys(pageKey) {
+  const pageInfo = PERMISSION_REGISTRY[pageKey]
+  if (!pageInfo) return []
+  return Object.keys(pageInfo.permissions).map(a => `${pageKey}.${a}`)
+}
+
+function isGroupAllChecked(pageKey) {
+  const groupKeys = getGroupKeys(pageKey)
+  return groupKeys.length > 0 && groupKeys.every(k => form.permissions.includes(k))
+}
+
+function isGroupIndeterminate(pageKey) {
+  const groupKeys = getGroupKeys(pageKey)
+  const checkedCount = groupKeys.filter(k => form.permissions.includes(k)).length
+  return checkedCount > 0 && checkedCount < groupKeys.length
+}
+
+function handleGroupCheckAll(pageKey, checked) {
+  const groupKeys = getGroupKeys(pageKey)
+  if (checked) {
+    const toAdd = groupKeys.filter(k => !form.permissions.includes(k))
+    form.permissions.push(...toAdd)
+  } else {
+    form.permissions = form.permissions.filter(k => !groupKeys.includes(k))
   }
 }
 
