@@ -840,24 +840,39 @@ function handleExport() {
   exportDialogVisible.value = true
 }
 
-function confirmExport() {
-  const params = new URLSearchParams()
-  params.append('type', exportForm.type)
-  if (exportForm.team) params.append('team', exportForm.team)
-
-  if (exportForm.type === 'daily' && exportForm.schedule_date) {
-    params.append('schedule_date', exportForm.schedule_date)
-  } else if (exportForm.type === 'month' && exportForm.year_month) {
-    params.append('year_month', exportForm.year_month)
-  } else if (exportForm.type === 'date_range' && exportForm.dateRange?.length === 2) {
-    params.append('start_date', exportForm.dateRange[0])
-    params.append('end_date', exportForm.dateRange[1])
+async function confirmExport() {
+  try {
+    const params = { type: exportForm.type }
+    if (exportForm.team) params.team = exportForm.team
+    if (exportForm.type === 'daily' && exportForm.schedule_date) {
+      params.schedule_date = exportForm.schedule_date
+    } else if (exportForm.type === 'month' && exportForm.year_month) {
+      params.year_month = exportForm.year_month
+    } else if (exportForm.type === 'date_range' && exportForm.dateRange?.length === 2) {
+      params.start_date = exportForm.dateRange[0]
+      params.end_date = exportForm.dateRange[1]
+    }
+    const res = await api.get('/reports/export', { params, responseType: 'blob' })
+    const disposition = res.headers?.['content-disposition'] || ''
+    const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;\s]+)/i)
+    const filename = match ? decodeURIComponent(match[1]) : 'report.csv'
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    exportDialogVisible.value = false
+    ElMessage.success('导出成功')
+  } catch (e) {
+    const errData = e.response?.data
+    if (errData instanceof Blob) {
+      const text = await errData.text()
+      try { ElMessage.error(JSON.parse(text).detail || '导出失败') } catch { ElMessage.error(text || '导出失败') }
+    } else {
+      ElMessage.error('导出失败')
+    }
   }
-
-  const url = `${import.meta.env.VITE_API_BASE_URL || '/api'}/reports/export?${params}`
-  window.open(url, '_blank')
-  exportDialogVisible.value = false
-  ElMessage.success('导出成功')
 }
 
 function handleRecalculate() {

@@ -178,12 +178,30 @@ function handleAdd() {
   dialogVisible.value = true
 }
 
-function handleExport() {
-  const params = new URLSearchParams()
-  if (searchForm.team) params.append('team', searchForm.team)
-  if (searchForm.dept) params.append('dept', searchForm.dept)
-  const url = `${import.meta.env.VITE_API_BASE_URL || '/api'}/employees/export?${params}`
-  window.open(url, '_blank')
+async function handleExport() {
+  try {
+    const params = {}
+    if (searchForm.team) params.team = searchForm.team
+    if (searchForm.dept) params.dept = searchForm.dept
+    const res = await api.get('/employees/export', { params, responseType: 'blob' })
+    const disposition = res.headers?.['content-disposition'] || ''
+    const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;\s]+)/i)
+    const filename = match ? decodeURIComponent(match[1]) : 'employees.csv'
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    const errData = e.response?.data
+    if (errData instanceof Blob) {
+      const text = await errData.text()
+      try { ElMessage.error(JSON.parse(text).detail || '导出失败') } catch { ElMessage.error(text || '导出失败') }
+    } else {
+      ElMessage.error('导出失败')
+    }
+  }
 }
 
 function handleEdit(row) {

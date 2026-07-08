@@ -169,8 +169,27 @@ async function handleImport() {
   }
 }
 
-function handleDownloadTemplate() {
-  window.open(`${import.meta.env.VITE_API_BASE_URL || '/api'}/users/import-template`, '_blank')
+async function handleDownloadTemplate() {
+  try {
+    const res = await api.get('/users/import-template', { responseType: 'blob' })
+    const disposition = res.headers?.['content-disposition'] || ''
+    const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;\s]+)/i)
+    const filename = match ? decodeURIComponent(match[1]) : '用户导入模板.xlsx'
+    const url = URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    const errData = e.response?.data
+    if (errData instanceof Blob) {
+      const text = await errData.text()
+      try { ElMessage.error(JSON.parse(text).detail || '下载模板失败') } catch { ElMessage.error(text || '下载模板失败') }
+    } else {
+      ElMessage.error('下载模板失败')
+    }
+  }
 }
 
 function handleRoleChange(roleId) {
