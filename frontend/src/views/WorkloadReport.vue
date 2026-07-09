@@ -76,7 +76,7 @@
             <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组产量占比</div>
             <el-row>
               <el-col :span="8">
-                <Echart :options="teamChartOptions" height="280px" />
+                <Echart :options="teamChartOptions" height="280px" @click="handlePieClick" />
               </el-col>
               <el-col :span="16">
                 <el-table :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
@@ -631,6 +631,18 @@ function handleTeamRowClick(row) {
     filterType.value = 'team'
     filterValue.value = row.team
     currentPage.value = 1
+  }
+}
+
+function handlePieClick(params) {
+  if (params.name) {
+    if (filterType.value === 'team' && filterValue.value === params.name) {
+      clearFilter()
+    } else {
+      filterType.value = 'team'
+      filterValue.value = params.name
+      currentPage.value = 1
+    }
   }
 }
 

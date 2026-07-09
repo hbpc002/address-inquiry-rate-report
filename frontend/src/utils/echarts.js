@@ -39,6 +39,8 @@ export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: {
       trigger: 'item',
+      confine: true,
+      extraCssText: 'white-space: pre-line; max-width: 320px; z-index: 9999;',
       formatter: (params) => {
         let extra = ''
         if (params.data.peopleCount !== undefined) extra += `人数: ${params.data.peopleCount}\n`

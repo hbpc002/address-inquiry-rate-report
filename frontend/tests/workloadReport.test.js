@@ -102,6 +102,31 @@ function makeTeamChartData(data) {
     .slice(0, 8)
 }
 
+function handlePieClick(name, filterType, filterValue) {
+  const state = { filterType, filterValue, currentPage: 1 }
+  if (name) {
+    if (state.filterType === 'team' && state.filterValue === name) {
+      state.filterType = ''
+      state.filterValue = ''
+      state.currentPage = 1
+    } else {
+      state.filterType = 'team'
+      state.filterValue = name
+      state.currentPage = 1
+    }
+  }
+  return { filterType: state.filterType, filterValue: state.filterValue }
+}
+
+function formatPieTooltip(name, value, percent, unit, extra) {
+  let lines = [`${name}`, `${unit}: ${value} (${percent}%)`]
+  if (extra.peopleCount !== undefined) lines.push(`人数: ${extra.peopleCount}`)
+  if (extra.avgDuration !== undefined) lines.push(`平均通话均长: ${extra.avgDuration}s`)
+  if (extra.totalTicket !== undefined) lines.push(`工单总量: ${extra.totalTicket}`)
+  if (extra.tiDanLv !== undefined) lines.push(`提单率: ${(extra.tiDanLv * 100).toFixed(2)}%`)
+  return lines.join('\n')
+}
+
 function resolveRateField(d) {
   return getMetricValue(d, '人工服务-解决率-转解决情况调查率')
 }
@@ -366,6 +391,63 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(result[0].name).toBe('未知班组')
       expect(result[0].totalTicket).toBe(0)
       expect(result[0].tiDanLv).toBe(0)
+    })
+  })
+
+  describe('handlePieClick', () => {
+    it('should set team filter on first click', () => {
+      const result = handlePieClick('A组', '', '')
+      expect(result.filterType).toBe('team')
+      expect(result.filterValue).toBe('A组')
+    })
+    it('should clear team filter when clicking same team again', () => {
+      const result = handlePieClick('A组', 'team', 'A组')
+      expect(result.filterType).toBe('')
+      expect(result.filterValue).toBe('')
+    })
+    it('should switch to new team when clicking different team', () => {
+      const result = handlePieClick('B组', 'team', 'A组')
+      expect(result.filterType).toBe('team')
+      expect(result.filterValue).toBe('B组')
+    })
+    it('should do nothing when name is empty', () => {
+      const result = handlePieClick('', 'name', '张三')
+      expect(result.filterType).toBe('name')
+      expect(result.filterValue).toBe('张三')
+    })
+  })
+
+  describe('formatPieTooltip', () => {
+    it('should produce multi-line tooltip with all fields', () => {
+      const tooltip = formatPieTooltip('A组', 150, 30, '产量', {
+        peopleCount: 5,
+        avgDuration: 180.5,
+        totalTicket: 20,
+        tiDanLv: 0.1333
+      })
+      const lines = tooltip.split('\n')
+      expect(lines[0]).toBe('A组')
+      expect(lines[1]).toBe('产量: 150 (30%)')
+      expect(lines[2]).toBe('人数: 5')
+      expect(lines[3]).toBe('平均通话均长: 180.5s')
+      expect(lines[4]).toBe('工单总量: 20')
+      expect(lines[5]).toBe('提单率: 13.33%')
+    })
+    it('should handle partial fields gracefully', () => {
+      const tooltip = formatPieTooltip('B组', 50, 25, '产量', {
+        peopleCount: 2,
+        totalTicket: 8
+      })
+      expect(tooltip).toContain('人数: 2')
+      expect(tooltip).toContain('工单总量: 8')
+      expect(tooltip).not.toContain('平均通话均长')
+      expect(tooltip).not.toContain('提单率')
+    })
+    it('should work with default unit 工时', () => {
+      const tooltip = formatPieTooltip('C组', 200, 40, '工时', {
+        peopleCount: 10
+      })
+      expect(tooltip).toContain('工时: 200')
     })
   })
 
