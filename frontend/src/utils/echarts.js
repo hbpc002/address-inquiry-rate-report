@@ -34,7 +34,7 @@ export const CHART_COLORS = [
   '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#ff5722'
 ]
 
-export function createPieOptions(data, title, colors = CHART_COLORS) {
+export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工时') {
   return {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: {
@@ -43,7 +43,10 @@ export function createPieOptions(data, title, colors = CHART_COLORS) {
         let extra = ''
         if (params.data.peopleCount !== undefined) extra += `人数: ${params.data.peopleCount}\n`
         if (params.data.avgHours !== undefined) extra += `人均工时: ${params.data.avgHours}h\n`
-        return `${params.name}\n工时: ${params.value} (${params.percent}%)\n${extra}`
+        if (params.data.avgDuration !== undefined) extra += `平均通话均长: ${params.data.avgDuration}s\n`
+        if (params.data.totalTicket !== undefined) extra += `工单总量: ${params.data.totalTicket}\n`
+        if (params.data.tiDanLv !== undefined) extra += `提单率: ${(params.data.tiDanLv * 100).toFixed(2)}%\n`
+        return `${params.name}\n${unit}: ${params.value} (${params.percent}%)\n${extra}`
       }
     },
     legend: { orient: 'horizontal', bottom: 0 },

@@ -406,11 +406,28 @@ const teamChartData = computed(() => {
   const teamMap = {}
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
-    if (!teamMap[team]) teamMap[team] = 0
-    teamMap[team] += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    if (!teamMap[team]) {
+      teamMap[team] = { value: 0, count: 0, totalDuration: 0, durCount: 0, totalTicket: 0 }
+    }
+    const t = teamMap[team]
+    t.value += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    t.count++
+    t.totalTicket += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
+    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
+    if (avgDur !== null) {
+      t.totalDuration += avgDur
+      t.durCount++
+    }
   })
   return Object.entries(teamMap)
-    .map(([name, value]) => ({ name, value: Math.round(value) }))
+    .map(([name, data]) => ({
+      name,
+      value: Math.round(data.value),
+      peopleCount: data.count,
+      avgDuration: data.durCount > 0 ? (data.totalDuration / data.durCount).toFixed(1) : 0,
+      totalTicket: Math.round(data.totalTicket),
+      tiDanLv: data.value > 0 ? data.totalTicket / data.value : 0
+    }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8)
 })
@@ -567,7 +584,7 @@ const paginatedData = computed(() => {
 
 const teamChartOptions = computed(() => {
   if (!teamChartData.value.length) return {}
-  return createPieOptions(teamChartData.value, '班组产量占比')
+  return createPieOptions(teamChartData.value, '班组产量占比', undefined, '产量')
 })
 
 

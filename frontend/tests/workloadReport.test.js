@@ -72,6 +72,36 @@ function makeTeamRanking(data) {
     .sort((a, b) => b.total_calls - a.total_calls)
 }
 
+function makeTeamChartData(data) {
+  const teamMap = {}
+  data.forEach(d => {
+    const team = d.team_desc || '未知班组'
+    if (!teamMap[team]) {
+      teamMap[team] = { value: 0, count: 0, totalDuration: 0, durCount: 0, totalTicket: 0 }
+    }
+    const t = teamMap[team]
+    t.value += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    t.count++
+    t.totalTicket += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
+    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
+    if (avgDur !== null) {
+      t.totalDuration += avgDur
+      t.durCount++
+    }
+  })
+  return Object.entries(teamMap)
+    .map(([name, data]) => ({
+      name,
+      value: Math.round(data.value),
+      peopleCount: data.count,
+      avgDuration: data.durCount > 0 ? (data.totalDuration / data.durCount).toFixed(1) : 0,
+      totalTicket: Math.round(data.totalTicket),
+      tiDanLv: data.value > 0 ? data.totalTicket / data.value : 0
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8)
+}
+
 function resolveRateField(d) {
   return getMetricValue(d, '人工服务-解决率-转解决情况调查率')
 }
@@ -273,6 +303,69 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(result[0].total_ticket_count).toBe(0)
       expect(result[0].total_outbound).toBe(0)
       expect(result[0].ti_dan_lv).toBe(0)
+    })
+  })
+
+  describe('teamChartData merge', () => {
+    it('should aggregate team chart data with extra tooltip fields', () => {
+      const data = [
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话均长(秒)': 180, '呼入人工服务-工单-生成总量': 5 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话均长(秒)': 200, '呼入人工服务-工单-生成总量': 8 } },
+        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话均长(秒)': 150, '呼入人工服务-工单-生成总量': 12 } }
+      ]
+      const result = makeTeamChartData(data)
+      expect(result).toHaveLength(2)
+      const teamA = result.find(r => r.name === 'A组')
+      expect(teamA.value).toBe(30)
+      expect(teamA.peopleCount).toBe(2)
+      expect(teamA.avgDuration).toBe('190.0')
+      expect(teamA.totalTicket).toBe(13)
+      expect(teamA.tiDanLv).toBeCloseTo(13 / 30, 4)
+      const teamB = result.find(r => r.name === 'B组')
+      expect(teamB.value).toBe(30)
+      expect(teamB.peopleCount).toBe(1)
+      expect(teamB.avgDuration).toBe('150.0')
+      expect(teamB.totalTicket).toBe(12)
+      expect(teamB.tiDanLv).toBeCloseTo(12 / 30, 4)
+    })
+    it('should handle null duration gracefully', () => {
+      const data = [
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话均长(秒)': null, '呼入人工服务-工单-生成总量': 3 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-工单-生成总量': 5 } }
+      ]
+      const result = makeTeamChartData(data)
+      expect(result).toHaveLength(1)
+      expect(result[0].peopleCount).toBe(2)
+      expect(result[0].avgDuration).toBe(0)
+      expect(result[0].totalTicket).toBe(8)
+    })
+    it('should limit to top 8 teams', () => {
+      const data = Array.from({ length: 10 }, (_, i) => ({
+        team_desc: `第${i + 1}组`,
+        aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 + i }
+      }))
+      const result = makeTeamChartData(data)
+      expect(result).toHaveLength(8)
+    })
+    it('should sort by call count descending', () => {
+      const data = [
+        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30 } },
+        { team_desc: 'C组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } }
+      ]
+      const result = makeTeamChartData(data)
+      expect(result[0].name).toBe('A组')
+      expect(result[1].name).toBe('B组')
+      expect(result[2].name).toBe('C组')
+    })
+    it('should handle unknown team_desc as 未知班组', () => {
+      const data = [
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5 } }
+      ]
+      const result = makeTeamChartData(data)
+      expect(result[0].name).toBe('未知班组')
+      expect(result[0].totalTicket).toBe(0)
+      expect(result[0].tiDanLv).toBe(0)
     })
   })
 
