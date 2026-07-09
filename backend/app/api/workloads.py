@@ -73,7 +73,7 @@ def get_workloads(
     if account:
         query = query.filter(Workload.account == account)
 
-    emp_accounts = [e[0] for e in db.query(Employee.emp_no).all()]
+    emp_accounts = [e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()]
     if emp_accounts:
         query = query.filter(Workload.account.in_(emp_accounts))
     else:
@@ -296,7 +296,7 @@ def get_workload_report(
 
     records = query.all()
 
-    emp_accounts = {e[0] for e in db.query(Employee.emp_no).all()}
+    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
     records = [r for r in records if r.account in emp_accounts]
 
     if province:

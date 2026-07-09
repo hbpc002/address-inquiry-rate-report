@@ -251,6 +251,28 @@ class TestWorkloadList:
         assert len(data["items"]) == 2
         assert data["total"] == 3
 
+    def test_list_excludes_resigned_employee(self):
+        db = SessionLocal()
+        try:
+            from app.models.employee import Employee
+            resigned = Employee(emp_no="STTR0099", name="离职员工", team="热线一组", status="离职")
+            db.add(resigned)
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR0099",
+                name="离职员工", emp_no="1099", team_desc="热线一组",
+                metrics={"通话次数": 10}, import_batch="batch_resigned"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 3
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR0099" not in accounts
+
 
 class TestWorkloadDelete:
 
@@ -412,6 +434,30 @@ class TestWorkloadReport:
         teams = data["stats"].get("teams", [])
         assert "热线一组" in teams
         assert "热线二组" in teams
+
+    def test_report_excludes_resigned_employee(self):
+        db = SessionLocal()
+        try:
+            from app.models.employee import Employee
+            resigned = Employee(emp_no="STTR0099", name="离职员工", team="热线一组", status="离职")
+            db.add(resigned)
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR0099",
+                name="离职员工", emp_no="1099", team_desc="热线一组",
+                metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 28800,
+                         "呼入人工服务-人工服务-通话次数": 30}, import_batch="batch_resigned"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 3
+        assert data["stats"]["total_records"] == 3
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR0099" not in accounts
 
 
 class TestWorkloadMetricsFields:
