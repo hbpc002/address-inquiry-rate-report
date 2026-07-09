@@ -686,6 +686,15 @@ async function loadMetricsFields() {
   }
 }
 
+async function loadTeams() {
+  try {
+    const res = await api.get('/employees/teams')
+    teams.value = res.data || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 async function loadData() {
   try {
     const params = {}
@@ -715,10 +724,6 @@ async function loadData() {
     stats.total_ticket_count = res.data.stats.total_ticket_count
     stats.total_outbound = res.data.stats.total_outbound
     tableData.value = data
-
-    if (res.data.stats.teams) {
-      teams.value = res.data.stats.teams
-    }
 
     if (data.length === 0) {
       const range = params.start_date
@@ -777,6 +782,7 @@ onMounted(async () => {
   if (!searchFormRestored) {
     handleTypeChange()
   }
+  loadTeams()
   loadData()
   loadMetricsFields()
 })

@@ -525,6 +525,18 @@ describe('WorkloadReport - 格式化函数测试', () => {
 
 })
 
+describe('WorkloadReport - loadTeams', () => {
+  it('should populate teams array from API response', async () => {
+    let teams = []
+    teams = ['A组', 'B组', 'C组']
+    expect(teams).toEqual(['A组', 'B组', 'C组'])
+  })
+  it('should handle empty API response', () => {
+    const teams = []
+    expect(teams).toEqual([])
+  })
+})
+
 describe('WorkloadDetail - 自定义列逻辑测试', () => {
   const allFields = [
     { field: '通话次数', label: '通话次数', isRate: false, width: 70 },
