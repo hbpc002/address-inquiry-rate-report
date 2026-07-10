@@ -490,9 +490,9 @@ def test_log_export_csv():
     logs = db.query(OperationLog).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['id', 'user_id', 'operation_type', 'target_table', 'target_id', 'details', 'created_at'])
+    writer.writerow(['id', 'user_id', 'user_name', 'operation_type', 'target_table', 'target_id', 'details', 'created_at'])
     for log in logs:
-        writer.writerow([log.id, log.user_id, log.operation_type, log.target_table, log.target_id,
+        writer.writerow([log.id, log.user_id, "", log.operation_type, log.target_table, log.target_id,
                         log.details, log.created_at.isoformat() if log.created_at else ''])
     assert len(output.getvalue().strip().split('\n')) >= 4
     db.close()

@@ -14,7 +14,22 @@ from app.models.user import User
 from app.models.database import engine, Base, SessionLocal
 from app.models.operation_log import OperationLog
 from app.utils.logger import log_operation
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, create_access_token
+from fastapi.testclient import TestClient
+from app.main import app
+from app.models.database import get_db as _get_db
+
+
+def _override_get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+app.dependency_overrides[_get_db] = _override_get_db
+client = TestClient(app)
 
 try:
     from app.models.app_config import AppConfig
@@ -160,11 +175,12 @@ def test_log_export_csv_format():
     # Simulate CSV export
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "user_id", "operation_type", "target_table", "target_id", "details", "created_at"])
+    writer.writerow(["id", "user_id", "user_name", "operation_type", "target_table", "target_id", "details", "created_at"])
     for log in logs:
         writer.writerow([
             log.id,
             log.user_id,
+            "",
             log.operation_type,
             log.target_table,
             log.target_id,
@@ -238,3 +254,44 @@ def test_multiple_users_logging():
     assert len(user2_logs) >= 1
     
     db.close()
+
+
+def test_log_api_returns_user_name():
+    """Test that GET /api/logs returns user_name field with display name"""
+    db = SessionLocal()
+    try:
+        # Create test users with Chinese display names
+        user_a = User(username='log_name_a', password_hash=get_password_hash('a'), display_name='张三', role='user')
+        user_b = User(username='log_name_b', password_hash=get_password_hash('b'), display_name='李四', role='user')
+        db.add_all([user_a, user_b])
+        db.commit()
+
+        # Create log entries for both users
+        log_operation(db, user_a.id, 'login', 'users', user_a.id, {'username': 'log_name_a'})
+        log_operation(db, user_b.id, 'create_employee', 'employees', 10, {'emp_no': 'E010'})
+        db.commit()
+
+        # Get admin token for API auth
+        admin = db.query(User).filter_by(username='admin').first()
+        token = create_access_token(data={"sub": str(admin.id)})
+
+        # Call the API
+        res = client.get("/api/logs", headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 200
+        data = res.json()
+        assert "items" in data
+
+        # Verify user_name is returned correctly
+        items = data["items"]
+        found_a = found_b = False
+        for item in items:
+            if item["user_id"] == user_a.id:
+                assert item["user_name"] == "张三", f"Expected 张三, got {item['user_name']}"
+                found_a = True
+            elif item["user_id"] == user_b.id:
+                assert item["user_name"] == "李四", f"Expected 李四, got {item['user_name']}"
+                found_b = True
+        assert found_a, f"Log entry for user_a ({user_a.id}) not found in response"
+        assert found_b, f"Log entry for user_b ({user_b.id}) not found in response"
+    finally:
+        db.close()

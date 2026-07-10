@@ -13,6 +13,7 @@ from app.models.checkin import Checkin
 from app.models.daily_report import DailyReport
 from app.models.shift_type import ShiftType
 from app.models.operation_log import OperationLog
+from app.models.user import User
 from app.utils.logger import log_operation
 from app.models.attendance_config import AttendanceConfig
 try:
@@ -407,12 +408,16 @@ def get_logs(
     
     total = query.count()
     items = query.order_by(OperationLog.created_at.desc()).offset((page-1)*limit).limit(limit).all()
-    
+
+    user_ids = list({i.user_id for i in items if i.user_id is not None})
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
     return {
         "items": [
             {
                 "id": i.id,
                 "user_id": i.user_id,
+                "user_name": users[i.user_id].display_name or users[i.user_id].username if i.user_id in users else None,
                 "operation_type": i.operation_type,
                 "target_table": i.target_table,
                 "target_id": i.target_id,
@@ -443,12 +448,16 @@ def export_logs_csv(
 
     items = query.order_by(OperationLog.created_at.desc()).offset((page-1)*limit).limit(limit).all()
 
+    user_ids = list({i.user_id for i in items if i.user_id is not None})
+    users = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
     import io, csv
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["id", "user_id", "operation_type", "target_table", "target_id", "details", "created_at"])
+    writer.writerow(["id", "user_id", "user_name", "operation_type", "target_table", "target_id", "details", "created_at"])
     for i in items:
-        writer.writerow([i.id, i.user_id, i.operation_type, i.target_table, i.target_id, i.details, i.created_at.isoformat() if i.created_at else ""])
+        user_name = users[i.user_id].display_name or users[i.user_id].username if i.user_id in users else ""
+        writer.writerow([i.id, i.user_id, user_name, i.operation_type, i.target_table, i.target_id, i.details, i.created_at.isoformat() if i.created_at else ""])
     output.seek(0)
     filename = "operation_logs.csv"
     return StreamingResponse(

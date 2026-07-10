@@ -30,6 +30,7 @@
               </template>
             </el-table-column>
             <el-table-column prop="user_id" label="操作人ID" width="100" />
+            <el-table-column prop="user_name" label="操作人" width="100" />
             <el-table-column prop="operation_type" label="操作类型" width="100" />
             <el-table-column prop="target_table" label="目标表" width="120" />
             <el-table-column prop="target_id" label="目标ID" width="80" />
