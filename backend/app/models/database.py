@@ -105,6 +105,15 @@ def _migrate_db():
                 except Exception as e:
                     print(f"Failed to alter shift_name column: {e}")
 
+        if 'employees' in tables:
+            emp_cols = {col['name'] for col in inspector.get_columns('employees')}
+            if 'deleted_at' not in emp_cols:
+                try:
+                    db.execute(text("ALTER TABLE employees ADD COLUMN deleted_at TIMESTAMP"))
+                    print("Added column deleted_at to employees")
+                except Exception as e:
+                    print(f"Failed to add column deleted_at: {e}")
+
         if 'daily_reports' in tables:
             report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}
             if 'segment_details' not in report_cols:

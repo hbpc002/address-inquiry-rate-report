@@ -6,6 +6,7 @@ export const PERMISSION_REGISTRY = {
       create: '新增',
       edit: '编辑',
       delete: '删除',
+      restore: '恢复',
       upload: '导入',
       export: '导出',
     },

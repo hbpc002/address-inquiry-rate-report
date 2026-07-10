@@ -13,6 +13,7 @@ class Employee(Base):
     dept = Column(String(100), index=True)
     role = Column(String(20), default="组员")
     status = Column(String(20), default="在职", index=True)
+    deleted_at = Column(DateTime, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

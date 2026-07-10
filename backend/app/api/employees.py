@@ -8,6 +8,9 @@ import io
 import csv
 from app.models.database import get_db
 from app.models.employee import Employee
+from app.models.schedule import Schedule
+from app.models.daily_report import DailyReport
+from app.models.monthly_report import MonthlyReport
 from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     EmployeeListResponse
@@ -102,9 +105,82 @@ def delete_employee(
         raise HTTPException(status_code=404, detail="员工不存在")
 
     db_employee.status = "离职"
+    db_employee.deleted_at = func.now()
     db.commit()
     log_operation(db, current_user["id"], "delete_employee", "employees", employee_id, {"emp_no": db_employee.emp_no, "name": db_employee.name})
     return {"message": "删除成功"}
+
+
+@router.put("/{employee_id}/restore", response_model=dict)
+def restore_employee(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "employees.restore")
+    db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not db_employee:
+        raise HTTPException(status_code=404, detail="员工不存在")
+    if db_employee.status != "离职":
+        raise HTTPException(status_code=400, detail="员工状态不为离职，无需恢复")
+
+    db_employee.status = "在职"
+    db_employee.deleted_at = None
+    db.commit()
+    log_operation(db, current_user["id"], "restore_employee", "employees", employee_id, {"emp_no": db_employee.emp_no, "name": db_employee.name})
+    return {"message": "恢复成功"}
+
+
+@router.delete("/{employee_id}/hard-delete", response_model=dict)
+def hard_delete_employee(
+    employee_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "employees.delete")
+    db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not db_employee:
+        raise HTTPException(status_code=404, detail="员工不存在")
+
+    db.query(MonthlyReport).filter(MonthlyReport.emp_id == employee_id).delete()
+    db.query(DailyReport).filter(DailyReport.emp_id == employee_id).delete()
+    db.query(Schedule).filter(Schedule.emp_id == employee_id).delete()
+    db.delete(db_employee)
+    db.commit()
+    log_operation(db, current_user["id"], "hard_delete_employee", "employees", employee_id, {"emp_no": db_employee.emp_no, "name": db_employee.name})
+    return {"message": "已彻底删除"}
+
+
+@router.post("/batch-restore", response_model=dict)
+def batch_restore_employees(
+    ids: list[int],
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "employees.restore")
+    count = db.query(Employee).filter(
+        Employee.id.in_(ids),
+        Employee.status == "离职"
+    ).update({"status": "在职", "deleted_at": None}, synchronize_session=False)
+    db.commit()
+    log_operation(db, current_user["id"], "batch_restore_employees", "employees", None, {"ids": ids, "count": count})
+    return {"message": f"成功恢复{count}名员工", "count": count}
+
+
+@router.post("/batch-hard-delete", response_model=dict)
+def batch_hard_delete_employees(
+    ids: list[int],
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "employees.delete")
+    db.query(MonthlyReport).filter(MonthlyReport.emp_id.in_(ids)).delete(synchronize_session=False)
+    db.query(DailyReport).filter(DailyReport.emp_id.in_(ids)).delete(synchronize_session=False)
+    db.query(Schedule).filter(Schedule.emp_id.in_(ids)).delete(synchronize_session=False)
+    count = db.query(Employee).filter(Employee.id.in_(ids)).delete(synchronize_session=False)
+    db.commit()
+    log_operation(db, current_user["id"], "batch_hard_delete_employees", "employees", None, {"ids": ids, "count": count})
+    return {"message": f"已彻底删除{count}名员工", "count": count}
 
 
 @router.get("/departments", response_model=list)

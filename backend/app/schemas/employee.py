@@ -26,6 +26,7 @@ class EmployeeUpdate(BaseModel):
 class EmployeeResponse(EmployeeBase):
     id: int
     status: str
+    deleted_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:

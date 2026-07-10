@@ -5,69 +5,130 @@
         <div class="card-header">
           <span>员工管理</span>
           <el-space>
-            <el-button v-if="userStore.hasPermission('employees.export')" @click="handleExport">导出员工</el-button>
-            <el-button v-if="userStore.hasPermission('employees.upload')" type="success" @click="importVisible = true">导入员工</el-button>
-            <el-button v-if="userStore.hasPermission('employees.create')" type="primary" @click="handleAdd">新增员工</el-button>
+            <template v-if="activeTab === 'active'">
+              <el-button v-if="userStore.hasPermission('employees.export')" @click="handleExport">导出员工</el-button>
+              <el-button v-if="userStore.hasPermission('employees.upload')" type="success" @click="importVisible = true">导入员工</el-button>
+              <el-button v-if="userStore.hasPermission('employees.create')" type="primary" @click="handleAdd">新增员工</el-button>
+            </template>
+            <template v-else>
+              <el-button v-if="userStore.hasPermission('employees.export')" @click="handleExport">导出员工</el-button>
+              <el-button :disabled="!selectedIds.length" v-if="userStore.hasPermission('employees.restore')" type="primary" @click="handleBatchRestore">批量恢复</el-button>
+              <el-button :disabled="!selectedIds.length" v-if="userStore.hasPermission('employees.delete')" type="danger" @click="handleBatchHardDelete">批量彻底删除</el-button>
+            </template>
           </el-space>
         </div>
       </template>
 
-      <el-form inline>
-        <el-form-item label="搜索">
-          <el-input v-model="searchForm.search" placeholder="工号/姓名" clearable />
-        </el-form-item>
-        <el-form-item label="班组">
-          <el-select v-model="searchForm.team" placeholder="请选择" clearable style="width:160px">
-            <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="部门">
-          <el-select v-model="searchForm.dept" placeholder="请选择" clearable style="width:160px">
-            <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="岗位">
-          <el-select v-model="searchForm.role" placeholder="请选择" clearable style="width:160px">
-            <el-option v-for="r in roles" :key="r.role" :label="r.role" :value="r.role" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadData">查询</el-button>
-          <el-button @click="resetForm">重置</el-button>
-        </el-form-item>
-      </el-form>
+      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+        <el-tab-pane label="在职员工" name="active">
+          <el-form inline>
+            <el-form-item label="搜索">
+              <el-input v-model="searchForm.search" placeholder="工号/姓名" clearable />
+            </el-form-item>
+            <el-form-item label="班组">
+              <el-select v-model="searchForm.team" placeholder="请选择" clearable style="width:160px">
+                <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="部门">
+              <el-select v-model="searchForm.dept" placeholder="请选择" clearable style="width:160px">
+                <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="岗位">
+              <el-select v-model="searchForm.role" placeholder="请选择" clearable style="width:160px">
+                <el-option v-for="r in roles" :key="r.role" :label="r.role" :value="r.role" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="loadData">查询</el-button>
+              <el-button @click="resetForm">重置</el-button>
+            </el-form-item>
+          </el-form>
 
-      <el-table :data="tableData" border stripe>
-        <el-table-column prop="emp_no" label="工号" width="100" />
-        <el-table-column prop="name" label="姓名" width="100" />
-        <el-table-column prop="team" label="班组" width="120" />
-        <el-table-column prop="dept" label="部门" width="120" />
-        <el-table-column prop="role" label="岗位" width="80" />
-        <el-table-column prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.status === '在职' ? 'success' : 'danger'">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ row.created_at?.slice(0, 19) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button v-if="userStore.hasPermission('employees.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
-            <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          <el-table :data="tableData" border stripe>
+            <el-table-column prop="emp_no" label="工号" width="100" />
+            <el-table-column prop="name" label="姓名" width="100" />
+            <el-table-column prop="team" label="班组" width="120" />
+            <el-table-column prop="dept" label="部门" width="120" />
+            <el-table-column prop="role" label="岗位" width="80" />
+            <el-table-column prop="status" label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.status === '在职' ? 'success' : 'danger'">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="180">
+              <template #default="{ row }">
+                {{ row.created_at?.slice(0, 19) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150">
+              <template #default="{ row }">
+                <el-button v-if="userStore.hasPermission('employees.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
+                <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
 
-      <el-pagination
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.limit"
-        :total="pagination.total"
-        layout="total, prev, pager, next"
-        @current-change="loadData"
-      />
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.limit"
+            :total="pagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadData"
+          />
+        </el-tab-pane>
+
+        <el-tab-pane label="回收站" name="recycle">
+          <el-form inline>
+            <el-form-item label="搜索">
+              <el-input v-model="recycleSearch.search" placeholder="工号/姓名" clearable />
+            </el-form-item>
+            <el-form-item label="班组">
+              <el-select v-model="recycleSearch.team" placeholder="请选择" clearable style="width:160px">
+                <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="部门">
+              <el-select v-model="recycleSearch.dept" placeholder="请选择" clearable style="width:160px">
+                <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="loadData">查询</el-button>
+              <el-button @click="resetRecycleSearch">重置</el-button>
+            </el-form-item>
+          </el-form>
+
+          <el-table :data="tableData" border stripe @selection-change="handleSelectionChange">
+            <el-table-column type="selection" width="50" />
+            <el-table-column prop="emp_no" label="工号" width="100" />
+            <el-table-column prop="name" label="姓名" width="100" />
+            <el-table-column prop="team" label="班组" width="120" />
+            <el-table-column prop="dept" label="部门" width="120" />
+            <el-table-column prop="role" label="岗位" width="80" />
+            <el-table-column prop="deleted_at" label="删除时间" width="180">
+              <template #default="{ row }">
+                {{ row.deleted_at?.slice(0, 19) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="180">
+              <template #default="{ row }">
+                <el-button v-if="userStore.hasPermission('employees.restore')" type="primary" link @click="handleRestore(row)">恢复</el-button>
+                <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleHardDelete(row)">彻底删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <el-pagination
+            v-model:current-page="recyclePagination.page"
+            v-model:page-size="recyclePagination.limit"
+            :total="recyclePagination.total"
+            layout="total, prev, pager, next"
+            @current-change="loadData"
+          />
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑员工' : '新增员工'" width="500px">
@@ -134,24 +195,42 @@ const dialogVisible = ref(false)
 const importVisible = ref(false)
 const uploading = ref(false)
 const isEdit = ref(false)
+const selectedIds = ref([])
+
+const activeTab = ref('active')
+
 const searchForm = reactive({ search: '', team: '', dept: '', role: '' })
+const recycleSearch = reactive({ search: '', team: '', dept: '' })
 const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员' })
 const teams = ref([])
 const departments = ref([])
 const roles = ref([])
-const pagination = reactive({ page:1, limit: 20, total: 0 })
+const pagination = reactive({ page: 1, limit: 20, total: 0 })
+const recyclePagination = reactive({ page: 1, limit: 20, total: 0 })
 const importFile = ref(null)
+
+function getStatusFilter() {
+  return activeTab.value === 'active' ? '在职' : '离职'
+}
+
+function getPagination() {
+  return activeTab.value === 'active' ? pagination : recyclePagination
+}
 
 async function loadData() {
   try {
+    const p = getPagination()
+    const search = activeTab.value === 'active' ? searchForm : recycleSearch
     const params = {
-      page: pagination.page,
-      limit: pagination.limit,
-      ...searchForm
+      page: p.page,
+      limit: p.limit,
+      status: getStatusFilter(),
+      ...search
     }
     const res = await api.get('/employees', { params })
     tableData.value = res.data.items
-    pagination.total = res.data.total
+    p.total = res.data.total
+    selectedIds.value = []
   } catch (e) {
     ElMessage.error('加载失败')
   }
@@ -172,6 +251,11 @@ async function loadFilters() {
   }
 }
 
+function handleTabChange() {
+  selectedIds.value = []
+  loadData()
+}
+
 function handleAdd() {
   Object.assign(form, { emp_no: '', name: '', team: '', dept: '', role: '组员' })
   isEdit.value = false
@@ -181,8 +265,10 @@ function handleAdd() {
 async function handleExport() {
   try {
     const params = {}
-    if (searchForm.team) params.team = searchForm.team
-    if (searchForm.dept) params.dept = searchForm.dept
+    const search = activeTab.value === 'active' ? searchForm : recycleSearch
+    if (search.team) params.team = search.team
+    if (search.dept) params.dept = search.dept
+    params.status = getStatusFilter()
     const res = await api.get('/employees/export', { params, responseType: 'blob' })
     const disposition = res.headers?.['content-disposition'] || ''
     const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;\s]+)/i)
@@ -239,11 +325,84 @@ async function handleDelete(row) {
   }
 }
 
+async function handleRestore(row) {
+  try {
+    await ElMessageBox.confirm(`确定要恢复员工"${row.name}"(${row.emp_no})吗？`, '提示')
+    await api.put(`/employees/${row.id}/restore`)
+    ElMessage.success('恢复成功')
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('恢复失败')
+    }
+  }
+}
+
+async function handleHardDelete(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要彻底删除员工"${row.name}"(${row.emp_no})吗？\n该员工的排班记录和考勤报表数据将被一并删除，此操作不可恢复！`,
+      '警告',
+      { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' }
+    )
+    await api.delete(`/employees/${row.id}/hard-delete`)
+    ElMessage.success('已彻底删除')
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
+  }
+}
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
+}
+
+async function handleBatchRestore() {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(`确定要恢复选中的 ${selectedIds.value.length} 名员工吗？`, '提示')
+    await api.post('/employees/batch-restore', selectedIds.value)
+    ElMessage.success('批量恢复成功')
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('批量恢复失败')
+    }
+  }
+}
+
+async function handleBatchHardDelete() {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定要彻底删除选中的 ${selectedIds.value.length} 名员工吗？\n相关排班和考勤数据将被一并删除，此操作不可恢复！`,
+      '警告',
+      { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' }
+    )
+    await api.post('/employees/batch-hard-delete', selectedIds.value)
+    ElMessage.success('批量彻底删除完成')
+    loadData()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('批量删除失败')
+    }
+  }
+}
+
 function resetForm() {
   searchForm.search = ''
   searchForm.team = ''
   searchForm.dept = ''
   searchForm.role = ''
+  loadData()
+}
+
+function resetRecycleSearch() {
+  recycleSearch.search = ''
+  recycleSearch.team = ''
+  recycleSearch.dept = ''
   loadData()
 }
 

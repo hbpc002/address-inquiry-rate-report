@@ -88,7 +88,7 @@ export const useUserStore = defineStore('user', () => {
   function canEdit() {
     return hasAnyPermission([
       'schedules.create', 'schedules.edit', 'schedules.delete',
-      'employees.create', 'employees.edit', 'employees.delete',
+      'employees.create', 'employees.edit', 'employees.delete', 'employees.restore',
       'checkins.delete',
       'shift_types.create', 'shift_types.edit', 'shift_types.delete',
       'work_hour_settings.create', 'work_hour_settings.edit', 'work_hour_settings.delete',
