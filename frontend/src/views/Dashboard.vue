@@ -265,18 +265,38 @@ const teamHoursOptions = computed(() => {
 const dailyProdOptions = computed(() => {
   const data = dailyProduction.value
   const dates = data.map(d => d.date.slice(5))
+  const tiDanLv = data.map(d => d.call_count > 0 ? +(d.ticket_count / d.call_count * 100).toFixed(1) : 0)
   return {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['通话量', '工单量'], bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '20%', containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const idx = params[0].dataIndex
+        const d = data[idx]
+        if (!d) return ''
+        let s = `<b>${d.date}</b><br/>`
+        const order = ['通话量', '工单量', '提单率']
+        const pMap = {}
+        params.forEach(p => { pMap[p.seriesName] = p })
+        order.forEach(name => {
+          const p = pMap[name]
+          if (p) s += `${p.marker} ${name}：${name === '提单率' ? p.value + '%' : p.value}<br/>`
+        })
+        s += `<span style="color:#999;font-size:12px">人数：${d.people_count}</span>`
+        return s
+      }
+    },
+    legend: { data: ['通话量', '工单量', '提单率'], bottom: 0 },
+    grid: { left: '3%', right: '12%', bottom: '22%', containLabel: true },
     xAxis: { type: 'category', data: dates },
     yAxis: [
       { type: 'value', name: '通话量' },
-      { type: 'value', name: '工单量' },
+      { type: 'value', name: '工单量', position: 'right' },
+      { type: 'value', name: '提单率(%)', position: 'right', offset: 60, axisLabel: { formatter: '{value}%' }, splitLine: { show: false }, min: 0, max: 100 },
     ],
     series: [
       { name: '通话量', type: 'bar', data: data.map(d => d.call_count), itemStyle: { color: '#5470c6' } },
       { name: '工单量', type: 'line', yAxisIndex: 1, data: data.map(d => d.ticket_count), smooth: true, itemStyle: { color: '#91cc75' }, areaStyle: { opacity: 0.15 } },
+      { name: '提单率', type: 'line', yAxisIndex: 2, data: tiDanLv, smooth: true, itemStyle: { color: '#ee6666' }, symbol: 'diamond', symbolSize: 6 },
     ],
   }
 })
