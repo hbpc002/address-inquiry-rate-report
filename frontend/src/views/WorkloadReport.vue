@@ -65,7 +65,7 @@
           <el-statistic title="呼出量" :value="stats.total_outbound" :precision="0" />
         </el-col>
         <el-col :span="4">
-          <el-statistic title="提单率(%)" :value="totalTiDanLv" :precision="2" />
+          <el-statistic title="提单率(%)" :value="totalTiDanLv" :precision="2" :value-style="getMetricStyle('_ti_dan_lv', totalTiDanLv)" />
         </el-col>
       </el-row>
 
@@ -87,7 +87,7 @@
                   <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
                   <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
                     <template #default="{ row }">
-                      {{ formatRate(row.avg_satisfaction) }}
+                      <span :style="getMetricStyle('人工服务-满意度-满意率', row.avg_satisfaction)">{{ formatRate(row.avg_satisfaction) }}</span>
                     </template>
                   </el-table-column>
                   <el-table-column label="占比" width="100" sortable prop="total_calls">
@@ -97,7 +97,7 @@
                   </el-table-column>
                   <el-table-column label="提单率" width="85" sortable prop="ti_dan_lv">
                     <template #default="{ row }">
-                      {{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}
+                      <span :style="getMetricStyle('_ti_dan_lv', row.ti_dan_lv)">{{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}</span>
                     </template>
                   </el-table-column>
                   <el-table-column label="生成总量" width="85" sortable prop="total_ticket_count" />
@@ -123,12 +123,12 @@
         <el-table-column prop="date_count" label="天数" width="60" sortable="custom" />
         <el-table-column v-for="col in visibleMetricColumns" :key="col.field" :label="col.label" :width="col.width" sortable="custom" :prop="col.field">
           <template #default="{ row }">
-            {{ formatMetric(row, col.field, col.isRate) }}
+            <span :style="getMetricStyle(col.field, getMetricValue(row, col.field))">{{ formatMetric(row, col.field, col.isRate) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="提单率" width="85" sortable="custom" prop="_ti_dan_lv">
           <template #default="{ row }">
-            {{ (row._ti_dan_lv * 100).toFixed(2) + '%' }}
+            <span :style="getMetricStyle('_ti_dan_lv', row._ti_dan_lv)">{{ (row._ti_dan_lv * 100).toFixed(2) + '%' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="接话绩效" width="100" sortable="custom" prop="_call_salary">
@@ -462,6 +462,22 @@ const salaryCfg = reactive({
   satDiffB: 20,
   gapTargets: [2000, 2500, 3000]
 })
+const metricTargets = ref([])
+const activeTargets = computed(() => metricTargets.value.filter(t => t.enabled !== false))
+
+function getMetricStyle(fieldKey, value) {
+  if (!activeTargets.value.length || value === null || value === undefined) return null
+  const target = activeTargets.value.find(t => t.field === fieldKey)
+  if (!target) return null
+  let hit = false
+  switch (target.operator) {
+    case 'lt': hit = value < target.value; break
+    case 'le': hit = value <= target.value; break
+    case 'gt': hit = value > target.value; break
+    case 'ge': hit = value >= target.value; break
+  }
+  return hit ? { color: target.color, fontWeight: 'bold' } : null
+}
 
 async function loadSalaryConfig() {
   try {
@@ -477,6 +493,8 @@ async function loadSalaryConfig() {
         salaryCfg.satDiffB = item.rule_data.coeff_b ?? 20
       } else if (item.rule_key === 'call_gap_targets') {
         salaryCfg.gapTargets = item.rule_data.targets || [2000, 2500, 3000]
+      } else if (item.rule_key === 'metric_targets') {
+        metricTargets.value = item.rule_data.targets || []
       }
     }
   } catch { /* use defaults */ }

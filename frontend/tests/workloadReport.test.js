@@ -525,6 +525,112 @@ describe('WorkloadReport - 格式化函数测试', () => {
 
 })
 
+describe('getMetricStyle - 指标目标值预警逻辑', () => {
+  const targets = [
+    { field: '人工服务-满意度-满意率', label: '满意率', operator: 'lt', value: 0.95, color: '#F56C6C', enabled: true },
+    { field: '_ti_dan_lv', label: '提单率', operator: 'gt', value: 0.15, color: '#E6A23C', enabled: true },
+    { field: 'disabled-field', label: '已禁用', operator: 'lt', value: 100, color: '#F56C6C', enabled: false },
+  ]
+
+  function getMetricStyle(fieldKey, value) {
+    const activeTargets = targets.filter(t => t.enabled !== false)
+    if (!activeTargets.length || value === null || value === undefined) return null
+    const target = activeTargets.find(t => t.field === fieldKey)
+    if (!target) return null
+    let hit = false
+    switch (target.operator) {
+      case 'lt': hit = value < target.value; break
+      case 'le': hit = value <= target.value; break
+      case 'gt': hit = value > target.value; break
+      case 'ge': hit = value >= target.value; break
+    }
+    return hit ? { color: target.color, fontWeight: 'bold' } : null
+  }
+
+  it('should return style when satisfaction rate is below target (lt)', () => {
+    const style = getMetricStyle('人工服务-满意度-满意率', 0.90)
+    expect(style).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+  })
+
+  it('should return null when satisfaction rate meets target', () => {
+    expect(getMetricStyle('人工服务-满意度-满意率', 0.95)).toBeNull()
+    expect(getMetricStyle('人工服务-满意度-满意率', 0.96)).toBeNull()
+  })
+
+  it('should return style when ti_dan_lv exceeds target (gt)', () => {
+    const style = getMetricStyle('_ti_dan_lv', 0.20)
+    expect(style).toEqual({ color: '#E6A23C', fontWeight: 'bold' })
+  })
+
+  it('should return null when ti_dan_lv is at or below target', () => {
+    expect(getMetricStyle('_ti_dan_lv', 0.15)).toBeNull()
+    expect(getMetricStyle('_ti_dan_lv', 0.10)).toBeNull()
+  })
+
+  it('should return null for null/undefined values', () => {
+    expect(getMetricStyle('_ti_dan_lv', null)).toBeNull()
+    expect(getMetricStyle('_ti_dan_lv', undefined)).toBeNull()
+  })
+
+  it('should return null for unknown fields', () => {
+    expect(getMetricStyle('不存在的字段', 0.5)).toBeNull()
+  })
+
+  it('should ignore disabled targets', () => {
+    expect(getMetricStyle('disabled-field', 50)).toBeNull()
+  })
+
+  it('should handle le (less than or equal)', () => {
+    const localTargets = [
+      { field: 'test', label: '测试', operator: 'le', value: 100, color: '#F56C6C', enabled: true }
+    ]
+    const fn = (k, v) => {
+      const active = localTargets.filter(t => t.enabled !== false)
+      if (!active.length || v === null || v === undefined) return null
+      const t = active.find(x => x.field === k)
+      if (!t) return null
+      let hit = false
+      switch (t.operator) {
+        case 'le': hit = v <= t.value; break
+        case 'ge': hit = v >= t.value; break
+      }
+      return hit ? { color: t.color, fontWeight: 'bold' } : null
+    }
+    expect(fn('test', 100)).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+    expect(fn('test', 99)).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+    expect(fn('test', 101)).toBeNull()
+  })
+
+  it('should handle ge (greater than or equal)', () => {
+    const localTargets = [
+      { field: 'test', label: '测试', operator: 'ge', value: 80, color: '#67C23A', enabled: true }
+    ]
+    const fn = (k, v) => {
+      const active = localTargets.filter(t => t.enabled !== false)
+      if (!active.length || v === null || v === undefined) return null
+      const t = active.find(x => x.field === k)
+      if (!t) return null
+      let hit = false
+      switch (t.operator) {
+        case 'ge': hit = v >= t.value; break
+      }
+      return hit ? { color: t.color, fontWeight: 'bold' } : null
+    }
+    expect(fn('test', 80)).toEqual({ color: '#67C23A', fontWeight: 'bold' })
+    expect(fn('test', 85)).toEqual({ color: '#67C23A', fontWeight: 'bold' })
+    expect(fn('test', 79)).toBeNull()
+  })
+
+  it('should return null when no active targets exist', () => {
+    const fn = (k, v) => {
+      const active = []
+      if (!active.length || v === null || v === undefined) return null
+      return null
+    }
+    expect(fn('any', 0.5)).toBeNull()
+  })
+})
+
 describe('WorkloadReport - loadTeams', () => {
   it('should populate teams array from API response', async () => {
     let teams = []

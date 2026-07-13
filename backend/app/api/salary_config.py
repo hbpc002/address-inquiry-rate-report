@@ -48,6 +48,26 @@ DEFAULT_CONFIGS = {
     },
     "call_gap_targets": {
         "targets": [2000, 2500, 3000]
+    },
+    "metric_targets": {
+        "targets": [
+            {
+                "field": "人工服务-满意度-满意率",
+                "label": "满意率",
+                "operator": "lt",
+                "value": 0.95,
+                "color": "#F56C6C",
+                "enabled": True
+            },
+            {
+                "field": "_ti_dan_lv",
+                "label": "提单率",
+                "operator": "gt",
+                "value": 0.15,
+                "color": "#F56C6C",
+                "enabled": True
+            }
+        ]
     }
 }
 
