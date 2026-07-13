@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date
 from typing import Optional
 from datetime import datetime, date
+from calendar import monthrange
 import uuid
 import pandas as pd
 import io
@@ -410,3 +411,126 @@ def get_workload_report(
         items=items,
         metrics_fields=CORE_METRICS_FIELDS
     )
+
+
+@router.get("/daily-production")
+def get_daily_production(
+    year_month: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if year_month:
+        parts = year_month.split("-")
+        year, month = int(parts[0]), int(parts[1])
+        start = date(year, month, 1)
+        _, last_day = monthrange(year, month)
+        end = date(year, month, last_day)
+    else:
+        now = datetime.now()
+        start = date(now.year, now.month, 1)
+        _, last_day = monthrange(now.year, now.month)
+        end = date(now.year, now.month, last_day)
+
+    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    if not emp_accounts:
+        return _fill_daily_empty(start, end)
+
+    records = db.query(Workload).filter(
+        Workload.date >= start,
+        Workload.date <= end,
+        Workload.account.in_(emp_accounts),
+    ).all()
+
+    daily = {}
+    for r in records:
+        d = r.date.isoformat()
+        if d not in daily:
+            daily[d] = {"call_count": 0, "ticket_count": 0, "outbound_count": 0, "_people": set()}
+        m = r.metrics or {}
+        daily[d]["call_count"] += m.get("呼入人工服务-人工服务-通话次数", 0) or 0
+        daily[d]["ticket_count"] += m.get("呼入人工服务-工单-生成总量", 0) or 0
+        daily[d]["outbound_count"] += m.get("呼出服务-人工呼出呼叫量", 0) or 0
+        daily[d]["_people"].add(r.account)
+
+    result = []
+    for day_num in range(1, last_day + 1):
+        d = date(year, month, day_num).isoformat()
+        if d in daily:
+            entry = daily[d]
+            result.append({
+                "date": d,
+                "call_count": entry["call_count"],
+                "ticket_count": entry["ticket_count"],
+                "outbound_count": entry["outbound_count"],
+                "people_count": len(entry["_people"]),
+            })
+        else:
+            result.append({"date": d, "call_count": 0, "ticket_count": 0, "outbound_count": 0, "people_count": 0})
+
+    return result
+
+
+def _fill_daily_empty(start: date, end: date) -> list:
+    result = []
+    d = start
+    while d <= end:
+        result.append({"date": d.isoformat(), "call_count": 0, "ticket_count": 0, "outbound_count": 0, "people_count": 0})
+        from datetime import timedelta
+        d += timedelta(days=1)
+    return result
+
+
+@router.get("/team-production")
+def get_team_production(
+    year_month: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if year_month:
+        parts = year_month.split("-")
+        year, month = int(parts[0]), int(parts[1])
+        start = date(year, month, 1)
+        _, last_day = monthrange(year, month)
+        end = date(year, month, last_day)
+    else:
+        now = datetime.now()
+        start = date(now.year, now.month, 1)
+        _, last_day = monthrange(now.year, now.month)
+        end = date(now.year, now.month, last_day)
+
+    employees = db.query(Employee).filter(Employee.status == "在职").all()
+    emp_map = {e.emp_no: e for e in employees}
+    emp_accounts = set(emp_map.keys())
+    if not emp_accounts:
+        return []
+
+    records = db.query(Workload).filter(
+        Workload.date >= start,
+        Workload.date <= end,
+        Workload.account.in_(emp_accounts),
+    ).all()
+
+    team_data = {}
+    for r in records:
+        emp = emp_map.get(r.account)
+        team = emp.team if emp and emp.team else "未知班组"
+        if team not in team_data:
+            team_data[team] = {"team": team, "emp_count": 0, "call_count": 0, "ticket_count": 0, "outbound_count": 0, "_people": set()}
+        m = r.metrics or {}
+        team_data[team]["call_count"] += m.get("呼入人工服务-人工服务-通话次数", 0) or 0
+        team_data[team]["ticket_count"] += m.get("呼入人工服务-工单-生成总量", 0) or 0
+        team_data[team]["outbound_count"] += m.get("呼出服务-人工呼出呼叫量", 0) or 0
+        team_data[team]["_people"].add(r.account)
+
+    result = []
+    for team, data in team_data.items():
+        result.append({
+            "team": team,
+            "emp_count": len(data["_people"]),
+            "call_count": data["call_count"],
+            "ticket_count": data["ticket_count"],
+            "outbound_count": data["outbound_count"],
+        })
+
+    result.sort(key=lambda x: x["call_count"], reverse=True)
+    return result

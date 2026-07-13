@@ -46,6 +46,23 @@
       </el-col>
     </el-row>
 
+    <el-row :gutter="12" style="margin-top:20px">
+      <el-col :span="12">
+        <el-card><template #header><span>每日产量趋势</span></template>
+          <ChartPanel fullscreenable>
+            <Echart :options="dailyProdOptions" :height="320" @click="handleDailyProdClick" />
+          </ChartPanel>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card><template #header><span>班组产量对比</span></template>
+          <ChartPanel fullscreenable>
+            <Echart :options="teamProdOptions" :height="320" />
+          </ChartPanel>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-dialog v-model="trendDetailVisible" :title="'工时明细 - ' + trendDetailDate" width="900px">
       <el-table :data="trendDetailData" border stripe max-height="500">
         <el-table-column prop="emp_no" label="工号" width="100" />
@@ -94,6 +111,19 @@
       </div>
       <template #footer><el-button @click="changelogDetailVisible = false">关闭</el-button></template>
     </el-dialog>
+
+    <el-dialog v-model="dailyProdDetailVisible" :title="'产量明细 - ' + dailyProdDetailDate" width="800px">
+      <el-table :data="dailyProdDetailData" border stripe max-height="500" v-if="dailyProdDetailData.length">
+        <el-table-column prop="account" label="账号" width="110" />
+        <el-table-column prop="name" label="姓名" width="80" />
+        <el-table-column prop="team_desc" label="班组" min-width="140" />
+        <el-table-column prop="call_count" label="通话量" width="80" sortable />
+        <el-table-column prop="ticket_count" label="工单量" width="80" sortable />
+        <el-table-column prop="outbound_count" label="呼出量" width="80" sortable />
+      </el-table>
+      <div v-else style="text-align:center;padding:40px;color:#999">该日无产量数据</div>
+      <template #footer><el-button @click="dailyProdDetailVisible = false">关闭</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
@@ -101,6 +131,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import Echart from '../components/Echart.vue'
+import ChartPanel from '../components/ChartPanel.vue'
 import { createBarOptions } from '../utils/echarts'
 
 const stats = ref({
@@ -117,6 +148,8 @@ const teams = ref([])
 const teamHours = ref([])
 const changelog = ref([])
 const dailyTrend = ref([])
+const dailyProduction = ref([])
+const teamProduction = ref([])
 
 const trendDetailVisible = ref(false)
 const trendDetailDate = ref('')
@@ -128,6 +161,9 @@ const allChangelogVisible = ref(false)
 const allChangelogs = ref([])
 const changelogDetailVisible = ref(false)
 const currentChangelog = ref(null)
+const dailyProdDetailVisible = ref(false)
+const dailyProdDetailDate = ref('')
+const dailyProdDetailData = ref([])
 
 function statusType(s) {
   const m = { '正常': 'success', '迟到': 'warning', '缺勤': 'danger', '早退': 'warning', '请假': 'info', '休息': '' }
@@ -226,6 +262,40 @@ const teamHoursOptions = computed(() => {
   }
 })
 
+const dailyProdOptions = computed(() => {
+  const data = dailyProduction.value
+  const dates = data.map(d => d.date.slice(5))
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['通话量', '工单量'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '20%', containLabel: true },
+    xAxis: { type: 'category', data: dates },
+    yAxis: [
+      { type: 'value', name: '通话量' },
+      { type: 'value', name: '工单量' },
+    ],
+    series: [
+      { name: '通话量', type: 'bar', data: data.map(d => d.call_count), itemStyle: { color: '#5470c6' } },
+      { name: '工单量', type: 'line', yAxisIndex: 1, data: data.map(d => d.ticket_count), smooth: true, itemStyle: { color: '#91cc75' }, areaStyle: { opacity: 0.15 } },
+    ],
+  }
+})
+
+const teamProdOptions = computed(() => {
+  const data = teamProduction.value.slice(0, 10)
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['通话量', '工单量'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '20%', containLabel: true },
+    xAxis: { type: 'category', data: data.map(d => `${d.team}\n(${d.emp_count}人)`) },
+    yAxis: { type: 'value' },
+    series: [
+      { name: '通话量', type: 'bar', data: data.map(d => d.call_count), itemStyle: { color: '#5470c6' } },
+      { name: '工单量', type: 'bar', data: data.map(d => d.ticket_count), itemStyle: { color: '#91cc75' } },
+    ],
+  }
+})
+
 async function handleTrendClick(params) {
   const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
   const date = dailyTrend.value[idx]?.date
@@ -251,6 +321,27 @@ async function handleDistClick(params) {
     distDetailData.value = r.data || []
   } catch (e) { distDetailData.value = [] }
   distDetailVisible.value = true
+}
+
+async function handleDailyProdClick(params) {
+  const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
+  const entry = dailyProduction.value[idx]
+  if (!entry || !entry.date) return
+  dailyProdDetailDate.value = entry.date
+  try {
+    const r = await api.get('/workloads/report', { params: { start_date: entry.date, end_date: entry.date } })
+    dailyProdDetailData.value = (r.data.items || []).map(item => ({
+      account: item.account,
+      name: item.name,
+      team_desc: item.team_desc,
+      call_count: item.aggregated_metrics['呼入人工服务-人工服务-通话次数'] || 0,
+      ticket_count: item.aggregated_metrics['呼入人工服务-工单-生成总量'] || 0,
+      outbound_count: item.aggregated_metrics['呼出服务-人工呼出呼叫量'] || 0,
+    }))
+  } catch {
+    dailyProdDetailData.value = []
+  }
+  dailyProdDetailVisible.value = true
 }
 
 function onMonthChange() {
@@ -289,9 +380,25 @@ async function loadTeamHours() {
   } catch (e) { teamHours.value = [] }
 }
 
+async function loadDailyProduction() {
+  try {
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/workloads/daily-production', { params })
+    dailyProduction.value = r.data || []
+  } catch { dailyProduction.value = [] }
+}
+
+async function loadTeamProduction() {
+  try {
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/workloads/team-production', { params })
+    teamProduction.value = r.data || []
+  } catch { teamProduction.value = [] }
+}
+
 async function loadAll() {
   await loadStats()
-  await Promise.all([loadTeams(), loadChangelog(), loadDailyTrend(), loadTeamHours()])
+  await Promise.all([loadTeams(), loadChangelog(), loadDailyTrend(), loadTeamHours(), loadDailyProduction(), loadTeamProduction()])
 }
 
 onMounted(() => {

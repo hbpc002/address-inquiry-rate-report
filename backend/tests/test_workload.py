@@ -474,3 +474,147 @@ class TestWorkloadMetricsFields:
         assert resp.status_code == 200
         fields = resp.json()
         assert len(fields) > 0
+
+
+class TestWorkloadDailyProduction:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            _create_test_employees(db)
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            records = [
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                         team_desc=f"{ORG_PREFIX}热线一组",
+                         metrics={"呼入人工服务-人工服务-通话次数": 30, "呼入人工服务-工单-生成总量": 10,
+                                  "呼出服务-人工呼出呼叫量": 8}, import_batch="batch001"),
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00002", name="李四", emp_no="1002",
+                         team_desc=f"{ORG_PREFIX}热线二组",
+                         metrics={"呼入人工服务-人工服务-通话次数": 20, "呼入人工服务-工单-生成总量": 5,
+                                  "呼出服务-人工呼出呼叫量": 3}, import_batch="batch001"),
+                Workload(date=date(2026, 6, 29), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                         team_desc=f"{ORG_PREFIX}热线一组",
+                         metrics={"呼入人工服务-人工服务-通话次数": 35, "呼入人工服务-工单-生成总量": 12,
+                                  "呼出服务-人工呼出呼叫量": 10}, import_batch="batch002"),
+            ]
+            for r in records:
+                db.add(r)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_daily_production_returns_all_dates_in_month(self):
+        resp = client.get("/api/workloads/daily-production", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 30
+
+    def test_daily_production_aggregates_correctly(self):
+        resp = client.get("/api/workloads/daily-production", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        day28 = next(d for d in data if d["date"] == "2026-06-28")
+        assert day28["call_count"] == 50
+        assert day28["ticket_count"] == 15
+        assert day28["outbound_count"] == 11
+        assert day28["people_count"] == 2
+        day29 = next(d for d in data if d["date"] == "2026-06-29")
+        assert day29["call_count"] == 35
+        assert day29["ticket_count"] == 12
+        assert day29["outbound_count"] == 10
+        assert day29["people_count"] == 1
+        day01 = next(d for d in data if d["date"] == "2026-06-01")
+        assert day01["call_count"] == 0
+
+    def test_daily_production_no_data(self):
+        resp = client.get("/api/workloads/daily-production", params={"year_month": "2025-01"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 31
+        assert all(d["call_count"] == 0 for d in data)
+
+    def test_daily_production_no_year_month_defaults_to_current(self):
+        resp = client.get("/api/workloads/daily-production")
+        assert resp.status_code == 200
+
+
+class TestWorkloadTeamProduction:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            _create_test_employees(db)
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            records = [
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                         team_desc=f"{ORG_PREFIX}热线一组",
+                         metrics={"呼入人工服务-人工服务-通话次数": 30, "呼入人工服务-工单-生成总量": 10,
+                                  "呼出服务-人工呼出呼叫量": 8}, import_batch="batch001"),
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00002", name="李四", emp_no="1002",
+                         team_desc=f"{ORG_PREFIX}热线二组",
+                         metrics={"呼入人工服务-人工服务-通话次数": 20, "呼入人工服务-工单-生成总量": 5,
+                                  "呼出服务-人工呼出呼叫量": 3}, import_batch="batch001"),
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00003", name="王五", emp_no="1003",
+                         team_desc=f"{ORG_PREFIX}热线一组",
+                         metrics={"呼入人工服务-人工服务-通话次数": 25, "呼入人工服务-工单-生成总量": 8,
+                                  "呼出服务-人工呼出呼叫量": 5}, import_batch="batch001"),
+            ]
+            for r in records:
+                db.add(r)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_team_production_returns_teams(self):
+        resp = client.get("/api/workloads/team-production", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        teams = [d["team"] for d in data]
+        assert "热线一组" in teams
+        assert "热线二组" in teams
+
+    def test_team_production_aggregates_correctly(self):
+        resp = client.get("/api/workloads/team-production", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        team1 = next(d for d in data if d["team"] == "热线一组")
+        assert team1["call_count"] == 55
+        assert team1["ticket_count"] == 18
+        assert team1["outbound_count"] == 13
+        assert team1["emp_count"] == 2
+        team2 = next(d for d in data if d["team"] == "热线二组")
+        assert team2["call_count"] == 20
+        assert team2["emp_count"] == 1
+
+    def test_team_production_excludes_resigned_employee(self):
+        db = SessionLocal()
+        try:
+            from app.models.employee import Employee
+            resigned = Employee(emp_no="STTR0099", name="离职员工", team="热线三组", status="离职")
+            db.add(resigned)
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR0099",
+                name="离职员工", emp_no="1099", team_desc="热线三组",
+                metrics={"呼入人工服务-人工服务-通话次数": 50}, import_batch="batch_resigned"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/team-production", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        teams = [d["team"] for d in data]
+        assert "热线三组" not in teams
+
+    def test_team_production_no_data(self):
+        resp = client.get("/api/workloads/team-production", params={"year_month": "2025-01"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data == []
+
+    def test_team_production_no_year_month_defaults_to_current(self):
+        resp = client.get("/api/workloads/team-production")
+        assert resp.status_code == 200
