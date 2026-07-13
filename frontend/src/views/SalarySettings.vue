@@ -100,10 +100,14 @@
           <el-input v-model="targetForm.label" placeholder="例如：满意率" />
         </el-form-item>
         <el-form-item label="字段">
-          <el-input v-model="targetForm.field" placeholder="例如：_ti_dan_lv" />
-          <div style="font-size: 12px; color: #909399; margin-top: 4px;">
-            常用字段：<code>人工服务-满意度-满意率</code>（满意率）、<code>_ti_dan_lv</code>（提单率）
-          </div>
+          <el-select v-model="targetForm.field" filterable placeholder="请选择指标字段" @change="onFieldChange" style="width: 100%">
+            <el-option-group label="常用字段">
+              <el-option v-for="f in COMMON_FIELDS" :key="f.value" :label="f.label" :value="f.value" />
+            </el-option-group>
+            <el-option-group v-if="metricFields.length" label="指标字段">
+              <el-option v-for="f in metricFields" :key="f.value" :label="f.label" :value="f.value" />
+            </el-option-group>
+          </el-select>
         </el-form-item>
         <el-form-item label="条件">
           <el-select v-model="targetForm.operator" style="width: 120px">
@@ -151,6 +155,15 @@ const DEFAULT_METRIC_TARGETS = [
   { field: '_ti_dan_lv', label: '提单率', operator: 'gt', value: 0.15, color: '#F56C6C', enabled: true }
 ]
 
+const COMMON_FIELDS = [
+  { value: '人工服务-满意度-满意率', label: '满意率' },
+  { value: '_ti_dan_lv', label: '提单率' },
+  { value: '呼入人工服务-人工服务-通话次数', label: '通话次数' },
+  { value: '呼入人工服务-工单-生成总量', label: '工单总量' },
+  { value: '总体-工时利用率', label: '工时利用率' },
+  { value: '呼入人工服务-解决率-解决率', label: '解决率' },
+]
+
 const callTiers = ref(JSON.parse(JSON.stringify(DEFAULT_CALL_TIERS)))
 const satSalary = reactive({
   field_e: '',
@@ -163,6 +176,8 @@ const satDiff = reactive({
   coeff_b: 20
 })
 const metricTargets = ref([])
+const metricFields = ref([])
+const loadingFields = ref(false)
 
 const targetDialogVisible = ref(false)
 const editingTargetIndex = ref(-1)
@@ -233,6 +248,31 @@ async function deleteTarget(index) {
   } catch { /* cancelled */ }
 }
 
+function onFieldChange(value) {
+  if (!value) return
+  const all = [...COMMON_FIELDS, ...metricFields.value]
+  const found = all.find(f => f.value === value)
+  if (found && !targetForm.label) {
+    targetForm.label = found.label
+  }
+}
+
+async function loadMetricFields() {
+  loadingFields.value = true
+  try {
+    const res = await api.get('/workloads/metrics-fields')
+    const fields = res.data || []
+    metricFields.value = fields.map(f => ({
+      value: f,
+      label: f.split('-').pop()
+    }))
+  } catch {
+    metricFields.value = []
+  } finally {
+    loadingFields.value = false
+  }
+}
+
 async function loadConfig() {
   loading.value = true
   try {
@@ -295,7 +335,10 @@ async function saveConfig() {
   }
 }
 
-onMounted(loadConfig)
+onMounted(() => {
+  loadConfig()
+  loadMetricFields()
+})
 </script>
 
 <style scoped>
