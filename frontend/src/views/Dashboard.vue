@@ -228,6 +228,10 @@ const mergedTeamOptions = computed(() => {
   const hoursData = teamHours.value.slice(0, 10)
   const prodMap = {}
   teamProduction.value.forEach(p => { prodMap[p.team] = p })
+  const tiDanLv = hoursData.map(d => {
+    const p = prodMap[d.team]
+    return p?.call_count > 0 ? +(p.ticket_count / p.call_count * 100).toFixed(1) : 0
+  })
   return {
     tooltip: {
       trigger: 'axis',
@@ -237,32 +241,32 @@ const mergedTeamOptions = computed(() => {
         const p = prodMap[h?.team]
         if (!h) return ''
         let s = `<b>${h.team}</b>（${h.emp_count} 人）<br/>`
-        const order = ['应出勤工时', '实际工时', '通话量', '工单量']
+        const order = ['应出勤工时', '实际工时', '通话量', '提单率']
         const pMap = {}
         params.forEach(p => { pMap[p.seriesName] = p })
         order.forEach(name => {
           const pp = pMap[name]
-          if (pp) s += `${pp.marker} ${name}：${pp.value}<br/>`
+          if (pp) s += `${pp.marker} ${name}：${name === '提单率' ? pp.value + '%' : pp.value}<br/>`
         })
-        if (p && p.call_count > 0) {
-          const tiDanLv = (p.ticket_count / p.call_count * 100).toFixed(1)
-          s += `<span style="color:#999;font-size:12px">产量人数：${p.emp_count} | 提单率：${tiDanLv}%</span>`
+        if (p) {
+          s += `<span style="color:#999;font-size:12px">产量人数：${p.emp_count} | 工单量：${p.ticket_count}</span>`
         }
         return s
       }
     },
-    legend: { data: ['应出勤工时', '实际工时', '通话量', '工单量'], bottom: 0 },
-    grid: { left: '3%', right: '8%', bottom: '22%', containLabel: true },
+    legend: { data: ['应出勤工时', '实际工时', '通话量', '提单率'], bottom: 0 },
+    grid: { left: '3%', right: '12%', bottom: '22%', containLabel: true },
     xAxis: { type: 'category', data: hoursData.map(d => `${d.team}\n(${d.emp_count}人)`) },
     yAxis: [
       { type: 'value', name: '工时(h)' },
-      { type: 'value', name: '产量', position: 'right' },
+      { type: 'value', name: '通话量', position: 'right' },
+      { type: 'value', name: '提单率(%)', position: 'right', offset: 60, axisLabel: { formatter: '{value}%' }, splitLine: { show: false }, min: 0, max: 100 },
     ],
     series: [
       { name: '应出勤工时', type: 'bar', data: hoursData.map(d => d.scheduled_hours), itemStyle: { color: '#5470c6' } },
       { name: '实际工时', type: 'bar', data: hoursData.map(d => d.actual_hours), itemStyle: { color: '#91cc75' } },
       { name: '通话量', type: 'line', yAxisIndex: 1, data: hoursData.map(d => prodMap[d.team]?.call_count || 0), smooth: true, itemStyle: { color: '#ee6666' }, symbol: 'circle', symbolSize: 4 },
-      { name: '工单量', type: 'line', yAxisIndex: 1, data: hoursData.map(d => prodMap[d.team]?.ticket_count || 0), smooth: true, itemStyle: { color: '#fac858' }, symbol: 'diamond', symbolSize: 4 },
+      { name: '提单率', type: 'line', yAxisIndex: 2, data: tiDanLv, smooth: true, itemStyle: { color: '#fac858' }, symbol: 'diamond', symbolSize: 6 },
     ],
   }
 })
