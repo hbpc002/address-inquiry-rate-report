@@ -40,14 +40,6 @@
 
     <el-row :gutter="12" style="margin-top:20px">
       <el-col :span="12">
-        <el-card><template #header><span>班组工时对比（应出勤 vs 实际）</span></template>
-          <Echart :options="teamHoursOptions" :height="300" />
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="12" style="margin-top:20px">
-      <el-col :span="12">
         <el-card><template #header><span>每日产量趋势</span></template>
           <ChartPanel fullscreenable>
             <Echart :options="dailyProdOptions" :height="320" @click="handleDailyProdClick" />
@@ -55,9 +47,9 @@
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card><template #header><span>班组产量对比</span></template>
+        <el-card><template #header><span>班组综合对比</span></template>
           <ChartPanel fullscreenable>
-            <Echart :options="teamProdOptions" :height="320" />
+            <Echart :options="mergedTeamOptions" :height="320" />
           </ChartPanel>
         </el-card>
       </el-col>
@@ -132,7 +124,7 @@ import { ref, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import Echart from '../components/Echart.vue'
 import ChartPanel from '../components/ChartPanel.vue'
-import { createBarOptions } from '../utils/echarts'
+
 
 const stats = ref({
   employee_count: 0, latest_data_date: null,
@@ -232,32 +224,45 @@ const hoursDistOptions = computed(() => {
   }
 })
 
-const teamBarOptions = computed(() => {
-  const data = teams.value.slice(0, 10)
-  return createBarOptions(data.map(t => t.team), data.map(t => t.count), '', '班组', '人数')
-})
-
-const teamHoursOptions = computed(() => {
-  const data = teamHours.value.slice(0, 10)
+const mergedTeamOptions = computed(() => {
+  const hoursData = teamHours.value.slice(0, 10)
+  const prodMap = {}
+  teamProduction.value.forEach(p => { prodMap[p.team] = p })
   return {
     tooltip: {
       trigger: 'axis',
       formatter: (params) => {
         const idx = params[0].dataIndex
-        const item = data[idx]
-        if (!item) return ''
-        let s = `<b>${item.team}</b>（${item.emp_count} 人）<br/>`
-        params.forEach(p => { s += `${p.marker} ${p.seriesName}：${p.value}<br/>` })
+        const h = hoursData[idx]
+        const p = prodMap[h?.team]
+        if (!h) return ''
+        let s = `<b>${h.team}</b>（${h.emp_count} 人）<br/>`
+        const order = ['应出勤工时', '实际工时', '通话量', '工单量']
+        const pMap = {}
+        params.forEach(p => { pMap[p.seriesName] = p })
+        order.forEach(name => {
+          const pp = pMap[name]
+          if (pp) s += `${pp.marker} ${name}：${pp.value}<br/>`
+        })
+        if (p && p.call_count > 0) {
+          const tiDanLv = (p.ticket_count / p.call_count * 100).toFixed(1)
+          s += `<span style="color:#999;font-size:12px">产量人数：${p.emp_count} | 提单率：${tiDanLv}%</span>`
+        }
         return s
       }
     },
-    legend: { data: ['应出勤工时', '实际工时'], bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
-    xAxis: { type: 'category', data: data.map(d => `${d.team}\n(${d.emp_count}人)`) },
-    yAxis: { type: 'value' },
+    legend: { data: ['应出勤工时', '实际工时', '通话量', '工单量'], bottom: 0 },
+    grid: { left: '3%', right: '8%', bottom: '22%', containLabel: true },
+    xAxis: { type: 'category', data: hoursData.map(d => `${d.team}\n(${d.emp_count}人)`) },
+    yAxis: [
+      { type: 'value', name: '工时(h)' },
+      { type: 'value', name: '产量', position: 'right' },
+    ],
     series: [
-      { name: '应出勤工时', type: 'bar', data: data.map(d => d.scheduled_hours), itemStyle: { color: '#5470c6' } },
-      { name: '实际工时', type: 'bar', data: data.map(d => d.actual_hours), itemStyle: { color: '#91cc75' } },
+      { name: '应出勤工时', type: 'bar', data: hoursData.map(d => d.scheduled_hours), itemStyle: { color: '#5470c6' } },
+      { name: '实际工时', type: 'bar', data: hoursData.map(d => d.actual_hours), itemStyle: { color: '#91cc75' } },
+      { name: '通话量', type: 'line', yAxisIndex: 1, data: hoursData.map(d => prodMap[d.team]?.call_count || 0), smooth: true, itemStyle: { color: '#ee6666' }, symbol: 'circle', symbolSize: 4 },
+      { name: '工单量', type: 'line', yAxisIndex: 1, data: hoursData.map(d => prodMap[d.team]?.ticket_count || 0), smooth: true, itemStyle: { color: '#fac858' }, symbol: 'diamond', symbolSize: 4 },
     ],
   }
 })
@@ -297,21 +302,6 @@ const dailyProdOptions = computed(() => {
       { name: '通话量', type: 'bar', data: data.map(d => d.call_count), itemStyle: { color: '#5470c6' } },
       { name: '工单量', type: 'line', yAxisIndex: 1, data: data.map(d => d.ticket_count), smooth: true, itemStyle: { color: '#91cc75' }, areaStyle: { opacity: 0.15 } },
       { name: '提单率', type: 'line', yAxisIndex: 2, data: tiDanLv, smooth: true, itemStyle: { color: '#ee6666' }, symbol: 'diamond', symbolSize: 6 },
-    ],
-  }
-})
-
-const teamProdOptions = computed(() => {
-  const data = teamProduction.value.slice(0, 10)
-  return {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['通话量', '工单量'], bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '20%', containLabel: true },
-    xAxis: { type: 'category', data: data.map(d => `${d.team}\n(${d.emp_count}人)`) },
-    yAxis: { type: 'value' },
-    series: [
-      { name: '通话量', type: 'bar', data: data.map(d => d.call_count), itemStyle: { color: '#5470c6' } },
-      { name: '工单量', type: 'bar', data: data.map(d => d.ticket_count), itemStyle: { color: '#91cc75' } },
     ],
   }
 })
