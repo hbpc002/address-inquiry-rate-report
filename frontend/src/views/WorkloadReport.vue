@@ -101,7 +101,7 @@
                     </template>
                   </el-table-column>
                   <el-table-column label="生成总量" width="85" sortable prop="total_ticket_count" />
-                  <el-table-column label="人工呼出呼叫量" width="105" sortable prop="total_outbound" />
+                  <el-table-column label="人均通话量" width="85" sortable prop="avg_calls_per_person" />
                 </el-table>
               </el-col>
             </el-row>
@@ -372,21 +372,19 @@ const teamRanking = computed(() => {
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
     if (!teamMap[team]) {
-      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_satisfaction: 0, sat_count: 0, total_ticket_count: 0, total_outbound: 0 }
+      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_ticket_count: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
     }
     teamMap[team].count++
     teamMap[team].total_calls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
     teamMap[team].total_ticket_count += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
-    teamMap[team].total_outbound += getMetricValue(d, '呼出服务-人工呼出呼叫量') || 0
-    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
-    if (avgDur !== null) {
-      teamMap[team].total_duration += avgDur
-    }
-    const sat = getMetricValue(d, '人工服务-满意度-满意率')
-    if (sat !== null) {
-      teamMap[team].total_satisfaction += sat
-      teamMap[team].sat_count++
-    }
+    teamMap[team].total_duration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+    const verySat = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
+    const sat = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
+    const general = getMetricValue(d, '呼入人工服务-满意度-一般量') || 0
+    const disSat = getMetricValue(d, '呼入人工服务-满意度-不满意量') || 0
+    const veryDisSat = getMetricValue(d, '呼入人工服务-满意度-非常不满意量') || 0
+    teamMap[team].total_sat_numerator += verySat + sat
+    teamMap[team].total_sat_denominator += verySat + sat + general + disSat + veryDisSat
   })
   return Object.entries(teamMap)
     .map(([team, data]) => ({
@@ -394,10 +392,10 @@ const teamRanking = computed(() => {
       count: data.count,
       total_calls: data.total_calls,
       total_ticket_count: data.total_ticket_count,
-      total_outbound: data.total_outbound,
+      avg_calls_per_person: data.count > 0 ? +(data.total_calls / data.count).toFixed(1) : 0,
       ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
-      avg_duration: data.count > 0 ? (data.total_duration / data.count).toFixed(1) : 0,
-      avg_satisfaction: data.sat_count > 0 ? (data.total_satisfaction / data.sat_count) : null
+      avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
+      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
     }))
     .sort((a, b) => b.total_calls - a.total_calls)
 })
@@ -407,24 +405,22 @@ const teamChartData = computed(() => {
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
     if (!teamMap[team]) {
-      teamMap[team] = { value: 0, count: 0, totalDuration: 0, durCount: 0, totalTicket: 0 }
+      teamMap[team] = { value: 0, count: 0, totalDuration: 0, totalCalls: 0, totalTicket: 0 }
     }
     const t = teamMap[team]
-    t.value += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    t.value += calls
     t.count++
+    t.totalCalls += calls
     t.totalTicket += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
-    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
-    if (avgDur !== null) {
-      t.totalDuration += avgDur
-      t.durCount++
-    }
+    t.totalDuration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
   })
   return Object.entries(teamMap)
     .map(([name, data]) => ({
       name,
       value: Math.round(data.value),
       peopleCount: data.count,
-      avgDuration: data.durCount > 0 ? (data.totalDuration / data.durCount).toFixed(1) : 0,
+      avgDuration: data.totalCalls > 0 ? +(data.totalDuration / data.totalCalls).toFixed(1) : 0,
       totalTicket: Math.round(data.totalTicket),
       tiDanLv: data.value > 0 ? data.totalTicket / data.value : 0
     }))
@@ -437,12 +433,14 @@ const totalCallSum = computed(() => {
 })
 
 const averageCallDuration = computed(() => {
-  const vals = tableData.value
-    .map(d => getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)'))
-    .filter(v => v !== null && v !== undefined)
-  if (vals.length === 0) return 0
-  const sum = vals.reduce((a, b) => a + b, 0)
-  return Math.round(sum / vals.length * 10) / 10
+  let totalDuration = 0
+  let totalCalls = 0
+  tableData.value.forEach(d => {
+    totalDuration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+    totalCalls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+  })
+  if (totalCalls === 0) return 0
+  return Math.round(totalDuration / totalCalls * 10) / 10
 })
 
 const totalTiDanLv = computed(() => {

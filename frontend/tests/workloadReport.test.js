@@ -31,12 +31,14 @@ function getMetricValue(row, field) {
 }
 
 function getAvgDuration(data) {
-  const vals = data
-    .map(d => getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)'))
-    .filter(v => v !== null && v !== undefined)
-  if (vals.length === 0) return 0
-  const sum = vals.reduce((a, b) => a + b, 0)
-  return Math.round(sum / vals.length * 10) / 10
+  let totalDuration = 0
+  let totalCalls = 0
+  data.forEach(d => {
+    totalDuration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+    totalCalls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+  })
+  if (totalCalls === 0) return 0
+  return Math.round(totalDuration / totalCalls * 10) / 10
 }
 
 function makeTeamRanking(data) {
@@ -44,19 +46,19 @@ function makeTeamRanking(data) {
   data.forEach(d => {
     const team = d.team_desc || '未知班组'
     if (!teamMap[team]) {
-      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_satisfaction: 0, sat_count: 0, total_ticket_count: 0, total_outbound: 0 }
+      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_ticket_count: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
     }
     teamMap[team].count++
     teamMap[team].total_calls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
     teamMap[team].total_ticket_count += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
-    teamMap[team].total_outbound += getMetricValue(d, '呼出服务-人工呼出呼叫量') || 0
-    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
-    if (avgDur !== null) teamMap[team].total_duration += avgDur
-    const sat = getMetricValue(d, '人工服务-满意度-满意率')
-    if (sat !== null) {
-      teamMap[team].total_satisfaction += sat
-      teamMap[team].sat_count++
-    }
+    teamMap[team].total_duration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+    const verySat = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
+    const sat = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
+    const general = getMetricValue(d, '呼入人工服务-满意度-一般量') || 0
+    const disSat = getMetricValue(d, '呼入人工服务-满意度-不满意量') || 0
+    const veryDisSat = getMetricValue(d, '呼入人工服务-满意度-非常不满意量') || 0
+    teamMap[team].total_sat_numerator += verySat + sat
+    teamMap[team].total_sat_denominator += verySat + sat + general + disSat + veryDisSat
   })
   return Object.entries(teamMap)
     .map(([team, data]) => ({
@@ -64,10 +66,10 @@ function makeTeamRanking(data) {
       count: data.count,
       total_calls: data.total_calls,
       total_ticket_count: data.total_ticket_count,
-      total_outbound: data.total_outbound,
+      avg_calls_per_person: data.count > 0 ? +(data.total_calls / data.count).toFixed(1) : 0,
       ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
-      avg_duration: data.count > 0 ? (data.total_duration / data.count).toFixed(1) : 0,
-      avg_satisfaction: data.sat_count > 0 ? (data.total_satisfaction / data.sat_count) : null
+      avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
+      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
     }))
     .sort((a, b) => b.total_calls - a.total_calls)
 }
@@ -77,24 +79,22 @@ function makeTeamChartData(data) {
   data.forEach(d => {
     const team = d.team_desc || '未知班组'
     if (!teamMap[team]) {
-      teamMap[team] = { value: 0, count: 0, totalDuration: 0, durCount: 0, totalTicket: 0 }
+      teamMap[team] = { value: 0, count: 0, totalDuration: 0, totalCalls: 0, totalTicket: 0 }
     }
     const t = teamMap[team]
-    t.value += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    t.value += calls
     t.count++
+    t.totalCalls += calls
     t.totalTicket += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
-    const avgDur = getMetricValue(d, '呼入人工服务-人工服务-通话均长(秒)')
-    if (avgDur !== null) {
-      t.totalDuration += avgDur
-      t.durCount++
-    }
+    t.totalDuration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
   })
   return Object.entries(teamMap)
     .map(([name, data]) => ({
       name,
       value: Math.round(data.value),
       peopleCount: data.count,
-      avgDuration: data.durCount > 0 ? (data.totalDuration / data.durCount).toFixed(1) : 0,
+      avgDuration: data.totalCalls > 0 ? +(data.totalDuration / data.totalCalls).toFixed(1) : 0,
       totalTicket: Math.round(data.totalTicket),
       tiDanLv: data.value > 0 ? data.totalTicket / data.value : 0
     }))
@@ -267,28 +267,28 @@ describe('WorkloadReport - 格式化函数测试', () => {
   })
 
   describe('averageCallDuration', () => {
-    it('should compute average from 通话均长 values', () => {
+    it('should compute team avg as totalDuration / totalCalls', () => {
       const data = [
-        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 180 } },
-        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 220 } },
-        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 200 } }
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话总时长(秒)': 1800, '呼入人工服务-人工服务-通话次数': 10 } },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话总时长(秒)': 2200, '呼入人工服务-人工服务-通话次数': 10 } },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话总时长(秒)': 2000, '呼入人工服务-人工服务-通话次数': 10 } }
       ]
       expect(getAvgDuration(data)).toBe(200)
     })
     it('should skip null/undefined values', () => {
       const data = [
-        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': 180 } },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话总时长(秒)': 1800, '呼入人工服务-人工服务-通话次数': 10 } },
         { aggregated_metrics: {} },
-        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': null } }
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话总时长(秒)': null, '呼入人工服务-人工服务-通话次数': null } }
       ]
       expect(getAvgDuration(data)).toBe(180)
     })
     it('should return 0 for empty data', () => {
       expect(getAvgDuration([])).toBe(0)
     })
-    it('should return 0 when all values are null', () => {
+    it('should return 0 when totalCalls is 0', () => {
       const data = [
-        { aggregated_metrics: { '呼入人工服务-人工服务-通话均长(秒)': null } },
+        { aggregated_metrics: { '呼入人工服务-人工服务-通话总时长(秒)': 0, '呼入人工服务-人工服务-通话次数': 0 } },
         { aggregated_metrics: {} }
       ]
       expect(getAvgDuration(data)).toBe(0)
@@ -298,9 +298,9 @@ describe('WorkloadReport - 格式化函数测试', () => {
   describe('teamRanking merge', () => {
     it('should aggregate team data with all required fields', () => {
       const data = [
-        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话均长(秒)': 180, '人工服务-满意度-满意率': 0.95, '呼入人工服务-工单-生成总量': 5, '呼出服务-人工呼出呼叫量': 3 } },
-        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话均长(秒)': 200, '人工服务-满意度-满意率': 0.90, '呼入人工服务-工单-生成总量': 8, '呼出服务-人工呼出呼叫量': 4 } },
-        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话均长(秒)': 150, '人工服务-满意度-满意率': 0.85, '呼入人工服务-工单-生成总量': 12, '呼出服务-人工呼出呼叫量': 6 } }
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话总时长(秒)': 1800, '呼入人工服务-满意度-非常满意量': 8, '呼入人工服务-满意度-满意量': 1, '呼入人工服务-满意度-一般量': 1, '呼入人工服务-满意度-不满意量': 0, '呼入人工服务-满意度-非常不满意量': 0, '呼入人工服务-工单-生成总量': 5 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话总时长(秒)': 4000, '呼入人工服务-满意度-非常满意量': 10, '呼入人工服务-满意度-满意量': 5, '呼入人工服务-满意度-一般量': 3, '呼入人工服务-满意度-不满意量': 1, '呼入人工服务-满意度-非常不满意量': 1, '呼入人工服务-工单-生成总量': 8 } },
+        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话总时长(秒)': 4500, '呼入人工服务-满意度-非常满意量': 15, '呼入人工服务-满意度-满意量': 8, '呼入人工服务-满意度-一般量': 4, '呼入人工服务-满意度-不满意量': 2, '呼入人工服务-满意度-非常不满意量': 1, '呼入人工服务-工单-生成总量': 12 } }
       ]
       const result = makeTeamRanking(data)
       expect(result).toHaveLength(2)
@@ -308,16 +308,18 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(teamA.count).toBe(2)
       expect(teamA.total_calls).toBe(30)
       expect(teamA.total_ticket_count).toBe(13)
-      expect(teamA.total_outbound).toBe(7)
+      expect(teamA.avg_calls_per_person).toBe(15)
       expect(teamA.ti_dan_lv).toBeCloseTo(13 / 30, 4)
-      expect(teamA.avg_duration).toBe('190.0')
-      expect(teamA.avg_satisfaction).toBe(0.925)
+      expect(teamA.avg_duration).toBe(193.3)
+      expect(teamA.avg_satisfaction).toBeCloseTo(24 / 30, 4)
       const teamB = result.find(r => r.team === 'B组')
       expect(teamB.count).toBe(1)
       expect(teamB.total_calls).toBe(30)
       expect(teamB.total_ticket_count).toBe(12)
-      expect(teamB.total_outbound).toBe(6)
+      expect(teamB.avg_calls_per_person).toBe(30)
       expect(teamB.ti_dan_lv).toBeCloseTo(12 / 30, 4)
+      expect(teamB.avg_duration).toBe(150)
+      expect(teamB.avg_satisfaction).toBeCloseTo(23 / 30, 4)
     })
     it('should handle unknown team_desc', () => {
       const data = [
@@ -326,7 +328,7 @@ describe('WorkloadReport - 格式化函数测试', () => {
       const result = makeTeamRanking(data)
       expect(result[0].team).toBe('未知班组')
       expect(result[0].total_ticket_count).toBe(0)
-      expect(result[0].total_outbound).toBe(0)
+      expect(result[0].avg_calls_per_person).toBe(5)
       expect(result[0].ti_dan_lv).toBe(0)
     })
   })
@@ -334,28 +336,28 @@ describe('WorkloadReport - 格式化函数测试', () => {
   describe('teamChartData merge', () => {
     it('should aggregate team chart data with extra tooltip fields', () => {
       const data = [
-        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话均长(秒)': 180, '呼入人工服务-工单-生成总量': 5 } },
-        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话均长(秒)': 200, '呼入人工服务-工单-生成总量': 8 } },
-        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话均长(秒)': 150, '呼入人工服务-工单-生成总量': 12 } }
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话总时长(秒)': 1800, '呼入人工服务-工单-生成总量': 5 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话总时长(秒)': 4000, '呼入人工服务-工单-生成总量': 8 } },
+        { team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话总时长(秒)': 4500, '呼入人工服务-工单-生成总量': 12 } }
       ]
       const result = makeTeamChartData(data)
       expect(result).toHaveLength(2)
       const teamA = result.find(r => r.name === 'A组')
       expect(teamA.value).toBe(30)
       expect(teamA.peopleCount).toBe(2)
-      expect(teamA.avgDuration).toBe('190.0')
+      expect(teamA.avgDuration).toBe(193.3)
       expect(teamA.totalTicket).toBe(13)
       expect(teamA.tiDanLv).toBeCloseTo(13 / 30, 4)
       const teamB = result.find(r => r.name === 'B组')
       expect(teamB.value).toBe(30)
       expect(teamB.peopleCount).toBe(1)
-      expect(teamB.avgDuration).toBe('150.0')
+      expect(teamB.avgDuration).toBe(150)
       expect(teamB.totalTicket).toBe(12)
       expect(teamB.tiDanLv).toBeCloseTo(12 / 30, 4)
     })
     it('should handle null duration gracefully', () => {
       const data = [
-        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话均长(秒)': null, '呼入人工服务-工单-生成总量': 3 } },
+        { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话总时长(秒)': null, '呼入人工服务-工单-生成总量': 3 } },
         { team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-工单-生成总量': 5 } }
       ]
       const result = makeTeamChartData(data)
