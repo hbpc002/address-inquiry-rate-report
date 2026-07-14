@@ -260,7 +260,7 @@ const mergedTeamOptions = computed(() => {
     yAxis: [
       { type: 'value', name: '工时(h)' },
       { type: 'value', name: '通话量', position: 'right' },
-      { type: 'value', name: '提单率(%)', position: 'right', offset: 60, axisLabel: { formatter: '{value}%' }, splitLine: { show: false }, min: 0, max: 50 },
+      { type: 'value', name: '提单率(%)', position: 'right', offset: 60, axisLabel: { formatter: '{value}%' }, splitLine: { show: false }, min: 10, max: 25 },
     ],
     series: [
       { name: '应出勤工时', type: 'bar', data: hoursData.map(d => d.scheduled_hours), itemStyle: { color: '#5470c6' } },
@@ -300,7 +300,7 @@ const dailyProdOptions = computed(() => {
     yAxis: [
       { type: 'value', name: '通话量' },
       { type: 'value', name: '工单量', position: 'right' },
-      { type: 'value', name: '提单率(%)', position: 'right', offset: 60, axisLabel: { formatter: '{value}%' }, splitLine: { show: false }, min: 0, max: 50 },
+      { type: 'value', name: '提单率(%)', position: 'right', offset: 60, axisLabel: { formatter: '{value}%' }, splitLine: { show: false }, min: 10, max: 25 },
     ],
     series: [
       { name: '通话量', type: 'bar', data: data.map(d => d.call_count), itemStyle: { color: '#5470c6' } },
