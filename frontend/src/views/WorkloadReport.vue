@@ -100,7 +100,7 @@
                       <span :style="getMetricStyle('_ti_dan_lv', row.ti_dan_lv)">{{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="人均通话量(全员)" width="105" sortable prop="avg_calls_per_person_all" />
+                  <el-table-column label="人均通话量(含组长、师傅)" width="120" sortable prop="avg_calls_per_person_all" />
                   <el-table-column label="人均通话量(组员)" width="105" sortable prop="avg_calls_per_person_member" />
                   <el-table-column label="接话小时量" width="90" sortable prop="member_call_hourly_rate">
                     <template #default="{ row }">
