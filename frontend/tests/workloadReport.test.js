@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 
 function displayLabel(field) {
-  return field.split('-').pop()
+  const label = field.split('-').pop()
+  if (label === '生成总量') return '提单量'
+  return label
 }
 
 function isRateField(field) {
@@ -197,6 +199,9 @@ describe('WorkloadReport - 格式化函数测试', () => {
   describe('displayLabel', () => {
     it('should return last segment of dotted field name', () => {
       expect(displayLabel('呼入人工服务-人工服务-通话次数')).toBe('通话次数')
+    })
+    it('should map 生成总量 to 提单量', () => {
+      expect(displayLabel('呼入人工服务-工单-生成总量')).toBe('提单量')
     })
     it('should handle single segment', () => {
       expect(displayLabel('通话次数')).toBe('通话次数')

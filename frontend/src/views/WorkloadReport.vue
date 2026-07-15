@@ -325,7 +325,9 @@ watch(selectedColumns, (val) => {
 }, { deep: true })
 
 function displayLabel(field) {
-  return field.split('-').pop()
+  const label = field.split('-').pop()
+  if (label === '生成总量') return '提单量'
+  return label
 }
 
 function isRateField(field) {
