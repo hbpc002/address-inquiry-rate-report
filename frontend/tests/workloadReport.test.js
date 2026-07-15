@@ -634,14 +634,32 @@ describe('getMetricStyle - 指标目标值预警逻辑', () => {
 })
 
 describe('WorkloadReport - loadTeams', () => {
-  it('should populate teams array from API response', async () => {
-    let teams = []
-    teams = ['A组', 'B组', 'C组']
-    expect(teams).toEqual(['A组', 'B组', 'C组'])
+  it('should handle API response with {team, count} objects', async () => {
+    const apiResponse = [
+      { team: '二班1组', count: 17 },
+      { team: '二班2组', count: 15 },
+      { team: '三班1组', count: 20 }
+    ]
+    const teams = apiResponse
+    expect(teams).toHaveLength(3)
+    expect(teams[0].team).toBe('二班1组')
+    expect(teams[1].team).toBe('二班2组')
+    expect(teams[2].team).toBe('三班1组')
+    const options = teams.map(t => ({ label: t.team, value: t.team }))
+    expect(options[0]).toEqual({ label: '二班1组', value: '二班1组' })
   })
-  it('should handle empty API response', () => {
+  it('should handle empty API response', async () => {
     const teams = []
     expect(teams).toEqual([])
+  })
+  it('should handle missing count field gracefully', async () => {
+    const apiResponse = [
+      { team: 'A组' },
+      { team: 'B组' }
+    ]
+    const teams = apiResponse
+    const labels = teams.map(t => t.team)
+    expect(labels).toEqual(['A组', 'B组'])
   })
 })
 

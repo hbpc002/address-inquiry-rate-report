@@ -36,7 +36,7 @@
         </el-form-item>
         <el-form-item label="班组">
           <el-select v-model="searchForm.team_desc" placeholder="全部班组" clearable filterable style="width: 140px">
-            <el-option v-for="t in teams" :key="t" :label="t" :value="t" />
+            <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
           </el-select>
         </el-form-item>
         <el-form-item>
