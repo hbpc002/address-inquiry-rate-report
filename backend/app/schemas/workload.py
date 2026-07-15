@@ -42,6 +42,7 @@ class WorkloadReportItem(BaseModel):
     emp_no: str
     team_desc: str
     province: str
+    role: str = ""
     date_count: int
     aggregated_metrics: dict[str, Any]
 

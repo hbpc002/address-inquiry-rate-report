@@ -325,6 +325,7 @@ def get_workload_report(
                 "emp_no": r.emp_no or '',
                 "team_desc": real_team,
                 "province": r.province or '',
+                "role": emp.role if emp else "",
                 "date_count": 0,
                 "agg": {}
             }
@@ -364,6 +365,7 @@ def get_workload_report(
             emp_no=data["emp_no"],
             team_desc=data["team_desc"],
             province=data["province"],
+            role=data["role"],
             date_count=data["date_count"],
             aggregated_metrics=aggregated
         ))

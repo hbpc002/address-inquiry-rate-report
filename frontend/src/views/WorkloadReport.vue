@@ -100,8 +100,13 @@
                       <span :style="getMetricStyle('_ti_dan_lv', row.ti_dan_lv)">{{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="生成总量" width="85" sortable prop="total_ticket_count" />
-                  <el-table-column label="人均通话量" width="85" sortable prop="avg_calls_per_person" />
+                  <el-table-column label="人均通话量(全员)" width="105" sortable prop="avg_calls_per_person_all" />
+                  <el-table-column label="人均通话量(组员)" width="105" sortable prop="avg_calls_per_person_member" />
+                  <el-table-column label="接话小时量" width="90" sortable prop="member_call_hourly_rate">
+                    <template #default="{ row }">
+                      {{ row.member_call_hourly_rate.toFixed(1) }}
+                    </template>
+                  </el-table-column>
                 </el-table>
               </el-col>
             </el-row>
@@ -129,6 +134,11 @@
         <el-table-column label="提单率" width="85" sortable="custom" prop="_ti_dan_lv">
           <template #default="{ row }">
             <span :style="getMetricStyle('_ti_dan_lv', row._ti_dan_lv)">{{ (row._ti_dan_lv * 100).toFixed(2) + '%' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="接话小时量" width="90" sortable="custom" prop="_call_hourly_rate">
+          <template #default="{ row }">
+            {{ row._call_hourly_rate.toFixed(1) }}
           </template>
         </el-table-column>
         <el-table-column label="接话绩效" width="100" sortable="custom" prop="_call_salary">
@@ -371,32 +381,52 @@ const teamRanking = computed(() => {
   const teamMap = {}
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
+    const isMember = d.role !== '组长' && d.role !== '师傅'
     if (!teamMap[team]) {
-      teamMap[team] = { count: 0, total_calls: 0, total_duration: 0, total_ticket_count: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
+      teamMap[team] = {
+        count_all: 0, count_member: 0,
+        total_calls_all: 0, total_calls_member: 0,
+        total_duration: 0, total_work_duration_member: 0,
+        total_ticket_count: 0,
+        total_sat_numerator: 0, total_sat_denominator: 0
+      }
     }
-    teamMap[team].count++
-    teamMap[team].total_calls += getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
-    teamMap[team].total_ticket_count += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
-    teamMap[team].total_duration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+    const t = teamMap[team]
+    t.count_all++
+    const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    t.total_calls_all += calls
+    t.total_duration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+    t.total_ticket_count += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
+    if (isMember) {
+      t.count_member++
+      t.total_calls_member += calls
+      t.total_work_duration_member += getMetricValue(d, '总体-工作总时长(秒)') || 0
+    }
     const verySat = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
     const sat = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
     const general = getMetricValue(d, '呼入人工服务-满意度-一般量') || 0
     const disSat = getMetricValue(d, '呼入人工服务-满意度-不满意量') || 0
     const veryDisSat = getMetricValue(d, '呼入人工服务-满意度-非常不满意量') || 0
-    teamMap[team].total_sat_numerator += verySat + sat
-    teamMap[team].total_sat_denominator += verySat + sat + general + disSat + veryDisSat
+    t.total_sat_numerator += verySat + sat
+    t.total_sat_denominator += verySat + sat + general + disSat + veryDisSat
   })
   return Object.entries(teamMap)
-    .map(([team, data]) => ({
-      team,
-      count: data.count,
-      total_calls: data.total_calls,
-      total_ticket_count: data.total_ticket_count,
-      avg_calls_per_person: data.count > 0 ? +(data.total_calls / data.count).toFixed(1) : 0,
-      ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
-      avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
-      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
-    }))
+    .map(([team, data]) => {
+      const checkinHours = data.total_work_duration_member / 3600
+      return {
+        team,
+        count: data.count_all,
+        count_member: data.count_member,
+        total_calls: data.total_calls_all,
+        total_ticket_count: data.total_ticket_count,
+        avg_calls_per_person_all: data.count_all > 0 ? +(data.total_calls_all / data.count_all).toFixed(1) : 0,
+        avg_calls_per_person_member: data.count_member > 0 ? +(data.total_calls_member / data.count_member).toFixed(1) : 0,
+        member_call_hourly_rate: checkinHours > 0 ? +(data.total_calls_member / checkinHours).toFixed(1) : 0,
+        ti_dan_lv: data.total_calls_all > 0 ? data.total_ticket_count / data.total_calls_all : 0,
+        avg_duration: data.total_calls_all > 0 ? +(data.total_duration / data.total_calls_all).toFixed(1) : 0,
+        avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+      }
+    })
     .sort((a, b) => b.total_calls - a.total_calls)
 })
 
@@ -545,6 +575,7 @@ const enrichedData = computed(() => {
   return filteredData.value.map(row => {
     const callCount = getMetricValue(row, '呼入人工服务-人工服务-通话次数') || 0
     const ticketCount = getMetricValue(row, '呼入人工服务-工单-生成总量') || 0
+    const workDuration = getMetricValue(row, '总体-工作总时长(秒)') || 0
     const callSalary = calcCallSalary(callCount)
     const satSalary = calcSatSalary(row)
     const totalSalary = satSalary !== null ? callSalary + satSalary : callSalary
@@ -560,6 +591,7 @@ const enrichedData = computed(() => {
       ...row,
       _call_count: callCount,
       _ticket_count: ticketCount,
+      _call_hourly_rate: workDuration > 0 ? +(callCount / (workDuration / 3600)).toFixed(1) : 0,
       _ti_dan_lv: callCount > 0 ? ticketCount / callCount : 0,
       _call_salary: callSalary,
       _sat_salary: satSalary,
