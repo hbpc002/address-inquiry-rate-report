@@ -9,6 +9,7 @@ import csv
 from app.models.database import get_db
 from app.models.employee import Employee
 from app.models.schedule import Schedule
+from app.models.checkin import Checkin
 from app.models.daily_report import DailyReport
 from app.models.monthly_report import MonthlyReport
 from app.schemas.employee import (
@@ -87,9 +88,26 @@ def update_employee(
     if not db_employee:
         raise HTTPException(status_code=404, detail="员工不存在")
 
+    old_emp_no = None
+    if employee.emp_no is not None and employee.emp_no != db_employee.emp_no:
+        existing = db.query(Employee).filter(
+            Employee.emp_no == employee.emp_no,
+            Employee.id != employee_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="工号已存在")
+        old_emp_no = db_employee.emp_no
+
     for key, value in employee.model_dump(exclude_unset=True).items():
         setattr(db_employee, key, value)
     db.commit()
+
+    if old_emp_no:
+        db.query(Checkin).filter(Checkin.emp_no == old_emp_no).update(
+            {"emp_no": employee.emp_no}, synchronize_session=False
+        )
+        db.commit()
+
     return {"id": db_employee.id}
 
 

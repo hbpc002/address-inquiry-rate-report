@@ -16,6 +16,7 @@ class EmployeeCreate(EmployeeBase):
 
 
 class EmployeeUpdate(BaseModel):
+    emp_no: Optional[str] = None
     name: Optional[str] = None
     team: Optional[str] = None
     dept: Optional[str] = None

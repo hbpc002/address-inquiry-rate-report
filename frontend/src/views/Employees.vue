@@ -134,7 +134,7 @@
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑员工' : '新增员工'" width="500px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="工号">
-          <el-input v-model="form.emp_no" :disabled="isEdit" />
+          <el-input v-model="form.emp_no" :disabled="isEdit && !form.emp_no?.startsWith('TEMP_')" />
         </el-form-item>
         <el-form-item label="姓名">
           <el-input v-model="form.name" />
