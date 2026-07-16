@@ -479,6 +479,8 @@ const teamMemberChartData = computed(() => {
   } else if (filterType.value === 'name' && filterValue.value) {
     const person = tableData.value.find(d => d.name === filterValue.value)
     if (person) team = person.team_desc
+  } else if (searchForm.team_desc) {
+    team = searchForm.team_desc
   }
   if (!team) return []
   const members = tableData.value.filter(d => d.team_desc === team)
@@ -663,13 +665,14 @@ const paginatedData = computed(() => {
 })
 
 const teamChartOptions = computed(() => {
-  if (filterType.value === 'team' && filterValue.value) {
+  const activeTeam = filterType.value === 'team' ? filterValue.value : searchForm.team_desc
+  if (activeTeam) {
     const data = teamMemberChartData.value
     if (!data.length) return {}
     return createBarOptions(
       data.map(d => d.name),
       data.map(d => d.value),
-      `${filterValue.value} 成员产量`,
+      `${activeTeam} 成员产量`,
       '姓名',
       '通话量'
     )
