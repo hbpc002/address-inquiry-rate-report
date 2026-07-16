@@ -244,6 +244,40 @@ class TestWorkloadList:
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
+    def test_list_filter_by_name_masked_workload(self):
+        """List name filter should match Employee.name even when Workload.name is masked"""
+        db = SessionLocal()
+        try:
+            db.add(Workload(
+                date=date(2026, 6, 29), province="广西", account="STTR00004",
+                name="赵*", emp_no="1004", team_desc="热线二组",
+                metrics={"通话次数": 15}, import_batch="batch002"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads", params={"name": "赵六"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["account"] == "STTR00004"
+
+    def test_list_filter_by_name_partial(self):
+        """List name filter should support partial match against Employee.name"""
+        resp = client.get("/api/workloads", params={"name": "五"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["items"][0]["account"] == "STTR00003"
+
+    def test_list_filter_by_name_no_match(self):
+        """List name filter with non-existent name should return empty"""
+        resp = client.get("/api/workloads", params={"name": "不存在"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+
     def test_list_pagination(self):
         resp = client.get("/api/workloads", params={"page": 1, "limit": 2})
         assert resp.status_code == 200
@@ -419,6 +453,74 @@ class TestWorkloadReport:
         assert resp.status_code == 200
         data = resp.json()
         assert data["stats"]["total_people"] == 1
+
+    def test_report_filter_by_name_masked_workload(self):
+        """Name filter should match Employee.name even when Workload.name is masked"""
+        db = SessionLocal()
+        try:
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004",
+                name="赵*", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 10000,
+                         "呼入人工服务-人工服务-通话次数": 5},
+                import_batch="batch001"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "name": "赵六"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 1
+        assert data["items"][0]["account"] == "STTR00004"
+
+    def test_report_filter_by_name_partial(self):
+        """Name filter should support partial match against Employee.name"""
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "name": "张"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 1
+        assert data["items"][0]["account"] == "STTR00001"
+
+    def test_report_filter_by_name_ignore_workload_name(self):
+        """Name filter should NOT match Workload.name when Employee.name differs"""
+        db = SessionLocal()
+        try:
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004",
+                name="TEST_MASKED_NAME", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 10000,
+                         "呼入人工服务-人工服务-通话次数": 5},
+                import_batch="batch001"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "name": "TEST_MASKED_NAME"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 0
+
+    def test_report_filter_by_name_no_match(self):
+        """Name filter with non-existent name should return empty"""
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "name": "不存在"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 0
 
     def test_report_filter_by_account(self):
         resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28", "account": "STTR00001"})

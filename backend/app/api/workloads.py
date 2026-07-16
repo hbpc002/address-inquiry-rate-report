@@ -70,7 +70,13 @@ def get_workloads(
     if workload_date:
         query = query.filter(cast(Workload.date, Date) == workload_date)
     if name:
-        query = query.filter(Workload.name.ilike(f'%{name}%'))
+        emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(
+            Employee.name.ilike(f'%{name}%')
+        ).all()]
+        if emp_nos:
+            query = query.filter(Workload.account.in_(emp_nos))
+        else:
+            return WorkloadListResponse(items=[], total=0)
     if account:
         query = query.filter(Workload.account == account)
 
@@ -308,7 +314,10 @@ def get_workload_report(
         ).all()}
         records = [r for r in records if r.account in team_emp_nos]
     if name:
-        records = [r for r in records if name.lower() in (r.name or '').lower()]
+        emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(
+            Employee.name.ilike(f'%{name}%')
+        ).all()]
+        records = [r for r in records if r.account in emp_nos]
     if account:
         records = [r for r in records if account.lower() in (r.account or '').lower()]
 
