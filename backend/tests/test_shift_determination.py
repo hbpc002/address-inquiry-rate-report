@@ -1,4 +1,4 @@
-"""测试 determine_shift_name 班次判断逻辑（按排班字段优先，首签时间兜底）"""
+"""测试 determine_shift_name 班次判断逻辑（按排班字段优先，签出/签入时间兜底）"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -82,3 +82,31 @@ def test_schedule_none_shift_name():
     """排班存在但 shift_name 为 None → 按首签时间"""
     s = FakeSchedule(None)
     assert determine_shift_name(s, "2026-07-15 14:00") == "中班"
+
+
+def test_fallback_checkout_after_2030_is_night():
+    """兜底时，签出时间 >= 20:30 → 晚班"""
+    assert determine_shift_name(None, "2026-07-15 08:00", "2026-07-15 20:30") == "晚班"
+    assert determine_shift_name(None, "2026-07-15 08:00", "2026-07-15 21:00") == "晚班"
+    assert determine_shift_name(None, "2026-07-15 10:00", "2026-07-15 22:00") == "晚班"
+    assert determine_shift_name(None, "2026-07-15 12:00", "2026-07-15 20:31") == "晚班"
+    assert determine_shift_name(None, "2026-07-15 14:00", "2026-07-15 20:30") == "晚班"
+
+
+def test_fallback_checkout_before_2030_uses_checkin():
+    """兜底时，签出时间 < 20:30 则按首签时间判断"""
+    assert determine_shift_name(None, "2026-07-15 08:00", "2026-07-15 20:29") == "早班"
+    assert determine_shift_name(None, "2026-07-15 12:00", "2026-07-15 18:00") == "中班"
+    assert determine_shift_name(None, "2026-07-15 16:00", "2026-07-15 20:00") == "晚班"
+
+
+def test_fallback_checkout_none_uses_checkin():
+    """兜底时，签出时间为 None 则按首签时间判断"""
+    assert determine_shift_name(None, "2026-07-15 08:00", None) == "早班"
+    assert determine_shift_name(None, "2026-07-15 12:00", None) == "中班"
+    assert determine_shift_name(None, "2026-07-15 16:00", None) == "晚班"
+
+
+def test_schedule_unknown_name_checkout_2030():
+    """排班名称无法匹配但签出 >= 20:30 → 晚班"""
+    assert determine_shift_name(FakeSchedule("值班"), "2026-07-15 08:00", "2026-07-15 21:00") == "晚班"

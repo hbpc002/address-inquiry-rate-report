@@ -18,12 +18,13 @@ from app.models.attendance_config import AttendanceConfig
 from app.utils.logger import log_operation
 
 
-def determine_shift_name(sched, first_checkin_time_str):
-    """根据排班班次名称确定班次，若无排班则按首签时间兜底。
+def determine_shift_name(sched, first_checkin_time_str, checkout_time_str=None):
+    """根据排班班次名称确定班次，若无排班则按签出/签入时间兜底。
 
     Args:
         sched: Schedule 对象或 None，包含 shift_name 属性
         first_checkin_time_str: 形如 "2026-07-15 08:05" 的首签时间字符串
+        checkout_time_str: 形如 "2026-07-15 20:30" 的最后签出时间（可选），兜底时用于判断晚班
 
     Returns:
         "早班", "中班", 或 "晚班"
@@ -36,6 +37,11 @@ def determine_shift_name(sched, first_checkin_time_str):
             return "早班"
         if '中' in raw:
             return "中班"
+    if checkout_time_str:
+        checkout_hour = int(checkout_time_str.split()[1].split(':')[0])
+        checkout_min = int(checkout_time_str.split()[1].split(':')[1])
+        if checkout_hour > 20 or (checkout_hour == 20 and checkout_min >= 30):
+            return "晚班"
     hour = int(first_checkin_time_str.split()[1].split(':')[0])
     if hour < 10:
         return "早班"
@@ -574,7 +580,9 @@ def get_personal_report(
         sched = schedule_map.get(d)
 
         shift_name = determine_shift_name(
-            sched, entry["checkins"][0]["checkin_time"]
+            sched,
+            entry["checkins"][0]["checkin_time"],
+            entry["checkins"][-1]["checkout_time"]
         )
         daily_stats.append({
             "date": entry["date"],
