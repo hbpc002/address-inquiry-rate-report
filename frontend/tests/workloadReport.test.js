@@ -129,8 +129,16 @@ function makeTeamChartData(data) {
     .slice(0, 8)
 }
 
-function makeTeamMemberChartData(data, filterTeam) {
-  const members = data.filter(d => d.team_desc === filterTeam)
+function makeTeamMemberChartData(data, filterValue, filterType = 'team') {
+  let team = ''
+  if (filterType === 'team') {
+    team = filterValue
+  } else if (filterType === 'name') {
+    const person = data.find(d => d.name === filterValue)
+    if (person) team = person.team_desc
+  }
+  if (!team) return []
+  const members = data.filter(d => d.team_desc === team)
   return members
     .map(d => ({
       name: d.name || '未知',
@@ -142,7 +150,7 @@ function makeTeamMemberChartData(data, filterTeam) {
 function handlePieClick(name, filterType, filterValue) {
   const state = { filterType, filterValue, currentPage: 1 }
   if (name) {
-    if (state.filterType === 'team' && state.filterValue === name) {
+    if (state.filterType === 'team') {
       state.filterType = ''
       state.filterValue = ''
       state.currentPage = 1
@@ -505,6 +513,24 @@ describe('WorkloadReport - 格式化函数测试', () => {
       const result = makeTeamMemberChartData(data, 'X组')
       expect(result.map(r => r.name)).toEqual(['测试1', '测试2'])
     })
+    it('should resolve team from person name', () => {
+      const data = [
+        { name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } },
+        { name: '李四', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20 } },
+        { name: '王五', team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30 } }
+      ]
+      const result = makeTeamMemberChartData(data, '张三', 'name')
+      expect(result).toHaveLength(2)
+      expect(result[0].name).toBe('李四')
+      expect(result[1].name).toBe('张三')
+    })
+    it('should return empty for non-existent person name', () => {
+      const data = [
+        { name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } }
+      ]
+      const result = makeTeamMemberChartData(data, '不存在的名字', 'name')
+      expect(result).toHaveLength(0)
+    })
   })
 
   describe('handlePieClick', () => {
@@ -518,10 +544,10 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(result.filterType).toBe('')
       expect(result.filterValue).toBe('')
     })
-    it('should switch to new team when clicking different team', () => {
+    it('should clear filter when clicking bar chart (filterType === team)', () => {
       const result = handlePieClick('B组', 'team', 'A组')
-      expect(result.filterType).toBe('team')
-      expect(result.filterValue).toBe('B组')
+      expect(result.filterType).toBe('')
+      expect(result.filterValue).toBe('')
     })
     it('should do nothing when name is empty', () => {
       const result = handlePieClick('', 'name', '张三')

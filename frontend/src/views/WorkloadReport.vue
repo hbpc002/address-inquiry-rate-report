@@ -473,8 +473,15 @@ const teamChartData = computed(() => {
 })
 
 const teamMemberChartData = computed(() => {
-  if (filterType.value !== 'team' || !filterValue.value) return []
-  const members = tableData.value.filter(d => d.team_desc === filterValue.value)
+  let team = ''
+  if (filterType.value === 'team' && filterValue.value) {
+    team = filterValue.value
+  } else if (filterType.value === 'name' && filterValue.value) {
+    const person = tableData.value.find(d => d.name === filterValue.value)
+    if (person) team = person.team_desc
+  }
+  if (!team) return []
+  const members = tableData.value.filter(d => d.team_desc === team)
   return members
     .map(d => ({
       name: d.name || '未知',
@@ -736,15 +743,14 @@ function handleTeamRowClick(row) {
 }
 
 function handlePieClick(params) {
-  if (params.name) {
-    if (filterType.value === 'team' && filterValue.value === params.name) {
-      clearFilter()
-    } else {
-      filterType.value = 'team'
-      filterValue.value = params.name
-      currentPage.value = 1
-    }
+  if (!params.name) return
+  if (filterType.value === 'team') {
+    clearFilter()
+    return
   }
+  filterType.value = 'team'
+  filterValue.value = params.name
+  currentPage.value = 1
 }
 
 function clearFilter() {
@@ -797,6 +803,7 @@ async function loadTeams() {
 }
 
 async function loadData() {
+  clearFilter()
   try {
     const params = {}
     if (searchForm.type === 'day' && searchForm.date) {
