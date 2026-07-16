@@ -250,3 +250,65 @@ class TestCheckinDeleteByBatch:
             assert remaining[0].import_batch == "other-batch"
         finally:
             db.close()
+
+
+class TestCheckinReport:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+            emps = [
+                Employee(emp_no="E001", name="张三", team="热线一组", dept=TARGET_DEPT),
+                Employee(emp_no="E002", name="李四", team="热线二组", dept=TARGET_DEPT),
+                Employee(emp_no="E003", name="王五", team="", dept=TARGET_DEPT),
+            ]
+            db.add_all(emps)
+            db.commit()
+
+            now = datetime.now()
+            for emp_no, name in [("E001", "张三"), ("E002", "李四"), ("E003", "王五")]:
+                db.add(Checkin(
+                    emp_no=emp_no, name=name,
+                    checkin_time=now.replace(hour=8, minute=0, second=0, microsecond=0),
+                    checkout_time=now.replace(hour=17, minute=0, second=0, microsecond=0),
+                    dept=TARGET_DEPT,
+                    import_batch="test-report",
+                ))
+            db.commit()
+        finally:
+            db.close()
+
+    def test_report_includes_employees_with_team(self):
+        today = date.today().isoformat()
+        resp = client.get(f"/api/checkins/report?date={today}")
+        assert resp.status_code == 200
+        data = resp.json()
+        emp_nos = [item["emp_no"] for item in data["items"]]
+        assert "E001" in emp_nos
+        assert "E002" in emp_nos
+
+    def test_report_excludes_employees_without_team(self):
+        today = date.today().isoformat()
+        resp = client.get(f"/api/checkins/report?date={today}")
+        assert resp.status_code == 200
+        data = resp.json()
+        emp_nos = [item["emp_no"] for item in data["items"]]
+        assert "E003" not in emp_nos
+
+    def test_report_team_filter_still_works(self):
+        today = date.today().isoformat()
+        resp = client.get(f"/api/checkins/report?date={today}&team=热线一组")
+        assert resp.status_code == 200
+        data = resp.json()
+        emp_nos = [item["emp_no"] for item in data["items"]]
+        assert "E001" in emp_nos
+        assert "E002" not in emp_nos
+
+    def test_report_no_checkin_data(self):
+        resp = client.get("/api/checkins/report?date=2020-01-01")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 0
+        assert data["stats"]["emp_count"] == 0

@@ -7,6 +7,8 @@ os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@local
 
 from fastapi.testclient import TestClient
 from app.models.database import Base, engine, SessionLocal, init_db
+from app.models.checkin import Checkin
+from app.models.employee import Employee
 from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
@@ -94,6 +96,7 @@ def _create_test_checkins(db, emp_map):
                 dept=dept,
                 checkin_time=datetime(d.year, d.month, d.day, 8, 0),
                 checkout_time=datetime(d.year, d.month, d.day, 17, 0),
+                import_batch="test-export",
             )
             db.add(checkin)
     db.commit()
@@ -147,6 +150,37 @@ class TestExportEndpoints:
             # Test export without perms - should use admin which has all perms
             resp = client.get("/api/checkins/report/export")
             assert resp.status_code == 200
+        finally:
+            db.close()
+
+    def test_export_checkin_report_excludes_no_team(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+
+            emp_with_team = Employee(emp_no="E001", name="张三", team="热线一组", dept="服务部", status="在职")
+            emp_no_team = Employee(emp_no="E002", name="李四", team="", dept="服务部", status="在职")
+            db.add_all([emp_with_team, emp_no_team])
+            db.commit()
+
+            today = date.today()
+            for emp_no, name in [("E001", "张三"), ("E002", "李四")]:
+                db.add(Checkin(
+                    emp_no=emp_no, name=name, dept=TARGET_DEPT,
+                    checkin_time=datetime(today.year, today.month, today.day, 8, 0),
+                    checkout_time=datetime(today.year, today.month, today.day, 17, 0),
+                    import_batch="test-export-no-team",
+                ))
+            db.commit()
+
+            resp = client.get(f"/api/checkins/report/export?date={today.isoformat()}")
+            assert resp.status_code == 200
+            body = resp.content.decode("utf-8")
+            assert "E001" in body
+            assert "张三" in body
+            assert "E002" not in body
+            assert "李四" not in body
         finally:
             db.close()
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -297,9 +298,10 @@ def get_checkin_report(
         query_start = datetime.now().date()
         query_end = query_start
 
-    # Step 2: Query checkins (LEFT JOIN so unmatched emp_no doesn't drop records)
-    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no, isouter=True)
+    # Step 2: Query checkins — only employees with valid team from employee table
+    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no)
     query = query.filter(
+        Employee.team != '',
         func.date(Checkin.checkin_time) >= query_start,
         func.date(Checkin.checkin_time) <= query_end
     )
@@ -673,8 +675,9 @@ def export_checkin_report(
         query_start = datetime.now().date()
         query_end = query_start
 
-    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no, isouter=True)
+    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no)
     query = query.filter(
+        Employee.team != '',
         func.date(Checkin.checkin_time) >= query_start,
         func.date(Checkin.checkin_time) <= query_end
     )
