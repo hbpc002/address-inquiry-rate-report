@@ -5,6 +5,7 @@ from app.models.database import init_db
 from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads, salary_config
 from app.models.database import SessionLocal
 import asyncio
+import json
 import traceback
 from datetime import datetime, timedelta
 from app.models.operation_log import OperationLog
@@ -16,6 +17,8 @@ except Exception:
     _autoclean_config = {'enabled': True, 'retention_days': 90}
 from app.utils.logger import log_operation
 from app.core.config import settings
+from app.core.permissions import get_all_permission_keys, get_default_permissions
+from app.models.role import Role
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -70,6 +73,7 @@ app.include_router(salary_config.router)
 def startup_event():
     init_db()
     _ensure_defaults()
+    _migrate_role_permissions()
     # 启动后台日志清理任务
     asyncio.create_task(_log_cleanup_task())
 
@@ -91,6 +95,27 @@ def _ensure_defaults():
         # 使用内存配置的默认值
         global _autoclean_config
         _autoclean_config = {'enabled': True, 'retention_days': 90}
+
+def _migrate_role_permissions():
+    try:
+        db = SessionLocal()
+        try:
+            all_keys = set(get_all_permission_keys())
+            for role in db.query(Role).all():
+                stored = json.loads(role.permissions or "{}")
+                defaults = get_default_permissions(role.name)
+                changed = False
+                for key in all_keys:
+                    if key not in stored:
+                        stored[key] = defaults.get(key, False)
+                        changed = True
+                if changed:
+                    role.permissions = json.dumps(stored, ensure_ascii=False)
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
 
 async def _log_cleanup_task():
     while True:

@@ -44,6 +44,10 @@ def test_all_keys_contains_new_permissions():
     assert "reports.export" in keys
     assert "employees.export" in keys
     assert "system.export_logs" in keys
+    assert "reports.dashboard_export" in keys
+    assert "reports.efficiency_export" in keys
+    assert "checkin_report.export" in keys
+    assert "workload_report.export" in keys
 
 
 def test_all_keys_count():
@@ -81,6 +85,10 @@ def test_default_permissions_new_keys_admin():
     assert perms["reports.export"] is True
     assert perms["employees.export"] is True
     assert perms["system.export_logs"] is True
+    assert perms["reports.dashboard_export"] is True
+    assert perms["reports.efficiency_export"] is True
+    assert perms["checkin_report.export"] is True
+    assert perms["workload_report.export"] is True
 
 
 def test_default_permissions_new_keys_manager():
@@ -88,6 +96,10 @@ def test_default_permissions_new_keys_manager():
     assert perms["reports.recalculate"] is True
     assert perms["reports.export"] is True
     assert perms["employees.export"] is True
+    assert perms["reports.dashboard_export"] is True
+    assert perms["reports.efficiency_export"] is True
+    assert perms["checkin_report.export"] is True
+    assert perms["workload_report.export"] is True
 
 
 def test_default_permissions_new_keys_user():
@@ -95,3 +107,7 @@ def test_default_permissions_new_keys_user():
     assert perms["reports.recalculate"] is False
     assert perms["reports.export"] is False
     assert perms["employees.export"] is False
+    assert perms["reports.dashboard_export"] is False
+    assert perms["reports.efficiency_export"] is False
+    assert perms["checkin_report.export"] is False
+    assert perms["workload_report.export"] is False

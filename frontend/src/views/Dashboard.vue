@@ -8,9 +8,9 @@
           <span class="report-count" v-if="stats.latest_attendance + stats.latest_leave + stats.latest_timeoff + stats.latest_absent > 0">
             （最新日出勤 {{ stats.latest_attendance }} / 请假 {{ stats.latest_leave }} / 休息 {{ stats.latest_timeoff }} / 缺勤 {{ stats.latest_absent }}）
           </span>
+          <el-button v-if="userStore.hasPermission('reports.dashboard_export')" type="success" size="small" @click="exportDashboard">导出</el-button>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
-          <el-button v-if="userStore.hasPermission('reports.dashboard_export')" type="success" size="small" @click="exportDashboard">导出</el-button>
           <el-date-picker v-model="yearMonth" type="month" value-format="YYYY-MM" placeholder="选择月份" size="small" style="width:140px" @change="onMonthChange" />
           <div class="changelog-carousel" v-if="changelog.length > 0">
             <el-tag type="warning" effect="dark" size="small">更新日志</el-tag>
