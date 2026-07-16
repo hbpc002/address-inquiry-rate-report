@@ -331,6 +331,10 @@ watch(selectedColumns, (val) => {
   localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))
 }, { deep: true })
 
+watch(() => searchForm.team_desc, () => {
+  loadData()
+})
+
 function displayLabel(field) {
   const label = field.split('-').pop()
   if (label === '生成总量') return '提单量'
@@ -669,13 +673,16 @@ const teamChartOptions = computed(() => {
   if (activeTeam) {
     const data = teamMemberChartData.value
     if (!data.length) return {}
-    return createBarOptions(
+    const options = createBarOptions(
       data.map(d => d.name),
       data.map(d => d.value),
       `${activeTeam} 成员产量`,
       '姓名',
       '通话量'
     )
+    options.xAxis.axisLabel = { rotate: 45, interval: 0 }
+    options.grid.bottom = '25%'
+    return options
   }
   if (!teamChartData.value.length) return {}
   return createPieOptions(teamChartData.value, '班组产量占比', undefined, '产量')
