@@ -16,6 +16,32 @@ from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
 from app.utils.logger import log_operation
+
+
+def determine_shift_name(sched, first_checkin_time_str):
+    """根据排班班次名称确定班次，若无排班则按首签时间兜底。
+
+    Args:
+        sched: Schedule 对象或 None，包含 shift_name 属性
+        first_checkin_time_str: 形如 "2026-07-15 08:05" 的首签时间字符串
+
+    Returns:
+        "早班", "中班", 或 "晚班"
+    """
+    if sched and sched.shift_name:
+        raw = sched.shift_name
+        if '晚' in raw:
+            return "晚班"
+        if '行政' in raw or '早' in raw:
+            return "早班"
+        if '中' in raw:
+            return "中班"
+    hour = int(first_checkin_time_str.split()[1].split(':')[0])
+    if hour < 10:
+        return "早班"
+    if hour < 15:
+        return "中班"
+    return "晚班"
 from app.schemas.checkin import CheckinResponse, CheckinListResponse, ImportCheckinResponse
 from app.core.security import get_current_user, require_permission
 from app.services.attendance import save_daily_report
@@ -544,17 +570,12 @@ def get_personal_report(
     for d in sorted(daily_map.keys()):
         entry = daily_map[d]
 
-        first_checkin = entry["checkins"][0]["checkin_time"]
-        hour = int(first_checkin.split()[1].split(':')[0])
-        if hour < 10:
-            shift_name = "早班"
-        elif hour < 15:
-            shift_name = "中班"
-        else:
-            shift_name = "晚班"
-
         report = daily_report_map.get(d)
         sched = schedule_map.get(d)
+
+        shift_name = determine_shift_name(
+            sched, entry["checkins"][0]["checkin_time"]
+        )
         daily_stats.append({
             "date": entry["date"],
             "checkin_time": entry["checkins"][0]["checkin_time"] if entry["checkins"] else None,
