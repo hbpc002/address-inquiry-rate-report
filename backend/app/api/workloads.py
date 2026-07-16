@@ -561,3 +561,75 @@ def get_team_production(
 
     result.sort(key=lambda x: x["call_count"], reverse=True)
     return result
+
+
+@router.get("/report/export")
+def export_workload_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    team_desc: Optional[str] = None,
+    name: Optional[str] = None,
+    account: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """导出工作量报表 CSV"""
+    require_permission(current_user, "workload_report.export")
+    from datetime import timedelta
+
+    if year_month:
+        start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
+        if year_month == datetime.now().strftime("%Y-%m"):
+            end = datetime.now().date()
+        else:
+            next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            end = next_month - timedelta(days=1)
+    elif start_date and end_date:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        end = datetime.now().date()
+        start = end
+
+    query = db.query(Workload).filter(Workload.date >= start, Workload.date <= end)
+    records = query.all()
+
+    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    records = [r for r in records if r.account in emp_accounts]
+    if team_desc:
+        team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(Employee.team == team_desc, Employee.status == "在职").all()}
+        records = [r for r in records if r.account in team_emp_nos]
+    if name:
+        emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(Employee.name.ilike(f'%{name}%')).all()]
+        records = [r for r in records if r.account in emp_nos]
+    if account:
+        records = [r for r in records if account.lower() in (r.account or '').lower()]
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    headers = ["账号", "姓名", "工号", "班组", "日期"]
+    for field in CORE_METRICS_FIELDS:
+        label = field.split('-')[-1]
+        headers.append(label)
+    writer.writerow(headers)
+
+    for r in records:
+        emp = db.query(Employee).filter(Employee.emp_no == r.account).first()
+        m = r.metrics or {}
+        row = [r.account, emp.name if emp else (r.name or ''), r.emp_no or '',
+               emp.team if emp else (r.team_desc or ''), r.date.isoformat()]
+        for field in CORE_METRICS_FIELDS:
+            val = m.get(field)
+            row.append(val if val is not None else '')
+        writer.writerow(row)
+
+    filename = f"workload_report_{start}_{end}.csv"
+    output.seek(0)
+    log_operation(db, current_user["id"], "export_workload_report", "workloads", None, {"start_date": start.isoformat(), "end_date": end.isoformat()})
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

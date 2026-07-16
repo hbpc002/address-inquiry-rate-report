@@ -23,6 +23,7 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="loadEmployeeEfficiency">查询</el-button>
+              <el-button v-if="userStore.hasPermission('reports.efficiency_export')" type="success" @click="handleExport('employee')">导出</el-button>
             </el-form-item>
           </el-form>
 
@@ -115,6 +116,7 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="loadWarnings">查询</el-button>
+              <el-button v-if="userStore.hasPermission('reports.efficiency_export')" type="success" @click="handleExport('warning')">导出</el-button>
             </el-form-item>
           </el-form>
 
@@ -158,6 +160,7 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="loadRanking">查询</el-button>
+              <el-button v-if="userStore.hasPermission('reports.efficiency_export')" type="success" @click="handleExport('ranking')">导出</el-button>
             </el-form-item>
           </el-form>
 
@@ -218,6 +221,7 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="loadTrend">查询</el-button>
+              <el-button v-if="userStore.hasPermission('reports.efficiency_export')" type="success" @click="handleExport('trend')">导出</el-button>
             </el-form-item>
           </el-form>
 
@@ -346,7 +350,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
+import { useUserStore } from '../stores/user'
+const userStore = useUserStore()
 import { ElMessage } from 'element-plus'
+import { downloadBlob } from '../utils/download'
 import Echart from '../components/Echart.vue'
 import { createLineOptions, createBarOptions, createPieOptions, createHorizontalBarOptions } from '../utils/echarts'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
@@ -529,6 +536,31 @@ async function loadRanking() {
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
   }
+}
+
+function handleExport(type) {
+  const params = { type }
+  if (type === 'employee' || type === 'warning' || type === 'ranking') {
+    const ym = searchEmp.year_month || searchWarn.year_month || searchRank.year_month
+    if (ym) params.year_month = ym
+  }
+  if (type === 'employee') {
+    if (searchEmp.dept) params.dept = searchEmp.dept
+    if (searchEmp.team) params.team = searchEmp.team
+  }
+  if (type === 'ranking') {
+    if (searchRank.dept) params.dept = searchRank.dept
+  }
+  if (type === 'warning') {
+    if (searchWarn.type) params.warn_type = searchWarn.type
+  }
+  if (type === 'trend') {
+    if (searchTrend.start_month) params.start_month = searchTrend.start_month
+    if (searchTrend.end_month) params.end_month = searchTrend.end_month
+    if (searchTrend.emp_no) params.emp_no = searchTrend.emp_no
+    if (searchEmp.year_month) params.year_month = searchEmp.year_month
+  }
+  downloadBlob('/reports/efficiency-export', params, `efficiency_${type}.csv`)
 }
 
 async function loadTrend() {

@@ -635,5 +635,81 @@ def get_personal_report(
             "total_call_duration": round(sum(d.get("call_duration") or 0 for d in daily_stats), 1),
             "total_organize_duration": round(sum(d.get("organize_duration") or 0 for d in daily_stats), 1)
         },
-        "daily_stats": daily_stats
+            "daily_stats": daily_stats
     }
+
+
+@router.get("/report/export")
+def export_checkin_report(
+    date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    team: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """导出签入签出报表 CSV"""
+    require_permission(current_user, "checkin_report.export")
+
+    from datetime import timedelta
+    if date:
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+        query_start = d
+        query_end = d
+    elif year_month:
+        query_start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
+        if year_month == datetime.now().strftime("%Y-%m"):
+            query_end = datetime.now().date()
+        else:
+            next_month = (query_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            query_end = next_month - timedelta(days=1)
+    elif start_date and end_date:
+        query_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        query_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        query_start = datetime.now().date()
+        query_end = query_start
+
+    query = db.query(Checkin).join(Employee, Checkin.emp_no == Employee.emp_no, isouter=True)
+    query = query.filter(
+        func.date(Checkin.checkin_time) >= query_start,
+        func.date(Checkin.checkin_time) <= query_end
+    )
+    checkins = query.all()
+    checkins = [c for c in checkins if c.dept and c.dept.startswith(TARGET_DEPT)]
+
+    if team:
+        emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(Employee.team == team).all()]
+        checkins = [c for c in checkins if c.emp_no in emp_nos]
+    if name:
+        checkins = [c for c in checkins if name.lower() in c.name.lower()]
+    if emp_no:
+        checkins = [c for c in checkins if emp_no.lower() in c.emp_no.lower()]
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["账号", "姓名", "部门", "签入时间", "签出时间", "工作时长(h)", "日期"])
+    for c in checkins:
+        duration = 0.0
+        if c.checkout_time and c.checkin_time:
+            duration = round((c.checkout_time - c.checkin_time).total_seconds() / 3600, 1)
+        writer.writerow([
+            c.emp_no, c.name, c.dept or "",
+            c.checkin_time.strftime('%Y-%m-%d %H:%M') if c.checkin_time else "",
+            c.checkout_time.strftime('%Y-%m-%d %H:%M') if c.checkout_time else "",
+            duration,
+            c.checkin_time.strftime('%Y-%m-%d') if c.checkin_time else "",
+        ])
+
+    filename = f"checkin_report_{query_start}_{query_end}.csv"
+    output.seek(0)
+    log_operation(db, current_user["id"], "export_checkin_report", "checkins", None, {"start_date": query_start.isoformat(), "end_date": query_end.isoformat()})
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

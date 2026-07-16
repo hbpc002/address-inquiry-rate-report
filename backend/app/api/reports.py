@@ -11,6 +11,8 @@ from app.models.employee import Employee
 from app.models.daily_report import DailyReport
 from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
+from app.models.workload import Workload
+from app.models.attendance_config import AttendanceConfig
 from app.schemas.daily_report import DailyReportResponse, DailyReportListResponse
 from app.core.security import get_current_user, require_permission
 from app.utils.logger import log_operation
@@ -556,3 +558,359 @@ def recalculate_attendance(
     db.commit()
     log_operation(db, current_user["id"], "recalculate_attendance", "reports", None, {"start_date": start_date, "end_date": end_date, "count": count})
     return {"message": f"重算完成，共处理{count}条记录", "count": count}
+
+
+@router.get("/dashboard-export")
+def export_dashboard(
+    year_month: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """导出仪表盘全部数据为 CSV（多段：统计、每日趋势、班组工时、每日产量、班组产量）"""
+    require_permission(current_user, "reports.dashboard_export")
+
+    def _get_ym():
+        now = datetime.now()
+        return now.year, now.month
+
+    def _get_long_hour_threshold():
+        config = db.query(AttendanceConfig).filter(AttendanceConfig.key == "long_hour_threshold").first()
+        if config and config.value:
+            try:
+                return float(config.value)
+            except ValueError:
+                pass
+        return 9.5
+
+    if year_month:
+        parts = year_month.split("-")
+        year, month = int(parts[0]), int(parts[1])
+    else:
+        year, month = _get_ym()
+
+    from calendar import monthrange
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # === Section 1: Stats ===
+    writer.writerow(["== 月度统计 =="])
+    employee_count = db.query(Employee).filter(Employee.status == "在职").count()
+    latest_date = db.query(func.max(DailyReport.schedule_date)).scalar()
+    month_reports = db.query(DailyReport).filter(
+        extract("year", DailyReport.schedule_date) == year,
+        extract("month", DailyReport.schedule_date) == month,
+    ).all()
+    monthly_total = len(month_reports)
+    monthly_normal = len([r for r in month_reports if r.status == "正常"])
+    monthly_absent = len([r for r in month_reports if r.status == "缺勤"])
+    monthly_late = len([r for r in month_reports if r.status == "迟到"])
+    monthly_leave = len([r for r in month_reports if r.status == "请假"])
+    monthly_timeoff = len([r for r in month_reports if r.status == "休息"])
+    monthly_actual_hours = sum(float(r.actual_hours or 0) for r in month_reports)
+    monthly_scheduled_hours = sum(float(r.scheduled_hours or 0) for r in month_reports)
+    monthly_overtime_hours = sum(float(r.overtime_hours or 0) for r in month_reports)
+    attendance_rate = round(monthly_normal / monthly_total * 100, 1) if monthly_total > 0 else 0
+    owed_hours = max(0, monthly_scheduled_hours - monthly_actual_hours - monthly_overtime_hours)
+    writer.writerow(["总人数", "在职人数", "最新数据日期", "应出勤人次", "正常", "迟到", "缺勤", "请假", "休息", "计划工时", "实际工时", "加班工时", "欠时工时", "出勤率(%)"])
+    writer.writerow([
+        employee_count, employee_count,
+        latest_date.isoformat() if latest_date else "",
+        monthly_total, monthly_normal, monthly_late, monthly_absent, monthly_leave, monthly_timeoff,
+        round(monthly_scheduled_hours, 1), round(monthly_actual_hours, 1),
+        round(monthly_overtime_hours, 1), round(owed_hours, 1), attendance_rate
+    ])
+    writer.writerow([])
+
+    # === Section 2: Daily Trend ===
+    writer.writerow(["== 每日工时趋势 =="])
+    threshold = _get_long_hour_threshold()
+    rows = db.query(
+        DailyReport.schedule_date, DailyReport.status,
+        DailyReport.actual_hours, DailyReport.scheduled_hours,
+    ).filter(
+        extract("year", DailyReport.schedule_date) == year,
+        extract("month", DailyReport.schedule_date) == month,
+    ).order_by(DailyReport.schedule_date).all()
+    daily = {}
+    for r in rows:
+        d = r.schedule_date.isoformat()
+        if d not in daily:
+            daily[d] = {"date": d, "应到人数": 0, "实际人数": 0, "正常": 0, "迟到": 0, "缺勤": 0,
+                         "请假": 0, "休息": 0, "计划工时": 0.0, "实际工时": 0.0,
+                         "≥9h": 0, "8~9h": 0, "7~8h": 0, "<7h": 0}
+        daily[d]["应到人数"] += 1
+        if r.status != "休息":
+            daily[d]["实际人数"] += 1
+        daily[d][r.status or "未知"] = daily[d].get(r.status, 0) + 1
+        daily[d]["计划工时"] += float(r.scheduled_hours or 0)
+        daily[d]["实际工时"] += float(r.actual_hours or 0)
+        ah = float(r.actual_hours or 0)
+        if ah >= threshold:
+            daily[d]["≥9h"] += 1
+        elif ah >= 8:
+            daily[d]["8~9h"] += 1
+        elif ah >= 7:
+            daily[d]["7~8h"] += 1
+        elif ah > 0:
+            daily[d]["<7h"] += 1
+
+    _, last_day = monthrange(year, month)
+    all_dates = [f"{year}-{month:02d}-{day:02d}" for day in range(1, last_day + 1)]
+    writer.writerow(["日期", "应到人数", "正常", "迟到", "缺勤", "请假", "休息", "计划工时", "实际工时", "≥9h", "8~9h", "7~8h", "<7h"])
+    for d in all_dates:
+        entry = daily.get(d, {"date": d, "应到人数": 0, "实际人数": 0, "正常": 0, "迟到": 0, "缺勤": 0,
+                               "请假": 0, "休息": 0, "计划工时": 0.0, "实际工时": 0.0,
+                               "≥9h": 0, "8~9h": 0, "7~8h": 0, "<7h": 0})
+        writer.writerow([entry["date"], entry["应到人数"], entry.get("正常", 0), entry.get("迟到", 0),
+                         entry.get("缺勤", 0), entry.get("请假", 0), entry.get("休息", 0),
+                         round(entry["计划工时"], 1), round(entry["实际工时"], 1),
+                         entry["≥9h"], entry["8~9h"], entry["7~8h"], entry["<7h"]])
+    writer.writerow([])
+
+    # === Section 3: Team Hours ===
+    writer.writerow(["== 班组工时 =="])
+    teams_data = db.query(Employee.team).filter(
+        Employee.status == "在职", Employee.team.isnot(None),
+    ).distinct().all()
+    writer.writerow(["班组", "人数", "计划工时", "实际工时", "正常天数", "迟到天数", "缺勤天数"])
+    for (team_name,) in teams_data:
+        emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.team == team_name).all()]
+        if not emp_ids:
+            continue
+        reports = db.query(DailyReport).filter(
+            DailyReport.emp_id.in_(emp_ids),
+            extract("year", DailyReport.schedule_date) == year,
+            extract("month", DailyReport.schedule_date) == month,
+        ).all()
+        scheduled = sum(float(r.scheduled_hours or 0) for r in reports)
+        actual = sum(float(r.actual_hours or 0) for r in reports)
+        normal = len([r for r in reports if r.status == "正常"])
+        late = len([r for r in reports if r.status == "迟到"])
+        absent = len([r for r in reports if r.status == "缺勤"])
+        writer.writerow([team_name, len(emp_ids), round(scheduled, 1), round(actual, 1), normal, late, absent])
+    writer.writerow([])
+
+    # === Section 4: Daily Production ===
+    writer.writerow(["== 每日产量趋势 =="])
+    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    if emp_accounts:
+        start = date(year, month, 1)
+        _, last_day = monthrange(year, month)
+        end = date(year, month, last_day)
+        records = db.query(Workload).filter(
+            Workload.date >= start, Workload.date <= end,
+            Workload.account.in_(emp_accounts),
+        ).all()
+        prod_daily = {}
+        for r in records:
+            d = r.date.isoformat()
+            if d not in prod_daily:
+                prod_daily[d] = {"通话量": 0, "工单量": 0, "呼出量": 0, "人数": set()}
+            m = r.metrics or {}
+            prod_daily[d]["通话量"] += m.get("呼入人工服务-人工服务-通话次数", 0) or 0
+            prod_daily[d]["工单量"] += m.get("呼入人工服务-工单-生成总量", 0) or 0
+            prod_daily[d]["呼出量"] += m.get("呼出服务-人工呼出呼叫量", 0) or 0
+            prod_daily[d]["人数"].add(r.account)
+        writer.writerow(["日期", "通话量", "工单量", "呼出量", "人数"])
+        for day_num in range(1, last_day + 1):
+            d = date(year, month, day_num).isoformat()
+            entry = prod_daily.get(d, {"通话量": 0, "工单量": 0, "呼出量": 0, "人数": set()})
+            writer.writerow([d, entry["通话量"], entry["工单量"], entry["呼出量"], len(entry["人数"])])
+        writer.writerow([])
+
+    # === Section 5: Team Production ===
+    writer.writerow(["== 班组产量对比 =="])
+    if emp_accounts:
+        start = date(year, month, 1)
+        _, last_day = monthrange(year, month)
+        end = date(year, month, last_day)
+        employees = db.query(Employee).filter(Employee.status == "在职").all()
+        emp_map = {e.emp_no: e for e in employees}
+        records = db.query(Workload).filter(
+            Workload.date >= start, Workload.date <= end,
+            Workload.account.in_(emp_accounts),
+        ).all()
+        team_prod = {}
+        for r in records:
+            emp = emp_map.get(r.account)
+            team = emp.team if emp and emp.team else "未知班组"
+            if team not in team_prod:
+                team_prod[team] = {"通话量": 0, "工单量": 0, "呼出量": 0, "_people": set()}
+            m = r.metrics or {}
+            team_prod[team]["通话量"] += m.get("呼入人工服务-人工服务-通话次数", 0) or 0
+            team_prod[team]["工单量"] += m.get("呼入人工服务-工单-生成总量", 0) or 0
+            team_prod[team]["呼出量"] += m.get("呼出服务-人工呼出呼叫量", 0) or 0
+            team_prod[team]["_people"].add(r.account)
+        writer.writerow(["班组", "人数", "通话量", "工单量", "呼出量"])
+        for team, data in team_prod.items():
+            writer.writerow([team, len(data["_people"]), data["通话量"], data["工单量"], data["呼出量"]])
+
+    filename = f"dashboard_{year}_{month:02d}.csv"
+    output.seek(0)
+    log_operation(db, current_user["id"], "export_dashboard", "reports", None, {"year_month": f"{year}-{month:02d}"})
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/efficiency-export")
+def export_efficiency(
+    type: str = Query("employee"),
+    year_month: Optional[str] = Query(default=None),
+    dept: Optional[str] = Query(default=None),
+    team: Optional[str] = Query(default=None),
+    start_month: Optional[str] = Query(default=None),
+    end_month: Optional[str] = Query(default=None),
+    emp_no: Optional[str] = Query(default=None),
+    warn_type: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """导出效能监控数据为 CSV（支持 employee/warning/ranking/trend 四种类型）"""
+    require_permission(current_user, "reports.efficiency_export")
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    now = datetime.now()
+    ym = year_month or now.strftime("%Y-%m")
+
+    if type == "employee":
+        writer.writerow(["工号", "姓名", "班组", "部门", "出勤率(%)", "工时效率(%)", "计划工时", "实际工时", "加班", "迟到天数", "缺勤天数", "出勤天数"])
+        parts = ym.split("-")
+        y, m = int(parts[0]), int(parts[1])
+        employees = db.query(Employee).filter(Employee.status == "在职")
+        if team:
+            employees = employees.filter(Employee.team == team)
+        if dept:
+            employees = employees.filter(Employee.dept == dept)
+        for emp in employees.all():
+            reports = db.query(DailyReport).filter(
+                DailyReport.emp_id == emp.id,
+                extract("year", DailyReport.schedule_date) == y,
+                extract("month", DailyReport.schedule_date) == m,
+            ).all()
+            total = len(reports)
+            if total == 0:
+                continue
+            normal = len([r for r in reports if r.status == "正常"])
+            late = len([r for r in reports if r.status == "迟到"])
+            absent = len([r for r in reports if r.status == "缺勤"])
+            scheduled = sum(float(r.scheduled_hours or 0) for r in reports)
+            actual = sum(float(r.actual_hours or 0) for r in reports)
+            overtime = sum(float(r.overtime_hours or 0) for r in reports)
+            work_days = len([r for r in reports if r.status not in ("休息", "缺勤")])
+            attendance_rate = round(normal / total * 100, 1) if total > 0 else 0
+            efficiency_rate = round(actual / scheduled * 100, 1) if scheduled > 0 else 0
+            writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "",
+                           attendance_rate, efficiency_rate, round(scheduled, 1),
+                           round(actual, 1), round(overtime, 1), late, absent, work_days])
+
+    elif type == "warning":
+        writer.writerow(["工号", "姓名", "班组", "部门", "预警类型", "次数", "详情"])
+        parts = ym.split("-")
+        y, m = int(parts[0]), int(parts[1])
+        employees = db.query(Employee).filter(Employee.status == "在职").all()
+        for emp in employees:
+            reports = db.query(DailyReport).filter(
+                DailyReport.emp_id == emp.id,
+                extract("year", DailyReport.schedule_date) == y,
+                extract("month", DailyReport.schedule_date) == m,
+            ).all()
+            if not reports:
+                continue
+            late_count = len([r for r in reports if r.status == "迟到"])
+            absent_count = len([r for r in reports if r.status == "缺勤"])
+            actual = sum(float(r.actual_hours or 0) for r in reports)
+            scheduled = sum(float(r.scheduled_hours or 0) for r in reports)
+            efficiency = round(actual / scheduled * 100, 1) if scheduled > 0 else 100
+
+            if warn_type and warn_type not in ("late", "absent", "efficiency"):
+                continue
+
+            if (not warn_type or warn_type == "late") and late_count > 0:
+                writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", "迟到预警", late_count, f"迟到{late_count}次"])
+            if (not warn_type or warn_type == "absent") and absent_count > 0:
+                writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", "缺勤预警", absent_count, f"缺勤{absent_count}次"])
+            if (not warn_type or warn_type == "efficiency") and efficiency < 80:
+                writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", "效率预警", 1, f"工时效率{efficiency}%"])
+
+    elif type == "ranking":
+        writer.writerow(["排名", "工号", "姓名", "班组", "部门", "效能得分", "出勤率(%)", "迟到天数", "缺勤天数"])
+        parts = ym.split("-")
+        y, m = int(parts[0]), int(parts[1])
+        employees = db.query(Employee).filter(Employee.status == "在职")
+        if dept:
+            employees = employees.filter(Employee.dept == dept)
+        rankings = []
+        for emp in employees.all():
+            reports = db.query(DailyReport).filter(
+                DailyReport.emp_id == emp.id,
+                extract("year", DailyReport.schedule_date) == y,
+                extract("month", DailyReport.schedule_date) == m,
+            ).all()
+            if not reports:
+                continue
+            total = len(reports)
+            normal = len([r for r in reports if r.status == "正常"])
+            scheduled = sum(float(r.scheduled_hours or 0) for r in reports)
+            actual = sum(float(r.actual_hours or 0) for r in reports)
+            late = len([r for r in reports if r.status == "迟到"])
+            absent = len([r for r in reports if r.status == "缺勤"])
+            attendance_rate = round(normal / total * 100, 1) if total > 0 else 0
+            efficiency_rate = round(actual / scheduled * 100, 1) if scheduled > 0 else 0
+            score = round((attendance_rate + efficiency_rate) / 2, 1)
+            rankings.append((score, emp.emp_no, emp.name, emp.team, emp.dept or "", attendance_rate, late, absent))
+        rankings.sort(key=lambda x: x[0], reverse=True)
+        for i, (score, en, name, team, dept_name, att_rate, late_c, absent_c) in enumerate(rankings, 1):
+            writer.writerow([i, en, name, team, dept_name, score, att_rate, late_c, absent_c])
+
+    elif type == "trend":
+        writer.writerow(["月份", "工号", "姓名", "出勤率(%)", "工时效率(%)", "计划工时", "实际工时", "迟到天数", "缺勤天数", "出勤天数"])
+        if not emp_no:
+            writer.writerow(["请选择员工"])
+        else:
+            emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+            if emp:
+                sm = start_month or ym
+                em = end_month or ym
+                start_parts = sm.split("-")
+                end_parts = em.split("-")
+                cur_y, cur_m = int(start_parts[0]), int(start_parts[1])
+                end_y, end_m = int(end_parts[0]), int(end_parts[1])
+                while (cur_y < end_y) or (cur_y == end_y and cur_m <= end_m):
+                    reports = db.query(DailyReport).filter(
+                        DailyReport.emp_id == emp.id,
+                        extract("year", DailyReport.schedule_date) == cur_y,
+                        extract("month", DailyReport.schedule_date) == cur_m,
+                    ).all()
+                    total = len(reports)
+                    if total > 0:
+                        normal = len([r for r in reports if r.status == "正常"])
+                        late = len([r for r in reports if r.status == "迟到"])
+                        absent = len([r for r in reports if r.status == "缺勤"])
+                        scheduled = sum(float(r.scheduled_hours or 0) for r in reports)
+                        actual = sum(float(r.actual_hours or 0) for r in reports)
+                        work_days = len([r for r in reports if r.status not in ("休息", "缺勤")])
+                        att_rate = round(normal / total * 100, 1) if total > 0 else 0
+                        eff_rate = round(actual / scheduled * 100, 1) if scheduled > 0 else 0
+                        ym_label = f"{cur_y}-{cur_m:02d}"
+                        writer.writerow([ym_label, emp.emp_no, emp.name, att_rate, eff_rate,
+                                       round(scheduled, 1), round(actual, 1), late, absent, work_days])
+                    cur_m += 1
+                    if cur_m > 12:
+                        cur_m = 1
+                        cur_y += 1
+
+    filename = f"efficiency_{type}_{ym}.csv"
+    output.seek(0)
+    log_operation(db, current_user["id"], "export_efficiency", "reports", None, {"type": type, "year_month": ym})
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

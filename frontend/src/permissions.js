@@ -33,6 +33,7 @@ export const PERMISSION_REGISTRY = {
     label: '签入签出报表',
     permissions: {
       view: '查看',
+      export: '导出',
     },
   },
   workload: {
@@ -47,6 +48,7 @@ export const PERMISSION_REGISTRY = {
     label: '工作量报表',
     permissions: {
       view: '查看',
+      export: '导出',
     },
   },
   reports: {
@@ -55,6 +57,8 @@ export const PERMISSION_REGISTRY = {
       view: '查看',
       recalculate: '重算考勤',
       export: '导出报表',
+      dashboard_export: '仪表盘导出',
+      efficiency_export: '效能监控导出',
     },
   },
   shift_types: {

@@ -2,7 +2,10 @@
   <div class="workload-report">
     <el-card>
       <template #header>
-        <span>工作量报表</span>
+        <div class="card-header">
+          <span>工作量报表</span>
+          <el-button v-if="userStore.hasPermission('workload_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
+        </div>
       </template>
 
       <el-form inline>
@@ -227,6 +230,9 @@ import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
+import { useUserStore } from '../stores/user'
+const userStore = useUserStore()
+import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
 const tableData = ref([])
@@ -644,6 +650,23 @@ function handleSortChange({ prop, order }) {
   currentPage.value = 1
 }
 
+function handleExport() {
+  const params = {}
+  if (searchForm.type === 'day' && searchForm.date) {
+    params.start_date = searchForm.date
+    params.end_date = searchForm.date
+  } else if (searchForm.type === 'month' && searchForm.month) {
+    params.year_month = searchForm.month
+  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
+    params.start_date = searchForm.start_date
+    params.end_date = searchForm.end_date
+  }
+  if (searchForm.name) params.name = searchForm.name
+  if (searchForm.account) params.account = searchForm.account
+  if (searchForm.team_desc) params.team_desc = searchForm.team_desc
+  downloadBlob('/workloads/report/export', params, `workload_report.csv`)
+}
+
 function handleTypeChange() {
   const d = new Date()
   if (searchForm.type === 'day') {
@@ -839,6 +862,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .stats-row {
   margin-bottom: 20px;
   padding: 15px;

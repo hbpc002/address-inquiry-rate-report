@@ -2,7 +2,10 @@
   <div class="checkin-report">
     <el-card>
       <template #header>
-        <span>签入签出报表</span>
+        <div class="card-header">
+          <span>签入签出报表</span>
+          <el-button v-if="userStore.hasPermission('checkin_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
+        </div>
       </template>
 
       <el-form inline>
@@ -388,6 +391,9 @@ import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
+import { useUserStore } from '../stores/user'
+const userStore = useUserStore()
+import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
 const tableData = ref([])
@@ -683,6 +689,22 @@ async function loadData() {
   }
 }
 
+function handleExport() {
+  const params = {}
+  if (searchForm.type === 'day' && searchForm.date) {
+    params.date = searchForm.date
+  } else if (searchForm.type === 'month' && searchForm.month) {
+    params.year_month = searchForm.month
+  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
+    params.start_date = searchForm.start_date
+    params.end_date = searchForm.end_date
+  }
+  if (searchForm.name) params.name = searchForm.name
+  if (searchForm.emp_no) params.emp_no = searchForm.emp_no
+  if (searchForm.team) params.team = searchForm.team
+  downloadBlob('/checkins/report/export', params, `checkin_report.csv`)
+}
+
 function getDetailDateRange() {
   let startDate, endDate
   if (searchForm.type === 'day' && searchForm.date) {
@@ -738,6 +760,11 @@ onMounted(() => {
   padding: 15px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 .text-danger {
   color: #ee6666;
