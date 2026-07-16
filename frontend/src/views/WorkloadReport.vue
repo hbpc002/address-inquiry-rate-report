@@ -85,6 +85,7 @@
                 <el-table :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
                   <el-table-column label="排名" width="55" type="index" />
                   <el-table-column label="班组" prop="team" />
+                  <el-table-column label="组长" prop="leader" min-width="60" />
                   <el-table-column label="人数" width="55" prop="count" />
                   <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
                   <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
@@ -144,17 +145,17 @@
             {{ row._call_hourly_rate.toFixed(1) }}
           </template>
         </el-table-column>
-        <el-table-column label="接话绩效" width="100" sortable="custom" prop="_call_salary">
+        <el-table-column label="接话绩效(预测)" width="100" sortable="custom" prop="_call_salary">
           <template #default="{ row }">
             {{ row._call_salary.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column label="满意度绩效" width="100" sortable="custom" prop="_sat_salary">
+        <el-table-column label="满意度绩效(预测)" width="100" sortable="custom" prop="_sat_salary">
           <template #default="{ row }">
             {{ row._sat_salary !== null ? row._sat_salary.toFixed(2) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="合计绩效" width="100" sortable="custom" prop="_total_salary">
+        <el-table-column label="合计绩效(预测)" width="100" sortable="custom" prop="_total_salary">
           <template #default="{ row }">
             {{ row._total_salary.toFixed(2) }}
           </template>
@@ -228,7 +229,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
-import { createPieOptions, CHART_COLORS } from '../utils/echarts'
+import { createPieOptions, createBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
 import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
@@ -396,11 +397,15 @@ const teamRanking = computed(() => {
         total_calls_all: 0, total_calls_member: 0,
         total_duration: 0, total_work_duration_member: 0,
         total_ticket_count: 0,
-        total_sat_numerator: 0, total_sat_denominator: 0
+        total_sat_numerator: 0, total_sat_denominator: 0,
+        leaders: []
       }
     }
     const t = teamMap[team]
     t.count_all++
+    if (d.role === '组长' && d.name) {
+      t.leaders.push(d.name)
+    }
     const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
     t.total_calls_all += calls
     t.total_duration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
@@ -423,6 +428,7 @@ const teamRanking = computed(() => {
       const checkinHours = data.total_work_duration_member / 3600
       return {
         team,
+        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || '',
         count: data.count_all,
         count_member: data.count_member,
         total_calls: data.total_calls_all,
@@ -464,6 +470,17 @@ const teamChartData = computed(() => {
     }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8)
+})
+
+const teamMemberChartData = computed(() => {
+  if (filterType.value !== 'team' || !filterValue.value) return []
+  const members = tableData.value.filter(d => d.team_desc === filterValue.value)
+  return members
+    .map(d => ({
+      name: d.name || '未知',
+      value: getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    }))
+    .sort((a, b) => b.value - a.value)
 })
 
 const totalCallSum = computed(() => {
@@ -639,6 +656,17 @@ const paginatedData = computed(() => {
 })
 
 const teamChartOptions = computed(() => {
+  if (filterType.value === 'team' && filterValue.value) {
+    const data = teamMemberChartData.value
+    if (!data.length) return {}
+    return createBarOptions(
+      data.map(d => d.name),
+      data.map(d => d.value),
+      `${filterValue.value} 成员产量`,
+      '姓名',
+      '通话量'
+    )
+  }
   if (!teamChartData.value.length) return {}
   return createPieOptions(teamChartData.value, '班组产量占比', undefined, '产量')
 })

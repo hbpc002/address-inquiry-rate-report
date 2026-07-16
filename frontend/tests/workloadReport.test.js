@@ -54,11 +54,15 @@ function makeTeamRanking(data) {
         total_calls_all: 0, total_calls_member: 0,
         total_duration: 0, total_work_duration_member: 0,
         total_ticket_count: 0,
-        total_sat_numerator: 0, total_sat_denominator: 0
+        total_sat_numerator: 0, total_sat_denominator: 0,
+        leaders: []
       }
     }
     const t = teamMap[team]
     t.count_all++
+    if (d.role === '组长' && d.name) {
+      t.leaders.push(d.name)
+    }
     const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
     t.total_calls_all += calls
     t.total_duration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
@@ -81,6 +85,7 @@ function makeTeamRanking(data) {
       const checkinHours = data.total_work_duration_member / 3600
       return {
         team,
+        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || '',
         count: data.count_all,
         count_member: data.count_member,
         total_calls: data.total_calls_all,
@@ -122,6 +127,16 @@ function makeTeamChartData(data) {
     }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8)
+}
+
+function makeTeamMemberChartData(data, filterTeam) {
+  const members = data.filter(d => d.team_desc === filterTeam)
+  return members
+    .map(d => ({
+      name: d.name || '未知',
+      value: getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
+    }))
+    .sort((a, b) => b.value - a.value)
 }
 
 function handlePieClick(name, filterType, filterValue) {
@@ -330,6 +345,7 @@ describe('WorkloadReport - 格式化函数测试', () => {
       const result = makeTeamRanking(data)
       expect(result).toHaveLength(2)
       const teamA = result.find(r => r.team === 'A组')
+      expect(teamA.leader).toBe('')
       expect(teamA.count).toBe(2)
       expect(teamA.count_member).toBe(2)
       expect(teamA.total_calls).toBe(30)
@@ -354,13 +370,14 @@ describe('WorkloadReport - 格式化函数测试', () => {
     })
     it('should handle teams with 组长/师傅 separately', () => {
       const data = [
-        { role: '组员', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话总时长(秒)': 4000, '总体-工作总时长(秒)': 22000, '呼入人工服务-满意度-非常满意量': 10, '呼入人工服务-满意度-满意量': 5, '呼入人工服务-满意度-一般量': 3, '呼入人工服务-满意度-不满意量': 1, '呼入人工服务-满意度-非常不满意量': 1, '呼入人工服务-工单-生成总量': 8 } },
-        { role: '组长', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话总时长(秒)': 1800, '总体-工作总时长(秒)': 20000, '呼入人工服务-满意度-非常满意量': 8, '呼入人工服务-满意度-满意量': 1, '呼入人工服务-满意度-一般量': 1, '呼入人工服务-满意度-不满意量': 0, '呼入人工服务-满意度-非常不满意量': 0, '呼入人工服务-工单-生成总量': 5 } },
-        { role: '师傅', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5, '呼入人工服务-人工服务-通话总时长(秒)': 900, '总体-工作总时长(秒)': 18000, '呼入人工服务-满意度-非常满意量': 4, '呼入人工服务-满意度-满意量': 1, '呼入人工服务-满意度-一般量': 0, '呼入人工服务-满意度-不满意量': 0, '呼入人工服务-满意度-非常不满意量': 0, '呼入人工服务-工单-生成总量': 2 } }
+        { role: '组员', name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话总时长(秒)': 4000, '总体-工作总时长(秒)': 22000, '呼入人工服务-满意度-非常满意量': 10, '呼入人工服务-满意度-满意量': 5, '呼入人工服务-满意度-一般量': 3, '呼入人工服务-满意度-不满意量': 1, '呼入人工服务-满意度-非常不满意量': 1, '呼入人工服务-工单-生成总量': 8 } },
+        { role: '组长', name: '李四', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话总时长(秒)': 1800, '总体-工作总时长(秒)': 20000, '呼入人工服务-满意度-非常满意量': 8, '呼入人工服务-满意度-满意量': 1, '呼入人工服务-满意度-一般量': 1, '呼入人工服务-满意度-不满意量': 0, '呼入人工服务-满意度-非常不满意量': 0, '呼入人工服务-工单-生成总量': 5 } },
+        { role: '师傅', name: '王五', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5, '呼入人工服务-人工服务-通话总时长(秒)': 900, '总体-工作总时长(秒)': 18000, '呼入人工服务-满意度-非常满意量': 4, '呼入人工服务-满意度-满意量': 1, '呼入人工服务-满意度-一般量': 0, '呼入人工服务-满意度-不满意量': 0, '呼入人工服务-满意度-非常不满意量': 0, '呼入人工服务-工单-生成总量': 2 } }
       ]
       const result = makeTeamRanking(data)
       expect(result).toHaveLength(1)
       const teamA = result[0]
+      expect(teamA.leader).toBe('李四')
       expect(teamA.count).toBe(3)
       expect(teamA.count_member).toBe(1)
       expect(teamA.total_calls).toBe(35)
@@ -374,6 +391,7 @@ describe('WorkloadReport - 格式化函数测试', () => {
       ]
       const result = makeTeamRanking(data)
       expect(result[0].team).toBe('未知班组')
+      expect(result[0].leader).toBe('')
       expect(result[0].total_ticket_count).toBe(0)
       expect(result[0].avg_calls_per_person_all).toBe(5)
       expect(result[0].avg_calls_per_person_member).toBe(5)
@@ -442,6 +460,50 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(result[0].name).toBe('未知班组')
       expect(result[0].totalTicket).toBe(0)
       expect(result[0].tiDanLv).toBe(0)
+    })
+  })
+
+  describe('teamMemberChartData', () => {
+    it('should return member-level data sorted by call count descending', () => {
+      const data = [
+        { name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } },
+        { name: '李四', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30 } },
+        { name: '王五', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20 } },
+        { name: '赵六', team_desc: 'B组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 50 } }
+      ]
+      const result = makeTeamMemberChartData(data, 'A组')
+      expect(result).toHaveLength(3)
+      expect(result[0].name).toBe('李四')
+      expect(result[0].value).toBe(30)
+      expect(result[1].name).toBe('王五')
+      expect(result[1].value).toBe(20)
+      expect(result[2].name).toBe('张三')
+      expect(result[2].value).toBe(10)
+    })
+    it('should handle members with zero calls', () => {
+      const data = [
+        { name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 0 } },
+        { name: '李四', team_desc: 'A组', aggregated_metrics: {} }
+      ]
+      const result = makeTeamMemberChartData(data, 'A组')
+      expect(result).toHaveLength(2)
+      expect(result[0].value).toBe(0)
+      expect(result[1].value).toBe(0)
+    })
+    it('should return empty array for non-matching team', () => {
+      const data = [
+        { name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } }
+      ]
+      const result = makeTeamMemberChartData(data, '不存在的组')
+      expect(result).toHaveLength(0)
+    })
+    it('should use name field for each member', () => {
+      const data = [
+        { name: '测试1', team_desc: 'X组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5 } },
+        { name: '测试2', team_desc: 'X组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 3 } }
+      ]
+      const result = makeTeamMemberChartData(data, 'X组')
+      expect(result.map(r => r.name)).toEqual(['测试1', '测试2'])
     })
   })
 
