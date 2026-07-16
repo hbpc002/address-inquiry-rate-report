@@ -364,15 +364,24 @@ class TestWorkloadReport:
                 Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001",
                          team_desc=f"{ORG_PREFIX}热线一组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 28800, "呼入人工服务-人工服务-通话次数": 30,
-                                  "呼入人工服务-工单-生成总量": 10, "人工服务-满意度-满意率": 98.5}, import_batch="batch001"),
+                                  "呼入人工服务-工单-生成总量": 10, "人工服务-满意度-满意率": 98.5,
+                                  "呼入人工服务-满意度-非常满意量": 10, "呼入人工服务-满意度-满意量": 15,
+                                  "呼入人工服务-满意度-一般量": 2, "呼入人工服务-满意度-不满意量": 1,
+                                  "呼入人工服务-满意度-非常不满意量": 0}, import_batch="batch001"),
                 Workload(date=date(2026, 6, 28), province="广西", account="STTR00002", name="李四", emp_no="1002",
                          team_desc=f"{ORG_PREFIX}热线二组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 25200, "呼入人工服务-人工服务-通话次数": 20,
-                                  "呼入人工服务-工单-生成总量": 5, "人工服务-满意度-满意率": 95.0}, import_batch="batch001"),
+                                  "呼入人工服务-工单-生成总量": 5, "人工服务-满意度-满意率": 95.0,
+                                  "呼入人工服务-满意度-非常满意量": 8, "呼入人工服务-满意度-满意量": 8,
+                                  "呼入人工服务-满意度-一般量": 2, "呼入人工服务-满意度-不满意量": 1,
+                                  "呼入人工服务-满意度-非常不满意量": 1}, import_batch="batch001"),
                 Workload(date=date(2026, 6, 28), province="广东", account="STTR00003", name="王五", emp_no="1003",
                          team_desc=f"{ORG_PREFIX}热线一组",
                          metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 27000, "呼入人工服务-人工服务-通话次数": 25,
-                                  "呼入人工服务-工单-生成总量": 8, "人工服务-满意度-满意率": 96.0}, import_batch="batch001"),
+                                  "呼入人工服务-工单-生成总量": 8, "人工服务-满意度-满意率": 96.0,
+                                  "呼入人工服务-满意度-非常满意量": 12, "呼入人工服务-满意度-满意量": 10,
+                                  "呼入人工服务-满意度-一般量": 2, "呼入人工服务-满意度-不满意量": 1,
+                                  "呼入人工服务-满意度-非常不满意量": 0}, import_batch="batch001"),
             ]
             for r in records:
                 db.add(r)
@@ -434,6 +443,96 @@ class TestWorkloadReport:
         teams = data["stats"].get("teams", [])
         assert "热线一组" in teams
         assert "热线二组" in teams
+
+    def test_report_satisfaction_rate_from_raw_counts(self):
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        data = resp.json()
+        items = {i["account"]: i["aggregated_metrics"] for i in data["items"]}
+
+        zs = items["STTR00001"]
+        assert zs["呼入人工服务-满意度-非常满意量"] == 10
+        assert zs["呼入人工服务-满意度-满意量"] == 15
+        assert zs["呼入人工服务-满意度-一般量"] == 2
+        assert zs["呼入人工服务-满意度-不满意量"] == 1
+        assert zs["呼入人工服务-满意度-非常不满意量"] == 0
+        assert zs["人工服务-满意度-满意率"] == round((10 + 15) / (10 + 15 + 2 + 1 + 0), 4)
+
+        ls = items["STTR00002"]
+        assert ls["呼入人工服务-满意度-非常满意量"] == 8
+        assert ls["呼入人工服务-满意度-满意量"] == 8
+        assert ls["呼入人工服务-满意度-一般量"] == 2
+        assert ls["呼入人工服务-满意度-不满意量"] == 1
+        assert ls["呼入人工服务-满意度-非常不满意量"] == 1
+        assert ls["人工服务-满意度-满意率"] == round((8 + 8) / (8 + 8 + 2 + 1 + 1), 4)
+
+    def test_report_satisfaction_rate_aggregated_across_days(self):
+        db = SessionLocal()
+        try:
+            db.add(Workload(
+                date=date(2026, 6, 29), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                team_desc="广西分公司>>省中心>>客户服务营销中心>>热线一组",
+                metrics={"总体-签入次数": 1, "总体-工作总时长(秒)": 30000, "呼入人工服务-人工服务-通话次数": 35,
+                         "呼入人工服务-工单-生成总量": 12, "人工服务-满意度-满意率": 99.0,
+                         "呼入人工服务-满意度-非常满意量": 20, "呼入人工服务-满意度-满意量": 10,
+                         "呼入人工服务-满意度-一般量": 1, "呼入人工服务-满意度-不满意量": 0,
+                         "呼入人工服务-满意度-非常不满意量": 0}, import_batch="batch002"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zs = next(i for i in data["items"] if i["account"] == "STTR00001")
+
+        total_very_sat = 10 + 20
+        total_sat = 15 + 10
+        total_general = 2 + 1
+        total_dis = 1 + 0
+        total_very_dis = 0 + 0
+        expected_rate = round((total_very_sat + total_sat) / (total_very_sat + total_sat + total_general + total_dis + total_very_dis), 4)
+        assert zs["aggregated_metrics"]["人工服务-满意度-满意率"] == expected_rate
+
+    def test_report_satisfaction_rate_fallback_when_raw_counts_missing(self):
+        db = SessionLocal()
+        try:
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc="广西分公司>>省中心>>客户服务营销中心>>热线二组",
+                metrics={"总体-签入次数": 1, "人工服务-满意度-满意率": 92.0}, import_batch="batch003"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zl = next(i for i in data["items"] if i["account"] == "STTR00004")
+        assert zl["aggregated_metrics"]["人工服务-满意度-满意率"] == 92.0
+
+    def test_report_satisfaction_rate_zero_denominator(self):
+        db = SessionLocal()
+        try:
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc="广西分公司>>省中心>>客户服务营销中心>>热线二组",
+                metrics={"总体-签入次数": 1, "人工服务-满意度-满意率": 0.0,
+                         "呼入人工服务-满意度-非常满意量": 0, "呼入人工服务-满意度-满意量": 0,
+                         "呼入人工服务-满意度-一般量": 0, "呼入人工服务-满意度-不满意量": 0,
+                         "呼入人工服务-满意度-非常不满意量": 0}, import_batch="batch004"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zl = next(i for i in data["items"] if i["account"] == "STTR00004")
+        assert zl["aggregated_metrics"]["人工服务-满意度-满意率"] is None
 
     def test_report_excludes_resigned_employee(self):
         db = SessionLocal()

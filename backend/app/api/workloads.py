@@ -359,6 +359,22 @@ def get_workload_report(
             else:
                 aggregated[field] = None
 
+        sat_count_fields = [
+            aggregated.get("呼入人工服务-满意度-非常满意量"),
+            aggregated.get("呼入人工服务-满意度-满意量"),
+            aggregated.get("呼入人工服务-满意度-一般量"),
+            aggregated.get("呼入人工服务-满意度-不满意量"),
+            aggregated.get("呼入人工服务-满意度-非常不满意量"),
+        ]
+        if all(c is not None for c in sat_count_fields):
+            denominator = sum(sat_count_fields)
+            if denominator > 0:
+                aggregated["人工服务-满意度-满意率"] = round(
+                    (sat_count_fields[0] + sat_count_fields[1]) / denominator, 4
+                )
+            else:
+                aggregated["人工服务-满意度-满意率"] = None
+
         items.append(WorkloadReportItem(
             account=data["account"],
             name=data["name"],
