@@ -42,6 +42,11 @@
             <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
           </el-select>
         </el-form-item>
+        <el-form-item label="班级">
+          <el-select v-model="searchForm.class_name" placeholder="全部班级" clearable filterable style="width: 120px">
+            <el-option v-for="c in classOptions" :key="c" :label="c" :value="c" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
           <el-button @click="columnSelectorVisible = true">自定义列</el-button>
@@ -76,13 +81,19 @@
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
         <el-col :span="24">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组产量占比</div>
+            <div style="margin-bottom: 10px; font-size: 14px; color: #606266; display: flex; align-items: center; gap: 12px;">
+              <span>班组产量占比</span>
+              <el-radio-group v-model="viewMode" size="small">
+                <el-radio-button value="team">按班组</el-radio-button>
+                <el-radio-button value="class">按班级</el-radio-button>
+              </el-radio-group>
+            </div>
             <el-row>
               <el-col :span="8">
                 <Echart :options="teamChartOptions" height="280px" @click="handlePieClick" />
               </el-col>
               <el-col :span="16">
-                <el-table :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
+                <el-table v-if="viewMode === 'team'" :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
                   <el-table-column label="排名" width="55" type="index" />
                   <el-table-column label="班组" prop="team" />
                   <el-table-column label="组长" prop="leader" min-width="60" />
@@ -109,6 +120,24 @@
                   <el-table-column label="接话小时量" width="90" sortable prop="member_call_hourly_rate">
                     <template #default="{ row }">
                       {{ row.member_call_hourly_rate.toFixed(1) }}
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <el-table v-else :data="classRanking" size="small" border stripe max-height="280">
+                  <el-table-column label="排名" width="55" type="index" />
+                  <el-table-column label="班级" prop="name" />
+                  <el-table-column label="班组数" width="65" prop="team_count" />
+                  <el-table-column label="人数" width="55" prop="count" />
+                  <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
+                  <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
+                  <el-table-column label="占比" width="100" sortable prop="total_calls">
+                    <template #default="{ row }">
+                      <span>{{ (row.total_calls / classCallSum * 100).toFixed(1) }}%</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="提单率" width="85" sortable prop="ti_dan_lv">
+                    <template #default="{ row }">
+                      <span>{{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}</span>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -247,6 +276,16 @@ const filterType = ref('')
 const filterValue = ref('')
 const sortBy = ref('')
 const sortOrder = ref('')
+const viewMode = ref('team')
+const teamLeaders = ref({})
+const classOptions = computed(() => {
+  const classes = new Set()
+  teams.value.forEach(t => {
+    const m = t.team && t.team.match(/^(.+?)[\d]+组$/)
+    if (m) classes.add(m[1])
+  })
+  return [...classes].sort()
+})
 
 const now = new Date()
 const defaultMonth = now.toISOString().slice(0, 7)
@@ -261,7 +300,8 @@ const { filters: searchForm, isRestored: searchFormRestored } = usePersistedFilt
     end_date: '',
     name: '',
     account: '',
-    team_desc: ''
+    team_desc: '',
+    class_name: ''
   }
 )
 
@@ -332,6 +372,12 @@ watch(selectedColumns, (val) => {
 }, { deep: true })
 
 watch(() => searchForm.team_desc, () => {
+  if (searchForm.team_desc) searchForm.class_name = ''
+  loadData()
+})
+
+watch(() => searchForm.class_name, () => {
+  if (searchForm.class_name) searchForm.team_desc = ''
   loadData()
 })
 
@@ -432,7 +478,12 @@ const teamRanking = computed(() => {
       const checkinHours = data.total_work_duration_member / 3600
       return {
         team,
-        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || '',
+        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || teamLeaders.value[team] || '',
+        count: data.count_all,
+        count_member: data.count_member,
+        total_calls: data.total_calls_all,
+        total_ticket_count: data.total_ticket_count,
+        total_duration: data.total_duration,
         count: data.count_all,
         count_member: data.count_member,
         total_calls: data.total_calls_all,
@@ -442,7 +493,9 @@ const teamRanking = computed(() => {
         member_call_hourly_rate: checkinHours > 0 ? +(data.total_calls_member / checkinHours).toFixed(1) : 0,
         ti_dan_lv: data.total_calls_all > 0 ? data.total_ticket_count / data.total_calls_all : 0,
         avg_duration: data.total_calls_all > 0 ? +(data.total_duration / data.total_calls_all).toFixed(1) : 0,
-        avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+        avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null,
+        total_sat_numerator: data.total_sat_numerator,
+        total_sat_denominator: data.total_sat_denominator
       }
     })
     .sort((a, b) => b.total_calls - a.total_calls)
@@ -498,6 +551,47 @@ const teamMemberChartData = computed(() => {
 
 const totalCallSum = computed(() => {
   return teamRanking.value.reduce((s, d) => s + d.total_calls, 0)
+})
+
+function extractClass(team) {
+  const m = team && team.match(/^(.+?)[\d]+组$/)
+  return m ? m[1] : team
+}
+
+const classRanking = computed(() => {
+  const classMap = {}
+  teamRanking.value.forEach(t => {
+    const cls = extractClass(t.team)
+    if (!cls) return
+    if (!classMap[cls]) {
+      classMap[cls] = { count: 0, team_count: 0, total_calls: 0, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
+    }
+    const c = classMap[cls]
+    c.count += t.count
+    c.team_count++
+    c.total_calls += t.total_calls
+    c.total_ticket_count += t.total_ticket_count
+    c.total_duration += t.total_duration
+    c.total_sat_numerator += t.total_sat_numerator || 0
+    c.total_sat_denominator += t.total_sat_denominator || 0
+  })
+  return Object.entries(classMap)
+    .map(([name, data]) => ({
+      name,
+      team_count: data.team_count,
+      count: data.count,
+      total_calls: data.total_calls,
+      total_ticket_count: data.total_ticket_count,
+      total_duration: data.total_duration,
+      ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
+      avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
+      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+    }))
+    .sort((a, b) => b.total_calls - a.total_calls)
+})
+
+const classCallSum = computed(() => {
+  return classRanking.value.reduce((s, d) => s + d.total_calls, 0)
 })
 
 const averageCallDuration = computed(() => {
@@ -684,6 +778,14 @@ const teamChartOptions = computed(() => {
     options.grid.bottom = '25%'
     return options
   }
+  if (viewMode.value === 'class' && classRanking.value.length) {
+    return createPieOptions(
+      classRanking.value.map(r => ({ name: r.name, value: r.total_calls, peopleCount: r.count })),
+      '班级产量占比',
+      undefined,
+      '产量'
+    )
+  }
   if (!teamChartData.value.length) return {}
   return createPieOptions(teamChartData.value, '班组产量占比', undefined, '产量')
 })
@@ -709,6 +811,7 @@ function handleExport() {
   if (searchForm.name) params.name = searchForm.name
   if (searchForm.account) params.account = searchForm.account
   if (searchForm.team_desc) params.team_desc = searchForm.team_desc
+  if (searchForm.class_name) params.team_prefix = searchForm.class_name
   downloadBlob('/workloads/report/export', params, `workload_report.csv`)
 }
 
@@ -812,6 +915,19 @@ async function loadTeams() {
   }
 }
 
+async function loadTeamLeaders() {
+  try {
+    const res = await api.get('/employees/leaders')
+    const map = {}
+    ;(res.data || []).forEach(item => {
+      if (item.team) map[item.team] = item.leader
+    })
+    teamLeaders.value = map
+  } catch (e) {
+    console.error(e)
+  }
+}
+
 async function loadData() {
   clearFilter()
   try {
@@ -828,6 +944,7 @@ async function loadData() {
     if (searchForm.name) params.name = searchForm.name
     if (searchForm.account) params.account = searchForm.account
     if (searchForm.team_desc) params.team_desc = searchForm.team_desc
+    if (searchForm.class_name) params.team_prefix = searchForm.class_name
 
     const res = await api.get('/workloads/report', { params })
     const data = res.data.items || []
@@ -901,6 +1018,7 @@ onMounted(async () => {
     handleTypeChange()
   }
   loadTeams()
+  loadTeamLeaders()
   loadData()
   loadMetricsFields()
 })

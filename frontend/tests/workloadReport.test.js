@@ -43,7 +43,7 @@ function getAvgDuration(data) {
   return Math.round(totalDuration / totalCalls * 10) / 10
 }
 
-function makeTeamRanking(data) {
+function makeTeamRanking(data, teamLeaders = {}) {
   const teamMap = {}
   data.forEach(d => {
     const team = d.team_desc || '未知班组'
@@ -85,17 +85,20 @@ function makeTeamRanking(data) {
       const checkinHours = data.total_work_duration_member / 3600
       return {
         team,
-        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || '',
+        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || teamLeaders[team] || '',
         count: data.count_all,
         count_member: data.count_member,
         total_calls: data.total_calls_all,
         total_ticket_count: data.total_ticket_count,
+        total_duration: data.total_duration,
         avg_calls_per_person_all: data.count_all > 0 ? +(data.total_calls_all / data.count_all).toFixed(1) : 0,
         avg_calls_per_person_member: data.count_member > 0 ? +(data.total_calls_member / data.count_member).toFixed(1) : 0,
         member_call_hourly_rate: checkinHours > 0 ? +(data.total_calls_member / checkinHours).toFixed(1) : 0,
         ti_dan_lv: data.total_calls_all > 0 ? data.total_ticket_count / data.total_calls_all : 0,
         avg_duration: data.total_calls_all > 0 ? +(data.total_duration / data.total_calls_all).toFixed(1) : 0,
-        avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+        avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null,
+        total_sat_numerator: data.total_sat_numerator,
+        total_sat_denominator: data.total_sat_denominator
       }
     })
     .sort((a, b) => b.total_calls - a.total_calls)
@@ -147,6 +150,42 @@ function makeTeamMemberChartData(data, filterValue, filterType = 'team', searchF
       value: getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
     }))
     .sort((a, b) => b.value - a.value)
+}
+
+function extractClass(team) {
+  const m = team && team.match(/^(.+?)[\d]+组$/)
+  return m ? m[1] : team
+}
+
+function makeClassRanking(teamRankingData) {
+  const classMap = {}
+  teamRankingData.forEach(t => {
+    const cls = extractClass(t.team)
+    if (!cls) return
+    if (!classMap[cls]) {
+      classMap[cls] = { count: 0, team_count: 0, total_calls: 0, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
+    }
+    const c = classMap[cls]
+    c.count += t.count
+    c.team_count++
+    c.total_calls += t.total_calls
+    c.total_ticket_count += t.total_ticket_count
+    c.total_duration += t.total_duration
+    c.total_sat_numerator += t.total_sat_numerator || 0
+    c.total_sat_denominator += t.total_sat_denominator || 0
+  })
+  return Object.entries(classMap)
+    .map(([name, data]) => ({
+      name,
+      team_count: data.team_count,
+      count: data.count,
+      total_calls: data.total_calls,
+      total_ticket_count: data.total_ticket_count,
+      ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
+      avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
+      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+    }))
+    .sort((a, b) => b.total_calls - a.total_calls)
 }
 
 function handlePieClick(name, filterType, filterValue) {
@@ -555,6 +594,62 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(result).toHaveLength(1)
       expect(result[0].name).toBe('张三')
       expect(result[0].value).toBe(10)
+    })
+  })
+
+  describe('teamRanking - 组长补充', () => {
+    it('should supplement leader from teamLeaders when not in tableData', () => {
+      const data = [
+        { role: '组员', name: '张三', team_desc: '一班1组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } },
+        { role: '组员', name: '李四', team_desc: '一班1组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20 } }
+      ]
+      const leaders = { '一班1组': '王组长', '二班1组': '赵组长' }
+      const result = makeTeamRanking(data, leaders)
+      expect(result).toHaveLength(1)
+      expect(result[0].team).toBe('一班1组')
+      expect(result[0].leader).toBe('王组长')
+    })
+    it('should prefer leader from tableData over teamLeaders', () => {
+      const data = [
+        { role: '组长', name: '张组长', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5 } },
+        { role: '组员', name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10 } }
+      ]
+      const leaders = { 'A组': '外部组长' }
+      const result = makeTeamRanking(data, leaders)
+      expect(result[0].leader).toBe('张组长')
+    })
+  })
+
+  describe('classRanking - 班级聚集', () => {
+    it('should aggregate team data by class prefix', () => {
+      const teamData = [
+        { team: '一班1组', leader: '', count: 5, total_calls: 100, total_ticket_count: 10, total_duration: 5000, total_sat_numerator: 80, total_sat_denominator: 90 },
+        { team: '一班2组', leader: '', count: 4, total_calls: 80, total_ticket_count: 8, total_duration: 4000, total_sat_numerator: 60, total_sat_denominator: 70 },
+        { team: '二班1组', leader: '', count: 6, total_calls: 150, total_ticket_count: 15, total_duration: 7500, total_sat_numerator: 120, total_sat_denominator: 130 }
+      ]
+      const result = makeClassRanking(teamData)
+      expect(result).toHaveLength(2)
+      const yiban = result.find(r => r.name === '一班')
+      expect(yiban.team_count).toBe(2)
+      expect(yiban.count).toBe(9)
+      expect(yiban.total_calls).toBe(180)
+      expect(yiban.total_ticket_count).toBe(18)
+      expect(yiban.ti_dan_lv).toBeCloseTo(0.1, 4)
+      const erban = result.find(r => r.name === '二班')
+      expect(erban.team_count).toBe(1)
+      expect(erban.count).toBe(6)
+      expect(erban.total_calls).toBe(150)
+    })
+    it('should sort by total_calls descending', () => {
+      const teamData = [
+        { team: '一般C组', leader: '', count: 1, total_calls: 30, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 },
+        { team: '一般A组', leader: '', count: 1, total_calls: 50, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 },
+        { team: '一般B组', leader: '', count: 1, total_calls: 40, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
+      ]
+      const result = makeClassRanking(teamData)
+      expect(result[0].total_calls).toBe(50)
+      expect(result[1].total_calls).toBe(40)
+      expect(result[2].total_calls).toBe(30)
     })
   })
 

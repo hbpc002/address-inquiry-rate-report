@@ -275,6 +275,7 @@ def get_workload_report(
     year_month: Optional[str] = None,
     province: Optional[str] = None,
     team_desc: Optional[str] = None,
+    team_prefix: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -311,6 +312,11 @@ def get_workload_report(
     if team_desc:
         team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(
             Employee.team == team_desc, Employee.status == "在职"
+        ).all()}
+        records = [r for r in records if r.account in team_emp_nos]
+    if team_prefix:
+        team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(
+            Employee.team.startswith(team_prefix), Employee.status == "在职"
         ).all()}
         records = [r for r in records if r.account in team_emp_nos]
     if name:
@@ -569,6 +575,7 @@ def export_workload_report(
     end_date: Optional[str] = None,
     year_month: Optional[str] = None,
     team_desc: Optional[str] = None,
+    team_prefix: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -599,6 +606,11 @@ def export_workload_report(
     records = [r for r in records if r.account in emp_accounts]
     if team_desc:
         team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(Employee.team == team_desc, Employee.status == "在职").all()}
+        records = [r for r in records if r.account in team_emp_nos]
+    if team_prefix:
+        team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(
+            Employee.team.startswith(team_prefix), Employee.status == "在职"
+        ).all()}
         records = [r for r in records if r.account in team_emp_nos]
     if name:
         emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(Employee.name.ilike(f'%{name}%')).all()]

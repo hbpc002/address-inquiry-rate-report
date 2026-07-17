@@ -223,6 +223,22 @@ def get_teams(
     return [{"team": r[0], "count": r[1]} for r in results if r[0]]
 
 
+@router.get("/leaders", response_model=list)
+def get_team_leaders(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    results = db.query(Employee.team, Employee.name).filter(
+        Employee.role == "组长",
+        Employee.status == "在职"
+    ).all()
+    seen = {}
+    for team, name in results:
+        if team and team not in seen:
+            seen[team] = name
+    return [{"team": k, "leader": v} for k, v in seen.items()]
+
+
 @router.get("/roles", response_model=list)
 def get_roles(
     db: Session = Depends(get_db),
