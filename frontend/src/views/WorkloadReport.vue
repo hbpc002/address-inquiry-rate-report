@@ -779,12 +779,16 @@ const teamChartOptions = computed(() => {
     return options
   }
   if (viewMode.value === 'class' && classRanking.value.length) {
-    return createPieOptions(
-      classRanking.value.map(r => ({ name: r.name, value: r.total_calls, peopleCount: r.count })),
-      '班级产量占比',
-      undefined,
-      '产量'
-    )
+    if (searchForm.class_name && classRanking.value.length <= 1) {
+      viewMode.value = 'team'
+    } else {
+      return createPieOptions(
+        classRanking.value.map(r => ({ name: r.name, value: r.total_calls, peopleCount: r.count })),
+        '班级产量占比',
+        undefined,
+        '产量'
+      )
+    }
   }
   if (!teamChartData.value.length) return {}
   return createPieOptions(teamChartData.value, '班组产量占比', undefined, '产量')
@@ -859,6 +863,11 @@ function handlePieClick(params) {
   if (!params.name) return
   if (filterType.value === 'team') {
     clearFilter()
+    return
+  }
+  if (viewMode.value === 'class') {
+    searchForm.class_name = params.name
+    viewMode.value = 'team'
     return
   }
   filterType.value = 'team'

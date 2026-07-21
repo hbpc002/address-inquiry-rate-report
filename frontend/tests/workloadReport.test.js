@@ -188,20 +188,24 @@ function makeClassRanking(teamRankingData) {
     .sort((a, b) => b.total_calls - a.total_calls)
 }
 
-function handlePieClick(name, filterType, filterValue) {
-  const state = { filterType, filterValue, currentPage: 1 }
+function handlePieClick(name, filterType, filterValue, viewMode = 'team') {
+  const state = { filterType, filterValue, currentPage: 1, class_name: '' }
   if (name) {
     if (state.filterType === 'team') {
       state.filterType = ''
       state.filterValue = ''
       state.currentPage = 1
+    } else if (viewMode === 'class') {
+      state.class_name = name
+      state.filterType = ''
+      state.filterValue = ''
     } else {
       state.filterType = 'team'
       state.filterValue = name
       state.currentPage = 1
     }
   }
-  return { filterType: state.filterType, filterValue: state.filterValue }
+  return { filterType: state.filterType, filterValue: state.filterValue, class_name: state.class_name }
 }
 
 function formatPieTooltip(name, value, percent, unit, extra) {
@@ -673,6 +677,16 @@ describe('WorkloadReport - 格式化函数测试', () => {
       const result = handlePieClick('', 'name', '张三')
       expect(result.filterType).toBe('name')
       expect(result.filterValue).toBe('张三')
+    })
+    it('should set class_name and switch to team on class mode click', () => {
+      const result = handlePieClick('一班', '', '', 'class')
+      expect(result.class_name).toBe('一班')
+      expect(result.filterType).toBe('')
+    })
+    it('should clear filter in bar chart mode regardless of viewMode', () => {
+      const result = handlePieClick('张三', 'team', 'A组', 'class')
+      expect(result.filterType).toBe('')
+      expect(result.filterValue).toBe('')
     })
   })
 
