@@ -24,6 +24,11 @@ def test_registry_contains_workload():
 def test_registry_contains_workload_report():
     assert "workload_report" in PERMISSION_REGISTRY
     assert PERMISSION_REGISTRY["workload_report"]["label"] == "工作量报表"
+    assert "view_call_salary" in PERMISSION_REGISTRY["workload_report"]["permissions"]
+    assert "view_sat_salary" in PERMISSION_REGISTRY["workload_report"]["permissions"]
+    assert "view_total_salary" in PERMISSION_REGISTRY["workload_report"]["permissions"]
+    assert "view_gap" in PERMISSION_REGISTRY["workload_report"]["permissions"]
+    assert "view_sat_diff" in PERMISSION_REGISTRY["workload_report"]["permissions"]
 
 
 def test_all_keys_contains_salary_config():
@@ -48,6 +53,11 @@ def test_all_keys_contains_new_permissions():
     assert "reports.efficiency_export" in keys
     assert "checkin_report.export" in keys
     assert "workload_report.export" in keys
+    assert "workload_report.view_call_salary" in keys
+    assert "workload_report.view_sat_salary" in keys
+    assert "workload_report.view_total_salary" in keys
+    assert "workload_report.view_gap" in keys
+    assert "workload_report.view_sat_diff" in keys
 
 
 def test_all_keys_count():
@@ -89,6 +99,11 @@ def test_default_permissions_new_keys_admin():
     assert perms["reports.efficiency_export"] is True
     assert perms["checkin_report.export"] is True
     assert perms["workload_report.export"] is True
+    assert perms["workload_report.view_call_salary"] is True
+    assert perms["workload_report.view_sat_salary"] is True
+    assert perms["workload_report.view_total_salary"] is True
+    assert perms["workload_report.view_gap"] is True
+    assert perms["workload_report.view_sat_diff"] is True
 
 
 def test_default_permissions_new_keys_manager():
@@ -100,6 +115,11 @@ def test_default_permissions_new_keys_manager():
     assert perms["reports.efficiency_export"] is True
     assert perms["checkin_report.export"] is True
     assert perms["workload_report.export"] is True
+    assert perms["workload_report.view_call_salary"] is True
+    assert perms["workload_report.view_sat_salary"] is True
+    assert perms["workload_report.view_total_salary"] is True
+    assert perms["workload_report.view_gap"] is True
+    assert perms["workload_report.view_sat_diff"] is True
 
 
 def test_default_permissions_new_keys_user():
@@ -111,3 +131,8 @@ def test_default_permissions_new_keys_user():
     assert perms["reports.efficiency_export"] is False
     assert perms["checkin_report.export"] is False
     assert perms["workload_report.export"] is False
+    assert perms["workload_report.view_call_salary"] is False
+    assert perms["workload_report.view_sat_salary"] is False
+    assert perms["workload_report.view_total_salary"] is False
+    assert perms["workload_report.view_gap"] is False
+    assert perms["workload_report.view_sat_diff"] is False

@@ -174,27 +174,27 @@
             {{ row._call_hourly_rate.toFixed(1) }}
           </template>
         </el-table-column>
-        <el-table-column label="接话绩效(预测)" width="100" sortable="custom" prop="_call_salary">
+        <el-table-column v-if="userStore.hasPermission('workload_report.view_call_salary')" label="接话绩效(预测)" width="100" sortable="custom" prop="_call_salary">
           <template #default="{ row }">
             {{ row._call_salary.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column label="满意度绩效(预测)" width="100" sortable="custom" prop="_sat_salary">
+        <el-table-column v-if="userStore.hasPermission('workload_report.view_sat_salary')" label="满意度绩效(预测)" width="100" sortable="custom" prop="_sat_salary">
           <template #default="{ row }">
             {{ row._sat_salary !== null ? row._sat_salary.toFixed(2) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="合计绩效(预测)" width="100" sortable="custom" prop="_total_salary">
+        <el-table-column v-if="userStore.hasPermission('workload_report.view_total_salary')" label="合计绩效(预测)" width="100" sortable="custom" prop="_total_salary">
           <template #default="{ row }">
             {{ row._total_salary.toFixed(2) }}
           </template>
         </el-table-column>
-        <el-table-column v-for="target in salaryCfg.gapTargets" :key="target" :label="`话务量差额(${target})`" width="110" sortable="custom" :prop="`gap_${target}`">
+        <el-table-column v-if="userStore.hasPermission('workload_report.view_gap')" v-for="target in salaryCfg.gapTargets" :key="target" :label="`话务量差额(${target})`" width="110" sortable="custom" :prop="`gap_${target}`">
           <template #default="{ row }">
             {{ row[`gap_${target}`] }}
           </template>
         </el-table-column>
-        <el-table-column label="满意度差额" width="100" sortable="custom" prop="_sat_diff">
+        <el-table-column v-if="userStore.hasPermission('workload_report.view_sat_diff')" label="满意度差额" width="100" sortable="custom" prop="_sat_diff">
           <template #default="{ row }">
             {{ row._sat_diff !== null ? row._sat_diff.toFixed(2) : '-' }}
           </template>

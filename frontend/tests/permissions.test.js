@@ -16,6 +16,11 @@ describe('PERMISSION_REGISTRY', () => {
   it('should include workload_report entry', () => {
     expect(PERMISSION_REGISTRY.workload_report).toBeDefined()
     expect(PERMISSION_REGISTRY.workload_report.label).toBe('工作量报表')
+    expect(PERMISSION_REGISTRY.workload_report.permissions.view_call_salary).toBe('查看接话绩效')
+    expect(PERMISSION_REGISTRY.workload_report.permissions.view_sat_salary).toBe('查看满意度绩效')
+    expect(PERMISSION_REGISTRY.workload_report.permissions.view_total_salary).toBe('查看合计绩效')
+    expect(PERMISSION_REGISTRY.workload_report.permissions.view_gap).toBe('查看话务量差额')
+    expect(PERMISSION_REGISTRY.workload_report.permissions.view_sat_diff).toBe('查看满意度差额')
   })
 
   it('should include reports.recalculate and reports.export', () => {
@@ -56,6 +61,11 @@ describe('getAllPermissionKeys', () => {
     expect(keys).toContain('reports.export')
     expect(keys).toContain('employees.export')
     expect(keys).toContain('system.export_logs')
+    expect(keys).toContain('workload_report.view_call_salary')
+    expect(keys).toContain('workload_report.view_sat_salary')
+    expect(keys).toContain('workload_report.view_total_salary')
+    expect(keys).toContain('workload_report.view_gap')
+    expect(keys).toContain('workload_report.view_sat_diff')
   })
 
   it('should return all keys for all pages', () => {
@@ -102,6 +112,11 @@ describe('getDefaultPermissions', () => {
     expect(perms['reports.export']).toBe(true)
     expect(perms['employees.export']).toBe(true)
     expect(perms['system.export_logs']).toBe(true)
+    expect(perms['workload_report.view_call_salary']).toBe(true)
+    expect(perms['workload_report.view_sat_salary']).toBe(true)
+    expect(perms['workload_report.view_total_salary']).toBe(true)
+    expect(perms['workload_report.view_gap']).toBe(true)
+    expect(perms['workload_report.view_sat_diff']).toBe(true)
   })
 
   it('should enable new report permissions for manager', () => {
@@ -109,6 +124,11 @@ describe('getDefaultPermissions', () => {
     expect(perms['reports.recalculate']).toBe(true)
     expect(perms['reports.export']).toBe(true)
     expect(perms['employees.export']).toBe(true)
+    expect(perms['workload_report.view_call_salary']).toBe(true)
+    expect(perms['workload_report.view_sat_salary']).toBe(true)
+    expect(perms['workload_report.view_total_salary']).toBe(true)
+    expect(perms['workload_report.view_gap']).toBe(true)
+    expect(perms['workload_report.view_sat_diff']).toBe(true)
   })
 
   it('should disable new report permissions for user', () => {
@@ -116,5 +136,10 @@ describe('getDefaultPermissions', () => {
     expect(perms['reports.recalculate']).toBe(false)
     expect(perms['reports.export']).toBe(false)
     expect(perms['employees.export']).toBe(false)
+    expect(perms['workload_report.view_call_salary']).toBe(false)
+    expect(perms['workload_report.view_sat_salary']).toBe(false)
+    expect(perms['workload_report.view_total_salary']).toBe(false)
+    expect(perms['workload_report.view_gap']).toBe(false)
+    expect(perms['workload_report.view_sat_diff']).toBe(false)
   })
 })
