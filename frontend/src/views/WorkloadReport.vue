@@ -93,7 +93,7 @@
                 <Echart :options="teamChartOptions" height="280px" @click="handlePieClick" />
               </el-col>
               <el-col :span="16">
-                <el-table v-if="viewMode === 'team'" :data="teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
+                <el-table v-if="viewMode === 'team'" :data="classFilter ? classFilteredRanking : teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
                   <el-table-column label="排名" width="55" type="index" />
                   <el-table-column label="班组" prop="team" />
                   <el-table-column label="组长" prop="leader" min-width="60" />
@@ -107,7 +107,7 @@
                   </el-table-column>
                   <el-table-column label="占比" width="100" sortable prop="total_calls">
                     <template #default="{ row }">
-                      <span>{{ (row.total_calls / totalCallSum * 100).toFixed(1) }}%</span>
+                      <span>{{ (row.total_calls / filteredCallSum * 100).toFixed(1) }}%</span>
                     </template>
                   </el-table-column>
                   <el-table-column label="提单率" width="85" sortable prop="ti_dan_lv">
@@ -277,6 +277,7 @@ const filterValue = ref('')
 const sortBy = ref('')
 const sortOrder = ref('')
 const viewMode = ref('team')
+const classFilter = ref('')
 const teamLeaders = ref({})
 const classOptions = computed(() => {
   const classes = new Set()
@@ -379,6 +380,10 @@ watch(() => searchForm.team_desc, () => {
 watch(() => searchForm.class_name, () => {
   if (searchForm.class_name) searchForm.team_desc = ''
   loadData()
+})
+
+watch(viewMode, (val) => {
+  if (val === 'class') classFilter.value = ''
 })
 
 function displayLabel(field) {
@@ -594,6 +599,21 @@ const classCallSum = computed(() => {
   return classRanking.value.reduce((s, d) => s + d.total_calls, 0)
 })
 
+const classFilteredRanking = computed(() => {
+  if (!classFilter.value) return teamRanking.value
+  return teamRanking.value.filter(t => extractClass(t.team) === classFilter.value)
+})
+
+const classFilteredChartData = computed(() => {
+  if (!classFilter.value) return teamChartData.value
+  return teamChartData.value.filter(t => extractClass(t.name) === classFilter.value)
+})
+
+const filteredCallSum = computed(() => {
+  const data = classFilter.value ? classFilteredRanking.value : teamRanking.value
+  return data.reduce((s, d) => s + d.total_calls, 0)
+})
+
 const averageCallDuration = computed(() => {
   let totalDuration = 0
   let totalCalls = 0
@@ -778,17 +798,18 @@ const teamChartOptions = computed(() => {
     options.grid.bottom = '25%'
     return options
   }
+  if (classFilter.value) {
+    const data = classFilteredChartData.value
+    if (!data.length) return {}
+    return createPieOptions(data, `${classFilter.value} 产量占比`, undefined, '产量')
+  }
   if (viewMode.value === 'class' && classRanking.value.length) {
-    if (searchForm.class_name && classRanking.value.length <= 1) {
-      viewMode.value = 'team'
-    } else {
-      return createPieOptions(
-        classRanking.value.map(r => ({ name: r.name, value: r.total_calls, peopleCount: r.count })),
-        '班级产量占比',
-        undefined,
-        '产量'
-      )
-    }
+    return createPieOptions(
+      classRanking.value.map(r => ({ name: r.name, value: r.total_calls, peopleCount: r.count })),
+      '班级产量占比',
+      undefined,
+      '产量'
+    )
   }
   if (!teamChartData.value.length) return {}
   return createPieOptions(teamChartData.value, '班组产量占比', undefined, '产量')
@@ -866,7 +887,7 @@ function handlePieClick(params) {
     return
   }
   if (viewMode.value === 'class') {
-    searchForm.class_name = params.name
+    classFilter.value = params.name
     viewMode.value = 'team'
     return
   }
