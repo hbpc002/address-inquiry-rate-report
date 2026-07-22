@@ -35,6 +35,7 @@ def init_db():
     from app.models.attendance_config import AttendanceConfig
     from app.models.announcement import Announcement
     from app.models.workload import Workload
+    from app.models.field_annotation import FieldAnnotation
 
     Base.metadata.create_all(bind=engine)
     _migrate_db()

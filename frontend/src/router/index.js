@@ -88,6 +88,12 @@ const routes = [
         name: 'SalarySettings',
         component: () => import('../views/SalarySettings.vue'),
         meta: { permission: 'salary_config.view' }
+      },
+      {
+        path: 'field-annotations',
+        name: 'FieldAnnotations',
+        component: () => import('../views/FieldAnnotations.vue'),
+        meta: { permission: 'field_annotations.view' }
       }
     ]
   }

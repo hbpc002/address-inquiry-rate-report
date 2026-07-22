@@ -10,6 +10,7 @@ from app.models.operation_log import OperationLog
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
 from app.models.salary_config import SalaryConfig
+from app.models.field_annotation import FieldAnnotation
 
 __all__ = [
     "Base",
@@ -26,4 +27,5 @@ __all__ = [
     "WorkHourThreshold",
     "AttendanceConfig",
     "SalaryConfig",
+    "FieldAnnotation",
 ]

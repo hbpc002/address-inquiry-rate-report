@@ -113,6 +113,13 @@ PERMISSION_REGISTRY = {
             "view": "查看",
         },
     },
+    "field_annotations": {
+        "label": "字段批注",
+        "permissions": {
+            "view": "查看",
+            "edit": "编辑",
+        },
+    },
 }
 
 

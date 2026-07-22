@@ -65,6 +65,10 @@
           <el-icon><Coin /></el-icon>
           <span>绩效配置</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('field_annotations')" index="/field-annotations">
+          <el-icon><Edit /></el-icon>
+          <span>字段批注</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -106,7 +110,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin, Edit } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const route = useRoute()

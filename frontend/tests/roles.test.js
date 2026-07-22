@@ -5,7 +5,7 @@ describe('Roles page - permission registry', () => {
   it('should have 13 permission groups including salary_config', () => {
     const groups = Object.keys(PERMISSION_REGISTRY)
     expect(groups).toContain('salary_config')
-    expect(groups.length).toBe(13)
+    expect(groups.length).toBe(14)
   })
 
   it('getAllPermissionKeys should include salary_config.view', () => {

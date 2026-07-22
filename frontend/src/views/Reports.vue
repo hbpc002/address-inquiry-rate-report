@@ -96,7 +96,7 @@
             <el-table-column prop="team" label="班组" width="110" />
             <el-table-column prop="dept" label="部门" min-width="130" />
             <el-table-column prop="schedule_type" label="排班类型" width="90" />
-            <el-table-column prop="scheduled_hours" label="排班工时" width="90" />
+            <ColumnWithTip prop="scheduled_hours" label="排班工时" width="90" :annotation="dailyAnnMap['scheduled_hours']" />
             <el-table-column label="时段" width="70">
               <template #default="{ row }">
                 <el-tag v-if="row._totalSegments > 1" size="small" type="info">
@@ -110,46 +110,40 @@
                 {{ row._displayScheduledStart || row.scheduled_start }} - {{ row._displayScheduledEnd || row.scheduled_end }}
               </template>
             </el-table-column>
-            <el-table-column prop="actual_checkin" label="实际签到" width="170">
+            <ColumnWithTip prop="actual_checkin" label="实际签到" width="170" :annotation="dailyAnnMap['actual_checkin']">
               <template #default="{ row }">
                 <span :class="{'text-warning': row._displayLate > 0}">
                   {{ row._displayCheckin || row.actual_checkin?.slice(0, 19) || '-' }}
                 </span>
               </template>
-            </el-table-column>
-            <el-table-column prop="actual_checkout" label="实际签退" width="170">
+            </ColumnWithTip>
+            <ColumnWithTip prop="actual_checkout" label="实际签退" width="170" :annotation="dailyAnnMap['actual_checkout']">
               <template #default="{ row }">
                 <span :class="{'text-warning': row._displayEarly > 0}">
                   {{ row._displayCheckout || row.actual_checkout?.slice(0, 19) || '-' }}
                 </span>
               </template>
-            </el-table-column>
-            <el-table-column label="状态" width="80">
+            </ColumnWithTip>
+            <ColumnWithTip label="状态" width="80" :annotation="dailyAnnMap['status']">
               <template #default="{ row }">
                 <el-tag :type="getStatusType(row._displayStatus || row.status)">{{ row._displayStatus || row.status }}</el-tag>
               </template>
-            </el-table-column>
-            <el-table-column label="迟到(分)" width="85">
+            </ColumnWithTip>
+            <ColumnWithTip label="迟到(分)" width="85" :annotation="dailyAnnMap['late_minutes']">
               <template #default="{ row }">
                 {{ row._displayLate ?? row.late_minutes }}
               </template>
-            </el-table-column>
-            <el-table-column label="早退(分)" width="85">
+            </ColumnWithTip>
+            <ColumnWithTip label="早退(分)" width="85" :annotation="dailyAnnMap['early_minutes']">
               <template #default="{ row }">
                 {{ row._displayEarly ?? row.early_minutes }}
               </template>
-            </el-table-column>
-            <el-table-column width="100">
-              <template #header>
-                实际工时
-                <el-tooltip content="仅计算排班时段内的重叠工时" placement="top">
-                  <span style="color:#909399;cursor:help;font-size:14px;">ⓘ</span>
-                </el-tooltip>
-              </template>
+            </ColumnWithTip>
+            <ColumnWithTip prop="actual_hours" label="实际工时" width="100" :annotation="dailyAnnMap['actual_hours']">
               <template #default="{ row }">
                 {{ row._displayActualHours ?? row.actual_hours }}
               </template>
-            </el-table-column>
+            </ColumnWithTip>
           </el-table>
           <el-pagination
             v-if="dailyPagination.total > dailyPagination.limit"
@@ -235,32 +229,32 @@
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="110" />
             <el-table-column prop="dept" label="部门" min-width="130" />
-            <el-table-column prop="scheduled_hours" label="计划工时" width="90" sortable />
-            <el-table-column prop="actual_hours" label="实际工时" width="90" sortable />
-            <el-table-column prop="overtime_hours" label="加班" width="75" sortable>
+            <ColumnWithTip prop="scheduled_hours" label="计划工时" width="90" sortable :annotation="monthlyAnnMap['scheduled_hours']" />
+            <ColumnWithTip prop="actual_hours" label="实际工时" width="90" sortable :annotation="monthlyAnnMap['actual_hours']" />
+            <ColumnWithTip prop="overtime_hours" label="加班" width="75" sortable :annotation="monthlyAnnMap['overtime_hours']">
               <template #default="{ row }">
                 <span :class="{'text-success': row.overtime_hours > 0}">{{ row.overtime_hours }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="owed_hours" label="欠时" width="75" sortable>
+            </ColumnWithTip>
+            <ColumnWithTip prop="owed_hours" label="欠时" width="75" sortable :annotation="monthlyAnnMap['owed_hours']">
               <template #default="{ row }">
                 <span :class="{'text-danger': row.owed_hours > 0}">{{ row.owed_hours }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="normal_days" label="正常" width="65" sortable />
-            <el-table-column prop="late_days" label="迟到" width="65" sortable>
+            </ColumnWithTip>
+            <ColumnWithTip prop="normal_days" label="正常" width="65" sortable :annotation="monthlyAnnMap['normal_days']" />
+            <ColumnWithTip prop="late_days" label="迟到" width="65" sortable :annotation="monthlyAnnMap['late_days']">
               <template #default="{ row }">
                 <span :class="{'text-warning': row.late_days > 0}">{{ row.late_days }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="early_days" label="早退" width="65" sortable />
-            <el-table-column prop="absent_days" label="缺勤" width="65" sortable>
+            </ColumnWithTip>
+            <ColumnWithTip prop="early_days" label="早退" width="65" sortable :annotation="monthlyAnnMap['early_days']" />
+            <ColumnWithTip prop="absent_days" label="缺勤" width="65" sortable :annotation="monthlyAnnMap['absent_days']">
               <template #default="{ row }">
                 <span :class="{'text-danger': row.absent_days > 0}">{{ row.absent_days }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="leave_days" label="请假" width="65" />
-            <el-table-column prop="timeoff_days" label="休息" width="65" />
+            </ColumnWithTip>
+            <ColumnWithTip prop="leave_days" label="请假" width="65" :annotation="monthlyAnnMap['leave_days']" />
+            <ColumnWithTip prop="timeoff_days" label="休息" width="65" :annotation="monthlyAnnMap['timeoff_days']" />
           </el-table>
           <el-pagination
             v-if="monthlyPagination.total > monthlyPagination.limit"
@@ -350,33 +344,33 @@
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="110" />
             <el-table-column prop="dept" label="部门" min-width="130" />
-            <el-table-column prop="scheduled_hours" label="计划工时" width="90" sortable />
-            <el-table-column prop="actual_hours" label="实际工时" width="90" sortable />
-            <el-table-column prop="overtime_hours" label="加班" width="75" sortable>
+            <ColumnWithTip prop="scheduled_hours" label="计划工时" width="90" sortable :annotation="monthlyAnnMap['scheduled_hours']" />
+            <ColumnWithTip prop="actual_hours" label="实际工时" width="90" sortable :annotation="monthlyAnnMap['actual_hours']" />
+            <ColumnWithTip prop="overtime_hours" label="加班" width="75" sortable :annotation="monthlyAnnMap['overtime_hours']">
               <template #default="{ row }">
                 <span :class="{'text-success': row.overtime_hours > 0}">{{ row.overtime_hours }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="owed_hours" label="欠时" width="75" sortable>
+            </ColumnWithTip>
+            <ColumnWithTip prop="owed_hours" label="欠时" width="75" sortable :annotation="monthlyAnnMap['owed_hours']">
               <template #default="{ row }">
                 <span :class="{'text-danger': row.owed_hours > 0}">{{ row.owed_hours }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="normal_days" label="正常" width="65" sortable />
-            <el-table-column prop="late_days" label="迟到" width="65" sortable>
+            </ColumnWithTip>
+            <ColumnWithTip prop="normal_days" label="正常" width="65" sortable :annotation="monthlyAnnMap['normal_days']" />
+            <ColumnWithTip prop="late_days" label="迟到" width="65" sortable :annotation="monthlyAnnMap['late_days']">
               <template #default="{ row }">
                 <span :class="{'text-warning': row.late_days > 0}">{{ row.late_days }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="early_days" label="早退" width="65" sortable />
-            <el-table-column prop="absent_days" label="缺勤" width="65" sortable>
+            </ColumnWithTip>
+            <ColumnWithTip prop="early_days" label="早退" width="65" sortable :annotation="monthlyAnnMap['early_days']" />
+            <ColumnWithTip prop="absent_days" label="缺勤" width="65" sortable :annotation="monthlyAnnMap['absent_days']">
               <template #default="{ row }">
                 <span :class="{'text-danger': row.absent_days > 0}">{{ row.absent_days }}</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="leave_days" label="请假" width="65" />
-            <el-table-column prop="timeoff_days" label="休息" width="65" />
-            <el-table-column prop="work_days" label="出勤天数" width="85" sortable />
+            </ColumnWithTip>
+            <ColumnWithTip prop="leave_days" label="请假" width="65" :annotation="monthlyAnnMap['leave_days']" />
+            <ColumnWithTip prop="timeoff_days" label="休息" width="65" :annotation="monthlyAnnMap['timeoff_days']" />
+            <ColumnWithTip prop="work_days" label="出勤天数" width="85" sortable :annotation="monthlyAnnMap['work_days']" />
           </el-table>
           <el-pagination
             v-if="rangePagination.total > rangePagination.limit"
@@ -511,9 +505,11 @@ import { ElMessage } from 'element-plus'
 
 const userStore = useUserStore()
 import Echart from '../components/Echart.vue'
+import ColumnWithTip from '../components/ColumnWithTip.vue'
 import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
+import { useFieldAnnotations } from '../composables/useFieldAnnotations'
 
 const savedTab = sessionStorage.getItem('reports-active-tab')
 const activeTab = ref(savedTab || 'daily')
@@ -529,6 +525,11 @@ const rangeAllData = ref([])
 const rankingData = ref([])
 const teams = ref([])
 const depts = ref([])
+
+const dailyAnnotations = useFieldAnnotations('daily')
+const monthlyAnnotations = useFieldAnnotations('monthly')
+const dailyAnnMap = ref({})
+const monthlyAnnMap = ref({})
 
 const dailyStats = reactive({ total: 0, attend: 0, normal: 0, late: 0, absent: 0, rest: 0, rate: 0 })
 const monthlyStats = reactive({ total: 0, scheduled: 0, actual: 0, overtime: 0, owed: 0, workDays: 0 })
@@ -965,6 +966,10 @@ onMounted(() => {
   loadTeams()
   loadDepts()
   loadDaily()
+  Promise.all([
+    dailyAnnotations.loadAnnotations().then(m => { dailyAnnMap.value = m }),
+    monthlyAnnotations.loadAnnotations().then(m => { monthlyAnnMap.value = m }),
+  ])
 })
 </script>
 
