@@ -32,8 +32,9 @@
             </template>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="280">
           <template #default="{ row }">
+            <el-button v-if="userStore.hasPermission('roles.manage') && !row.is_system" type="primary" link @click="handleAssign(row)">分配人员</el-button>
             <el-button v-if="userStore.hasPermission('roles.manage') && !row.is_system" type="primary" link @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="userStore.hasPermission('roles.manage') && !row.is_system" type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
@@ -85,6 +86,33 @@
         <el-button type="primary" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="assignDialogVisible" :title="'分配人员 - ' + (assignRole?.name || '')" width="500px">
+      <el-form label-width="80px">
+        <el-form-item label="选择用户">
+          <el-select
+            v-model="assignUserIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="搜索并选择用户"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="u in allUsers"
+              :key="u.id"
+              :label="u.display_name ? `${u.username} (${u.display_name})` : u.username"
+              :value="u.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="assignDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="assignLoading" @click="handleAssignSubmit">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -101,6 +129,12 @@ const tableData = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const form = reactive({ id: null, name: '', description: '', permissions: [] })
+
+const assignDialogVisible = ref(false)
+const assignRole = ref(null)
+const assignUserIds = ref([])
+const allUsers = ref([])
+const assignLoading = ref(false)
 
 const allKeys = getAllPermissionKeys()
 const checkAll = computed(() => form.permissions.length === allKeys.length)
@@ -223,6 +257,44 @@ async function handleDelete(row) {
     if (e !== 'cancel') {
       ElMessage.error(e.response?.data?.detail || '删除失败')
     }
+  }
+}
+
+async function loadAllUsers() {
+  try {
+    const res = await api.get('/roles/all-users')
+    allUsers.value = res.data
+  } catch (e) {
+    ElMessage.error('加载用户列表失败')
+  }
+}
+
+async function loadRoleUsers(roleId) {
+  try {
+    const res = await api.get(`/roles/${roleId}/users`)
+    assignUserIds.value = res.data.map(u => u.id)
+  } catch (e) {
+    ElMessage.error('加载已分配用户失败')
+  }
+}
+
+async function handleAssign(row) {
+  assignRole.value = row
+  assignUserIds.value = []
+  assignDialogVisible.value = true
+  await Promise.all([loadAllUsers(), loadRoleUsers(row.id)])
+}
+
+async function handleAssignSubmit() {
+  assignLoading.value = true
+  try {
+    await api.put(`/roles/${assignRole.value.id}`, { user_ids: assignUserIds.value })
+    ElMessage.success('分配成功')
+    assignDialogVisible.value = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '分配失败')
+  } finally {
+    assignLoading.value = false
   }
 }
 

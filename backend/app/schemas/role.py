@@ -28,6 +28,10 @@ class RoleResponse(BaseModel):
         from_attributes = True
 
 
+class RoleAssignUsers(BaseModel):
+    user_ids: list[int]
+
+
 class RoleListResponse(BaseModel):
     items: list[RoleResponse]
     total: int
