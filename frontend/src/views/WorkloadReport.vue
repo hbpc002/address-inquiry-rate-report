@@ -130,6 +130,11 @@
                   <el-table-column label="人数" width="55" prop="count" />
                   <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
                   <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
+                  <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
+                    <template #default="{ row }">
+                      <span :style="getMetricStyle('人工服务-满意度-满意率', row.avg_satisfaction)">{{ formatRate(row.avg_satisfaction) }}</span>
+                    </template>
+                  </el-table-column>
                   <el-table-column label="占比" width="100" sortable prop="total_calls">
                     <template #default="{ row }">
                       <span>{{ (row.total_calls / classCallSum * 100).toFixed(1) }}%</span>

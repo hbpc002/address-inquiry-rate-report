@@ -640,10 +640,19 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(yiban.total_calls).toBe(180)
       expect(yiban.total_ticket_count).toBe(18)
       expect(yiban.ti_dan_lv).toBeCloseTo(0.1, 4)
+      expect(yiban.avg_satisfaction).toBeCloseTo(140 / 160, 4)
       const erban = result.find(r => r.name === '二班')
       expect(erban.team_count).toBe(1)
       expect(erban.count).toBe(6)
       expect(erban.total_calls).toBe(150)
+      expect(erban.avg_satisfaction).toBeCloseTo(120 / 130, 4)
+    })
+    it('should return null avg_satisfaction when denominator is zero', () => {
+      const teamData = [
+        { team: '一班1组', leader: '', count: 5, total_calls: 100, total_ticket_count: 10, total_duration: 5000, total_sat_numerator: 0, total_sat_denominator: 0 },
+      ]
+      const result = makeClassRanking(teamData)
+      expect(result[0].avg_satisfaction).toBeNull()
     })
     it('should sort by total_calls descending', () => {
       const teamData = [

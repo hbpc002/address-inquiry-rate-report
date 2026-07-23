@@ -819,3 +819,72 @@ class TestWorkloadTeamProduction:
     def test_team_production_no_year_month_defaults_to_current(self):
         resp = client.get("/api/workloads/team-production")
         assert resp.status_code == 200
+
+
+class TestWorkloadExport:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            _create_test_employees(db)
+            records = [
+                Workload(
+                    date=date(2026, 6, 28), province="广西", account="STTR00001",
+                    name="张三", emp_no="1001", team_desc="热线一组",
+                    metrics={
+                        "呼入人工服务-人工服务-通话次数": 30,
+                        "呼入人工服务-人工服务-通话总时长(秒)": 5400,
+                        "呼入人工服务-工单-生成总量": 10,
+                    },
+                    import_batch="batch001"
+                ),
+                Workload(
+                    date=date(2026, 6, 28), province="广东", account="STTR00002",
+                    name="李四", emp_no="1002", team_desc="热线二组",
+                    metrics={
+                        "呼入人工服务-人工服务-通话次数": 20,
+                        "呼入人工服务-人工服务-通话总时长(秒)": 3600,
+                        "呼入人工服务-工单-生成总量": 5,
+                    },
+                    import_batch="batch001"
+                ),
+            ]
+            for r in records:
+                db.add(r)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_export_csv_headers(self):
+        resp = client.get("/api/workloads/report/export", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        assert "Content-Disposition" in resp.headers
+        assert "filename=workload_report_" in resp.headers["Content-Disposition"]
+        lines = content.strip().split("\n")
+        assert len(lines) > 1
+        headers = lines[0].split(",")
+        assert "账号" in headers
+        assert "姓名" in headers
+        assert "工号" in headers
+        assert "班组" in headers
+        assert "日期" in headers
+
+    def test_export_csv_data(self):
+        resp = client.get("/api/workloads/report/export", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) == 3  # header + 2 records
+        assert "STTR00001" in lines[1]
+        assert "STTR00002" in lines[2]
+        assert "张三" in lines[1]
+        assert "李四" in lines[2]
+
+    def test_export_csv_no_data(self):
+        resp = client.get("/api/workloads/report/export", params={"start_date": "2025-01-01", "end_date": "2025-01-31"})
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) == 1  # header only
