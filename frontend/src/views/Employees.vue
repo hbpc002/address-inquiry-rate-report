@@ -57,6 +57,11 @@
                 <el-tag :type="row.status === '在职' ? 'success' : 'danger'">{{ row.status }}</el-tag>
               </template>
             </el-table-column>
+            <el-table-column prop="hire_date" label="入职日期" width="120">
+              <template #default="{ row }">
+                {{ row.hire_date || '-' }}
+              </template>
+            </el-table-column>
             <el-table-column prop="created_at" label="创建时间" width="180">
               <template #default="{ row }">
                 {{ row.created_at?.slice(0, 19) }}
@@ -107,6 +112,11 @@
             <el-table-column prop="team" label="班组" width="120" />
             <el-table-column prop="dept" label="部门" width="120" />
             <el-table-column prop="role" label="岗位" width="80" />
+            <el-table-column prop="hire_date" label="入职日期" width="120">
+              <template #default="{ row }">
+                {{ row.hire_date || '-' }}
+              </template>
+            </el-table-column>
             <el-table-column prop="deleted_at" label="删除时间" width="180">
               <template #default="{ row }">
                 {{ row.deleted_at?.slice(0, 19) }}
@@ -152,6 +162,9 @@
             <el-option label="组员" value="组员" />
           </el-select>
         </el-form-item>
+        <el-form-item label="入职日期">
+          <el-date-picker v-model="form.hire_date" type="date" value-format="YYYY-MM-DD" placeholder="选择入职日期" style="width:100%" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -171,7 +184,7 @@
         <template #tip>
           <div class="el-upload__tip">
             请上传员工信息Excel文件，需包含以下列：工号、姓名<br/>
-            可选列：班组、部门、岗位、状态
+            可选列：班组、部门、岗位、状态、入职日期
           </div>
         </template>
       </el-upload>
@@ -201,7 +214,7 @@ const activeTab = ref('active')
 
 const searchForm = reactive({ search: '', team: '', dept: '', role: '' })
 const recycleSearch = reactive({ search: '', team: '', dept: '' })
-const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员' })
+const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员', hire_date: '' })
 const teams = ref([])
 const departments = ref([])
 const roles = ref([])
@@ -257,7 +270,7 @@ function handleTabChange() {
 }
 
 function handleAdd() {
-  Object.assign(form, { emp_no: '', name: '', team: '', dept: '', role: '组员' })
+  Object.assign(form, { emp_no: '', name: '', team: '', dept: '', role: '组员', hire_date: '' })
   isEdit.value = false
   dialogVisible.value = true
 }
