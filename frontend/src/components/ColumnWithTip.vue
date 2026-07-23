@@ -2,7 +2,7 @@
   <el-table-column v-bind="$attrs">
     <template #header>
       <span class="column-header">{{ label }}</span>
-      <el-tooltip v-if="hasContent" placement="top" :width="360">
+      <el-tooltip v-if="hasContent" placement="top" :width="360" effect="light">
         <template #content>
           <div class="annotation-tip">
             <div v-if="annotation?.source" class="tip-section">
@@ -60,7 +60,7 @@ const hasContent = computed(() => {
 }
 .tip-label {
   font-weight: 600;
-  color: #409eff;
+  color: #1a73e8;
   font-size: 12px;
   margin-bottom: 2px;
 }
