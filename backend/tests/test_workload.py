@@ -660,6 +660,84 @@ class TestWorkloadReport:
         accounts = [item["account"] for item in data["items"]]
         assert "STTR0099" not in accounts
 
+    def test_report_tenure_filter_new(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=30)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=200)
+            emp3 = db.query(Employee).filter(Employee.emp_no == "STTR00003").first()
+            emp3.hire_date = None
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "new"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR00001" in accounts
+        assert "STTR00002" not in accounts
+        assert "STTR00003" not in accounts
+        assert data["stats"]["total_people"] == 1
+
+    def test_report_tenure_filter_experienced(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=30)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=200)
+            emp3 = db.query(Employee).filter(Employee.emp_no == "STTR00003").first()
+            emp3.hire_date = None
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "experienced"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR00001" not in accounts
+        assert "STTR00002" in accounts
+        assert "STTR00003" in accounts
+        assert data["stats"]["total_people"] == 2
+
+    def test_report_tenure_filter_all(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=30)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=200)
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_people"] == 3
+
 
 class TestWorkloadMetricsFields:
 
@@ -888,3 +966,53 @@ class TestWorkloadExport:
         content = resp.content.decode("utf-8")
         lines = content.strip().split("\n")
         assert len(lines) == 1  # header only
+
+    def test_export_csv_tenure_filter_new(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=30)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=200)
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report/export", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "new"
+        })
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) == 2  # header + 1 new employee
+        assert "STTR00001" in lines[1]
+        assert "STTR00002" not in lines[1]
+
+    def test_export_csv_tenure_filter_experienced(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=30)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=200)
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report/export", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "experienced"
+        })
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) == 2  # header + 1 experienced employee
+        assert "STTR00002" in lines[1]
+        assert "STTR00001" not in lines[1]

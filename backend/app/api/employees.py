@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
+from datetime import date
 import pandas as pd
 import io
 import csv
@@ -283,6 +284,17 @@ def import_employees(
             skipped += 1
             continue
         
+        def _parse_hire_date(row):
+            raw = row.get('入职日期')
+            if pd.notna(raw):
+                try:
+                    return pd.to_datetime(raw).date()
+                except (ValueError, TypeError):
+                    return None
+            return None
+        
+        hire_date = _parse_hire_date(row)
+        
         existing = db.query(Employee).filter(Employee.emp_no == emp_no).first()
         if existing:
             existing.name = name
@@ -291,6 +303,8 @@ def import_employees(
             existing.role = str(row.get('岗位', existing.role or '')).strip() if pd.notna(row.get('岗位')) else existing.role
             if pd.notna(row.get('状态')):
                 existing.status = str(row.get('状态', '在职')).strip()
+            if hire_date is not None:
+                existing.hire_date = hire_date
             updated += 1
         else:
             emp = Employee(
@@ -300,6 +314,7 @@ def import_employees(
                 dept=str(row.get('部门', '客服中心')).strip() if pd.notna(row.get('部门')) else '客服中心',
                 role=str(row.get('岗位', '组员')).strip() if pd.notna(row.get('岗位')) else '组员',
                 status=str(row.get('状态', '在职')).strip() if pd.notna(row.get('状态')) else '在职',
+                hire_date=hire_date,
                 created_by=current_user["id"]
             )
             db.add(emp)
@@ -336,9 +351,10 @@ def export_employees(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["工号", "姓名", "班组", "部门", "岗位", "状态"])
+    writer.writerow(["工号", "姓名", "班组", "部门", "岗位", "状态", "入职日期"])
     for emp in items:
-        writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", emp.role, emp.status])
+        hire_date_str = emp.hire_date.isoformat() if emp.hire_date else ""
+        writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", emp.role, emp.status, hire_date_str])
 
     output.seek(0)
     return StreamingResponse(

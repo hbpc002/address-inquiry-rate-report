@@ -279,6 +279,7 @@ def get_workload_report(
     team_prefix: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
+    tenure_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -327,6 +328,20 @@ def get_workload_report(
         records = [r for r in records if r.account in emp_nos]
     if account:
         records = [r for r in records if account.lower() in (r.account or '').lower()]
+
+    if tenure_filter:
+        today = datetime.now().date()
+        cutoff = today - timedelta(days=90)
+        emp_tenure_map = {}
+        for e in db.query(Employee.emp_no, Employee.hire_date).filter(Employee.status == "在职").all():
+            if e.hire_date is not None:
+                emp_tenure_map[e.emp_no] = e.hire_date > cutoff
+            else:
+                emp_tenure_map[e.emp_no] = False
+        if tenure_filter == "new":
+            records = [r for r in records if emp_tenure_map.get(r.account, False)]
+        elif tenure_filter == "experienced":
+            records = [r for r in records if not emp_tenure_map.get(r.account, False)]
 
     emp_agg = {}
     for r in records:
@@ -579,6 +594,7 @@ def export_workload_report(
     team_prefix: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
+    tenure_filter: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -618,6 +634,20 @@ def export_workload_report(
         records = [r for r in records if r.account in emp_nos]
     if account:
         records = [r for r in records if account.lower() in (r.account or '').lower()]
+
+    if tenure_filter:
+        today = datetime.now().date()
+        cutoff = today - timedelta(days=90)
+        emp_tenure_map = {}
+        for e in db.query(Employee.emp_no, Employee.hire_date).filter(Employee.status == "在职").all():
+            if e.hire_date is not None:
+                emp_tenure_map[e.emp_no] = e.hire_date > cutoff
+            else:
+                emp_tenure_map[e.emp_no] = False
+        if tenure_filter == "new":
+            records = [r for r in records if emp_tenure_map.get(r.account, False)]
+        elif tenure_filter == "experienced":
+            records = [r for r in records if not emp_tenure_map.get(r.account, False)]
 
     import io, csv
     output = io.StringIO()

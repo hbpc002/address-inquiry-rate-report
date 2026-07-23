@@ -47,6 +47,13 @@
             <el-option v-for="c in classOptions" :key="c" :label="c" :value="c" />
           </el-select>
         </el-form-item>
+        <el-form-item label="员工类型">
+          <el-select v-model="searchForm.tenure_filter" placeholder="全部" clearable style="width: 130px">
+            <el-option label="全部" value="" />
+            <el-option label="新员工（3个月内）" value="new" />
+            <el-option label="老员工（3个月以上）" value="experienced" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
           <el-button @click="columnSelectorVisible = true">自定义列</el-button>
@@ -311,7 +318,8 @@ const { filters: searchForm, isRestored: searchFormRestored } = usePersistedFilt
     name: '',
     account: '',
     team_desc: '',
-    class_name: ''
+    class_name: '',
+    tenure_filter: ''
   }
 )
 
@@ -846,6 +854,7 @@ function handleExport() {
   if (searchForm.account) params.account = searchForm.account
   if (searchForm.team_desc) params.team_desc = searchForm.team_desc
   if (searchForm.class_name) params.team_prefix = searchForm.class_name
+  if (searchForm.tenure_filter) params.tenure_filter = searchForm.tenure_filter
   downloadBlob('/workloads/report/export', params, `workload_report.csv`)
 }
 
@@ -984,6 +993,7 @@ async function loadData() {
     if (searchForm.account) params.account = searchForm.account
     if (searchForm.team_desc) params.team_desc = searchForm.team_desc
     if (searchForm.class_name) params.team_prefix = searchForm.class_name
+    if (searchForm.tenure_filter) params.tenure_filter = searchForm.tenure_filter
 
     const res = await api.get('/workloads/report', { params })
     const data = res.data.items || []

@@ -114,6 +114,12 @@ def _migrate_db():
                     print("Added column deleted_at to employees")
                 except Exception as e:
                     print(f"Failed to add column deleted_at: {e}")
+            if 'hire_date' not in emp_cols:
+                try:
+                    db.execute(text("ALTER TABLE employees ADD COLUMN hire_date DATE"))
+                    print("Added column hire_date to employees")
+                except Exception as e:
+                    print(f"Failed to add column hire_date: {e}")
 
         if 'daily_reports' in tables:
             report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}

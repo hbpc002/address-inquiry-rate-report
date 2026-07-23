@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 
 class EmployeeBase(BaseModel):
@@ -9,6 +9,7 @@ class EmployeeBase(BaseModel):
     team: str
     dept: Optional[str] = None
     role: str = "组员"
+    hire_date: Optional[date] = None
 
 
 class EmployeeCreate(EmployeeBase):
@@ -22,6 +23,7 @@ class EmployeeUpdate(BaseModel):
     dept: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None
+    hire_date: Optional[date] = None
 
 
 class EmployeeResponse(EmployeeBase):
