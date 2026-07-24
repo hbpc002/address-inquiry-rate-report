@@ -2,7 +2,7 @@ FROM node:18-alpine as build
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install && npm install -g vite
+RUN npm install
 
 COPY . .
 RUN npm run build

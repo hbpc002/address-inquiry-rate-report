@@ -11,7 +11,7 @@ FROM node:18-alpine as frontend-builder
 
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN npm install && npm install -g vite
+RUN npm install
 
 COPY frontend/ ./
 RUN npm run build
