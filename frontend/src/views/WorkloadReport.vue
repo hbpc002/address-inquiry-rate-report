@@ -885,8 +885,6 @@ function buildScreenshotColumns(visibleMetricCols, gapTargets) {
   const cols = [
     { prop: 'account', label: '账号', width: 110 },
     { prop: 'name', label: '姓名', width: 80 },
-    { prop: 'emp_no', label: '工号', width: 80 },
-    { prop: 'team_desc', label: '班组', width: 140 },
     { prop: 'date_count', label: '天数', width: 60 },
     ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
     { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
@@ -991,10 +989,32 @@ function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) 
 }
 
 async function handleScreenshot() {
-  const data = enrichedData.value
+  let data = enrichedData.value
   if (!data.length) {
     ElMessage.warning('没有数据可供导出')
     return
+  }
+
+  if (sortBy.value && sortOrder.value) {
+    data = [...data].sort((a, b) => {
+      let aVal, bVal
+      if (sortBy.value === 'name' || sortBy.value === 'team_desc') {
+        aVal = (a[sortBy.value] || '').toLowerCase()
+        bVal = (b[sortBy.value] || '').toLowerCase()
+        return sortOrder.value === 'ascending' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
+      }
+      if (sortBy.value === 'date_count') {
+        aVal = a.date_count || 0
+        bVal = b.date_count || 0
+      } else if (sortBy.value.startsWith('gap_') || sortBy.value.startsWith('_')) {
+        aVal = a[sortBy.value] ?? 0
+        bVal = b[sortBy.value] ?? 0
+      } else {
+        aVal = getMetricValue(a, sortBy.value) || 0
+        bVal = getMetricValue(b, sortBy.value) || 0
+      }
+      return sortOrder.value === 'ascending' ? aVal - bVal : bVal - aVal
+    })
   }
 
   let periodInfo = ''
@@ -1006,9 +1026,12 @@ async function handleScreenshot() {
     periodInfo = `${searchForm.start_date} ~ ${searchForm.end_date}`
   }
 
-  let filterInfo = ''
-  if (searchForm.team_desc) filterInfo = `班组: ${searchForm.team_desc}`
-  else if (searchForm.class_name) filterInfo = `班级: ${searchForm.class_name}`
+  let title = '工作量报表'
+  if (searchForm.team_desc) {
+    title = `${searchForm.team_desc} ${title}`
+  } else if (searchForm.class_name) {
+    title = `${searchForm.class_name} ${title}`
+  }
 
   const columns = buildScreenshotColumns(visibleMetricColumns.value, salaryCfg.gapTargets)
   const targets = activeTargets.value
@@ -1018,7 +1041,7 @@ async function handleScreenshot() {
 
   const container = document.createElement('div')
   container.className = 'screenshot-container'
-  container.innerHTML = buildScreenshotHtml('工作量报表', periodInfo, filterInfo, columns, rows, new Date())
+  container.innerHTML = buildScreenshotHtml(title, periodInfo, null, columns, rows, new Date())
   container.style.cssText = 'position: fixed; left: -9999px; top: 0; z-index: -1;'
   document.body.appendChild(container)
 

@@ -1108,8 +1108,6 @@ describe('WorkloadReport - 截图导出功能', () => {
     const cols = [
       { prop: 'account', label: '账号', width: 110 },
       { prop: 'name', label: '姓名', width: 80 },
-      { prop: 'emp_no', label: '工号', width: 80 },
-      { prop: 'team_desc', label: '班组', width: 140 },
       { prop: 'date_count', label: '天数', width: 60 },
       ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
       { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
@@ -1229,7 +1227,7 @@ describe('WorkloadReport - 截图导出功能', () => {
     it('should include basic fixed columns', () => {
       const cols = buildScreenshotColumns([], hasNoPermissions, [])
       expect(cols.map(c => c.prop)).toEqual([
-        'account', 'name', 'emp_no', 'team_desc', 'date_count',
+        'account', 'name', 'date_count',
         '_ti_dan_lv', '_call_hourly_rate'
       ])
     })
@@ -1383,6 +1381,89 @@ describe('WorkloadReport - 截图导出功能', () => {
 
     it('should return no style when targets list is empty', () => {
       expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, []).style).toBeNull()
+    })
+  })
+
+  describe('sortScreenshotData - 截图数据排序', () => {
+    function sortScreenshotData(data, sortBy, sortOrder) {
+      if (!sortBy || !sortOrder) return data
+      return [...data].sort((a, b) => {
+        let aVal, bVal
+        if (sortBy === 'name' || sortBy === 'team_desc') {
+          aVal = (a[sortBy] || '').toLowerCase()
+          bVal = (b[sortBy] || '').toLowerCase()
+          return sortOrder === 'ascending' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
+        }
+        if (sortBy === 'date_count') {
+          aVal = a.date_count || 0
+          bVal = b.date_count || 0
+        } else if (sortBy.startsWith('gap_') || sortBy.startsWith('_')) {
+          aVal = a[sortBy] ?? 0
+          bVal = b[sortBy] ?? 0
+        } else {
+          aVal = a.aggregated_metrics?.[sortBy] || 0
+          bVal = b.aggregated_metrics?.[sortBy] || 0
+        }
+        return sortOrder === 'ascending' ? aVal - bVal : bVal - aVal
+      })
+    }
+
+    const data = [
+      { name: '张三', date_count: 22, _call_salary: 3500, aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 150 } },
+      { name: '李四', date_count: 20, _call_salary: 4200, aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 200 } },
+      { name: '王五', date_count: 25, _call_salary: 2800, aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 120 } },
+    ]
+
+    it('should sort by name ascending', () => {
+      const sorted = sortScreenshotData(data, 'name', 'ascending')
+      expect(sorted[0].name).toBe('张三')
+      expect(sorted[1].name).toBe('李四')
+      expect(sorted[2].name).toBe('王五')
+    })
+
+    it('should sort by name descending', () => {
+      const sorted = sortScreenshotData(data, 'name', 'descending')
+      expect(sorted[0].name).toBe('王五')
+      expect(sorted[1].name).toBe('李四')
+      expect(sorted[2].name).toBe('张三')
+    })
+
+    it('should sort by date_count ascending', () => {
+      const sorted = sortScreenshotData(data, 'date_count', 'ascending')
+      expect(sorted[0].date_count).toBe(20)
+      expect(sorted[1].date_count).toBe(22)
+      expect(sorted[2].date_count).toBe(25)
+    })
+
+    it('should sort by date_count descending', () => {
+      const sorted = sortScreenshotData(data, 'date_count', 'descending')
+      expect(sorted[0].date_count).toBe(25)
+      expect(sorted[1].date_count).toBe(22)
+      expect(sorted[2].date_count).toBe(20)
+    })
+
+    it('should sort by metric field (通话次数) descending', () => {
+      const sorted = sortScreenshotData(data, '呼入人工服务-人工服务-通话次数', 'descending')
+      expect(sorted[0].name).toBe('李四')
+      expect(sorted[1].name).toBe('张三')
+      expect(sorted[2].name).toBe('王五')
+    })
+
+    it('should sort by computed _call_salary ascending', () => {
+      const sorted = sortScreenshotData(data, '_call_salary', 'ascending')
+      expect(sorted[0]._call_salary).toBe(2800)
+      expect(sorted[1]._call_salary).toBe(3500)
+      expect(sorted[2]._call_salary).toBe(4200)
+    })
+
+    it('should return original data when no sort key', () => {
+      const sorted = sortScreenshotData(data, '', '')
+      expect(sorted).toEqual(data)
+    })
+
+    it('should preserve all items after sorting', () => {
+      const sorted = sortScreenshotData(data, 'name', 'ascending')
+      expect(sorted).toHaveLength(3)
     })
   })
 
