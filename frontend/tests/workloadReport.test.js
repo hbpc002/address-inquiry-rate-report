@@ -1003,3 +1003,96 @@ describe('WorkloadDetail - 自定义列逻辑测试', () => {
     localStorage.removeItem(KEY)
   })
 })
+
+describe('WorkloadReport - 总体满意率计算', () => {
+  function getMetricValue(row, field) {
+    const val = row.aggregated_metrics?.[field]
+    if (val === null || val === undefined) return null
+    return typeof val === 'number' ? val : parseFloat(val) || 0
+  }
+
+  function aggregateSatisfaction(data) {
+    let satNum = 0, satDen = 0
+    data.forEach(d => {
+      const vs = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
+      const s = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
+      const g = getMetricValue(d, '呼入人工服务-满意度-一般量') || 0
+      const ds = getMetricValue(d, '呼入人工服务-满意度-不满意量') || 0
+      const vds = getMetricValue(d, '呼入人工服务-满意度-非常不满意量') || 0
+      satNum += vs + s
+      satDen += vs + s + g + ds + vds
+    })
+    return { numerator: satNum, denominator: satDen }
+  }
+
+  function totalSatisfactionRate(stats) {
+    if (!stats.denominator) return 0
+    return +(stats.numerator / stats.denominator * 100).toFixed(2)
+  }
+
+  it('should aggregate satisfaction across multiple people', () => {
+    const data = [
+      { aggregated_metrics: {
+        '呼入人工服务-满意度-非常满意量': 8,
+        '呼入人工服务-满意度-满意量': 1,
+        '呼入人工服务-满意度-一般量': 1,
+        '呼入人工服务-满意度-不满意量': 0,
+        '呼入人工服务-满意度-非常不满意量': 0
+      }},
+      { aggregated_metrics: {
+        '呼入人工服务-满意度-非常满意量': 10,
+        '呼入人工服务-满意度-满意量': 5,
+        '呼入人工服务-满意度-一般量': 3,
+        '呼入人工服务-满意度-不满意量': 1,
+        '呼入人工服务-满意度-非常不满意量': 1
+      }}
+    ]
+    const stats = aggregateSatisfaction(data)
+    expect(stats.numerator).toBe(24)
+    expect(stats.denominator).toBe(30)
+    expect(totalSatisfactionRate(stats)).toBe(80)
+  })
+
+  it('should return 0 when no satisfaction data', () => {
+    const stats = aggregateSatisfaction([])
+    expect(totalSatisfactionRate(stats)).toBe(0)
+  })
+
+  it('should handle missing fields gracefully', () => {
+    const data = [
+      { aggregated_metrics: {} },
+      { aggregated_metrics: {
+        '呼入人工服务-满意度-非常满意量': 5,
+        '呼入人工服务-满意度-满意量': 2,
+        '呼入人工服务-满意度-一般量': 1,
+        '呼入人工服务-满意度-不满意量': 0,
+        '呼入人工服务-满意度-非常不满意量': 0
+      }}
+    ]
+    const stats = aggregateSatisfaction(data)
+    expect(stats.numerator).toBe(7)
+    expect(stats.denominator).toBe(8)
+    expect(totalSatisfactionRate(stats)).toBe(87.5)
+  })
+
+  it('should handle all null metrics', () => {
+    const data = [
+      { aggregated_metrics: {
+        '呼入人工服务-满意度-非常满意量': null,
+        '呼入人工服务-满意度-满意量': null,
+        '呼入人工服务-满意度-一般量': null,
+        '呼入人工服务-满意度-不满意量': null,
+        '呼入人工服务-满意度-非常不满意量': null
+      }}
+    ]
+    const stats = aggregateSatisfaction(data)
+    expect(stats.numerator).toBe(0)
+    expect(stats.denominator).toBe(0)
+    expect(totalSatisfactionRate(stats)).toBe(0)
+  })
+
+  it('should format as percentage with 2 decimals', () => {
+    const stats = { numerator: 3, denominator: 7 }
+    expect(totalSatisfactionRate(stats)).toBe(42.86)
+  })
+})

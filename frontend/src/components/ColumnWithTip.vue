@@ -1,5 +1,5 @@
 <template>
-  <el-table-column v-bind="$attrs">
+  <el-table-column v-bind="$attrs" :prop="prop">
     <template #header>
       <span class="column-header">{{ label }}</span>
       <el-tooltip v-if="hasContent" placement="top" :width="360" effect="light">

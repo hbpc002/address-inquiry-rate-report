@@ -82,6 +82,9 @@
         <el-col :span="4">
           <el-statistic title="提单率(%)" :value="totalTiDanLv" :precision="2" :value-style="getMetricStyle('_ti_dan_lv', totalTiDanLv)" />
         </el-col>
+        <el-col :span="4">
+          <el-statistic title="满意率(%)" :value="totalSatisfactionRate" :precision="2" />
+        </el-col>
       </el-row>
 
 
@@ -329,7 +332,9 @@ const stats = reactive({
   total_call_count: 0,
   total_work_duration: 0,
   total_ticket_count: 0,
-  total_outbound: 0
+  total_outbound: 0,
+  total_sat_numerator: 0,
+  total_sat_denominator: 0
 })
 
 const queryInfo = reactive({
@@ -645,6 +650,11 @@ const averageCallDuration = computed(() => {
 const totalTiDanLv = computed(() => {
   if (!stats.total_call_count) return 0
   return +(stats.total_ticket_count / stats.total_call_count * 100).toFixed(2)
+})
+
+const totalSatisfactionRate = computed(() => {
+  if (!stats.total_sat_denominator) return 0
+  return +(stats.total_sat_numerator / stats.total_sat_denominator * 100).toFixed(2)
 })
 
 const salaryCfg = reactive({
@@ -1007,6 +1017,18 @@ async function loadData() {
     stats.total_work_duration = res.data.stats.total_work_duration
     stats.total_ticket_count = res.data.stats.total_ticket_count
     stats.total_outbound = res.data.stats.total_outbound
+    let satNum = 0, satDen = 0
+    data.forEach(d => {
+      const vs = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
+      const s = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
+      const g = getMetricValue(d, '呼入人工服务-满意度-一般量') || 0
+      const ds = getMetricValue(d, '呼入人工服务-满意度-不满意量') || 0
+      const vds = getMetricValue(d, '呼入人工服务-满意度-非常不满意量') || 0
+      satNum += vs + s
+      satDen += vs + s + g + ds + vds
+    })
+    stats.total_sat_numerator = satNum
+    stats.total_sat_denominator = satDen
     tableData.value = data
 
     if (data.length === 0) {
