@@ -49,6 +49,7 @@ PERMISSION_REGISTRY = {
         "permissions": {
             "view": "查看",
             "export": "导出",
+            "screenshot": "截图导出",
             "view_call_salary": "查看接话绩效",
             "view_sat_salary": "查看满意度绩效",
             "view_total_salary": "查看合计绩效",

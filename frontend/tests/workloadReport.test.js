@@ -1135,7 +1135,21 @@ describe('WorkloadReport - 截图导出功能', () => {
     return cols
   }
 
-  function formatScreenshotCell(row, col) {
+  function getScreenshotMetricStyle(fieldKey, value, targets) {
+    if (!targets || !targets.length || value === null || value === undefined) return null
+    const target = targets.find(t => t.field === fieldKey)
+    if (!target) return null
+    let hit = false
+    switch (target.operator) {
+      case 'lt': hit = value < target.value; break
+      case 'le': hit = value <= target.value; break
+      case 'gt': hit = value > target.value; break
+      case 'ge': hit = value >= target.value; break
+    }
+    return hit ? { color: target.color, fontWeight: 'bold' } : null
+  }
+
+  function formatScreenshotCell(row, col, activeTargets) {
     let val
     if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
       val = row[col.prop]
@@ -1144,16 +1158,25 @@ describe('WorkloadReport - 截图导出功能', () => {
     } else {
       val = getMetricValue(row, col.prop)
     }
-    if (val === null || val === undefined) return '-'
-    if (col.isRate) {
+    let text
+    if (val === null || val === undefined) {
+      text = '-'
+    } else if (col.isRate) {
       const num = typeof val === 'number' ? val : parseFloat(val)
-      return isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+      text = isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+    } else if (typeof val === 'number') {
+      text = Number.isInteger(val) ? String(val) : val.toFixed(1)
+    } else {
+      text = String(val)
     }
-    if (typeof val === 'number') {
-      if (Number.isInteger(val)) return String(val)
-      return val.toFixed(1)
+    let style = null
+    if (text !== '-') {
+      const numericVal = typeof val === 'number' ? val : (val !== null && val !== undefined ? parseFloat(val) : null)
+      if (numericVal !== null && !isNaN(numericVal)) {
+        style = getScreenshotMetricStyle(col.prop, numericVal, activeTargets)
+      }
     }
-    return String(val)
+    return { text, style }
   }
 
   function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) {
@@ -1163,7 +1186,10 @@ describe('WorkloadReport - 截图导出功能', () => {
     const headerRow = columns.map(c => `<th style="padding: 8px 6px; border: 1px solid #d9d9d9; white-space: nowrap; font-weight: 600;">${c.label}</th>`).join('')
     const bodyRows = rows.map((r, i) => {
       const bg = i % 2 === 0 ? '#fafafa' : '#ffffff'
-      const cells = r.cells.map(c => `<td style="padding: 6px; border: 1px solid #e8e8e8; white-space: nowrap; background: ${bg};">${c}</td>`).join('')
+      const cells = r.cells.map(c => {
+        const extraStyle = c.style ? ` color: ${c.style.color}; font-weight: ${c.style.fontWeight};` : ''
+        return `<td style="padding: 6px; border: 1px solid #e8e8e8; white-space: nowrap; background: ${bg};${extraStyle}">${c.text}</td>`
+      }).join('')
       return `<tr>${cells}</tr>`
     }).join('')
     return `<div style="padding: 30px 30px 20px; font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif; color: #333; min-width: ${columns.reduce((s, c) => s + c.width, 0) + 60}px;">
@@ -1191,6 +1217,13 @@ describe('WorkloadReport - 截图导出功能', () => {
   const hasNoPermissions = key => false
   const hasSalaryPermissions = key => key !== 'workload_report.view_gap' && key !== 'workload_report.view_sat_diff'
   const gapTargets = [2000, 2500, 3000]
+
+  const sampleTargets = [
+    { field: '人工服务-满意度-满意率', label: '满意率', operator: 'lt', value: 0.95, color: '#F56C6C', enabled: true },
+    { field: '_ti_dan_lv', label: '提单率', operator: 'gt', value: 0.15, color: '#E6A23C', enabled: true },
+    { field: '_call_salary', label: '接话绩效', operator: 'lt', value: 3000, color: '#F56C6C', enabled: true },
+    { field: '_sat_diff', label: '满意度差额', operator: 'lt', value: 0, color: '#F56C6C', enabled: true },
+  ]
 
   describe('buildScreenshotColumns', () => {
     it('should include basic fixed columns', () => {
@@ -1248,6 +1281,45 @@ describe('WorkloadReport - 截图导出功能', () => {
     })
   })
 
+  describe('getScreenshotMetricStyle', () => {
+    it('should return null when no targets', () => {
+      expect(getScreenshotMetricStyle('人工服务-满意度-满意率', 0.90, [])).toBeNull()
+    })
+
+    it('should return null when no targets match', () => {
+      expect(getScreenshotMetricStyle('unknown_field', 0.90, sampleTargets)).toBeNull()
+    })
+
+    it('should return style when satisfaction rate is below target (lt)', () => {
+      const style = getScreenshotMetricStyle('人工服务-满意度-满意率', 0.90, sampleTargets)
+      expect(style).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+    })
+
+    it('should return null when satisfaction rate meets target', () => {
+      expect(getScreenshotMetricStyle('人工服务-满意度-满意率', 0.95, sampleTargets)).toBeNull()
+      expect(getScreenshotMetricStyle('人工服务-满意度-满意率', 0.96, sampleTargets)).toBeNull()
+    })
+
+    it('should return style when ti_dan_lv exceeds target (gt)', () => {
+      const style = getScreenshotMetricStyle('_ti_dan_lv', 0.20, sampleTargets)
+      expect(style).toEqual({ color: '#E6A23C', fontWeight: 'bold' })
+    })
+
+    it('should handle le operator', () => {
+      const targets = [{ field: 'test', label: '测试', operator: 'le', value: 100, color: '#F56C6C', enabled: true }]
+      expect(getScreenshotMetricStyle('test', 100, targets)).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+      expect(getScreenshotMetricStyle('test', 50, targets)).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+      expect(getScreenshotMetricStyle('test', 101, targets)).toBeNull()
+    })
+
+    it('should handle ge operator', () => {
+      const targets = [{ field: 'test', label: '测试', operator: 'ge', value: 80, color: '#67C23A', enabled: true }]
+      expect(getScreenshotMetricStyle('test', 80, targets)).toEqual({ color: '#67C23A', fontWeight: 'bold' })
+      expect(getScreenshotMetricStyle('test', 90, targets)).toEqual({ color: '#67C23A', fontWeight: 'bold' })
+      expect(getScreenshotMetricStyle('test', 79, targets)).toBeNull()
+    })
+  })
+
   describe('formatScreenshotCell', () => {
     const row = {
       account: 'zhangsan',
@@ -1271,41 +1343,90 @@ describe('WorkloadReport - 截图导出功能', () => {
     }
 
     it('should format basic text fields', () => {
-      expect(formatScreenshotCell(row, { prop: 'account' })).toBe('zhangsan')
-      expect(formatScreenshotCell(row, { prop: 'name' })).toBe('张三')
-      expect(formatScreenshotCell(row, { prop: 'team_desc' })).toBe('二班1组')
+      expect(formatScreenshotCell(row, { prop: 'account' }, []).text).toBe('zhangsan')
+      expect(formatScreenshotCell(row, { prop: 'name' }, []).text).toBe('张三')
+      expect(formatScreenshotCell(row, { prop: 'team_desc' }, []).text).toBe('二班1组')
     })
 
     it('should format integer fields without decimals', () => {
-      expect(formatScreenshotCell(row, { prop: 'date_count' })).toBe('22')
+      expect(formatScreenshotCell(row, { prop: 'date_count' }, []).text).toBe('22')
     })
 
     it('should format decimal fields with 1 decimal', () => {
-      expect(formatScreenshotCell(row, { prop: '_call_hourly_rate' })).toBe('3.8')
+      expect(formatScreenshotCell(row, { prop: '_call_hourly_rate' }, []).text).toBe('3.8')
     })
 
     it('should format rate fields as percentage', () => {
-      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true })).toBe('15.60%')
-      expect(formatScreenshotCell(row, { prop: '人工服务-满意度-满意率', isRate: true })).toBe('95.00%')
+      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, []).text).toBe('15.60%')
+      expect(formatScreenshotCell(row, { prop: '人工服务-满意度-满意率', isRate: true }, []).text).toBe('95.00%')
     })
 
     it('should format metric values from aggregated_metrics', () => {
-      expect(formatScreenshotCell(row, { prop: '呼入人工服务-人工服务-通话次数' })).toBe('150')
+      expect(formatScreenshotCell(row, { prop: '呼入人工服务-人工服务-通话次数' }, []).text).toBe('150')
     })
 
     it('should format decimal salary values with 1 decimal', () => {
-      expect(formatScreenshotCell(row, { prop: '_call_salary' })).toBe('3500.5')
-      expect(formatScreenshotCell(row, { prop: '_sat_salary' })).toBe('120.3')
+      expect(formatScreenshotCell(row, { prop: '_call_salary' }, []).text).toBe('3500.5')
+      expect(formatScreenshotCell(row, { prop: '_sat_salary' }, []).text).toBe('120.3')
     })
 
     it('should format gap values (negative integers)', () => {
-      expect(formatScreenshotCell(row, { prop: 'gap_2000' })).toBe('-150')
-      expect(formatScreenshotCell(row, { prop: 'gap_2500' })).toBe('-650')
+      expect(formatScreenshotCell(row, { prop: 'gap_2000' }, []).text).toBe('-150')
+      expect(formatScreenshotCell(row, { prop: 'gap_2500' }, []).text).toBe('-650')
     })
 
-    it('should return dash for null/undefined values', () => {
-      expect(formatScreenshotCell({}, { prop: 'name' })).toBe('-')
-      expect(formatScreenshotCell({}, { prop: '_ti_dan_lv', isRate: true })).toBe('-')
+    it('should return dash with null style for null/undefined values', () => {
+      const result = formatScreenshotCell({}, { prop: 'name' }, [])
+      expect(result.text).toBe('-')
+      expect(result.style).toBeNull()
+    })
+
+    it('should return no style when targets list is empty', () => {
+      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, []).style).toBeNull()
+    })
+  })
+
+  describe('formatScreenshotCell - 预警颜色', () => {
+    const row = {
+      account: 'zhangsan',
+      name: '张三',
+      _ti_dan_lv: 0.20,
+      _call_salary: 2500,
+      aggregated_metrics: {
+        '人工服务-满意度-满意率': 0.90,
+      }
+    }
+
+    it('should apply red style when satisfaction rate is below target', () => {
+      const result = formatScreenshotCell(row, { prop: '人工服务-满意度-满意率', isRate: true }, sampleTargets)
+      expect(result.text).toBe('90.00%')
+      expect(result.style).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+    })
+
+    it('should apply orange style when ti_dan_lv exceeds target', () => {
+      const result = formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, sampleTargets)
+      expect(result.text).toBe('20.00%')
+      expect(result.style).toEqual({ color: '#E6A23C', fontWeight: 'bold' })
+    })
+
+    it('should apply red style when call_salary is below target', () => {
+      const rowWithDecimal = { ...row, _call_salary: 2500.5 }
+      const result = formatScreenshotCell(rowWithDecimal, { prop: '_call_salary' }, sampleTargets)
+      expect(result.text).toBe('2500.5')
+      expect(result.style).toEqual({ color: '#F56C6C', fontWeight: 'bold' })
+    })
+
+    it('should return null style when value meets target', () => {
+      const meetRow = { ...row, _ti_dan_lv: 0.10 }
+      const result = formatScreenshotCell(meetRow, { prop: '_ti_dan_lv', isRate: true }, sampleTargets)
+      expect(result.text).toBe('10.00%')
+      expect(result.style).toBeNull()
+    })
+
+    it('should not apply style to basic text fields', () => {
+      const result = formatScreenshotCell(row, { prop: 'account' }, sampleTargets)
+      expect(result.text).toBe('zhangsan')
+      expect(result.style).toBeNull()
     })
   })
 
@@ -1315,8 +1436,8 @@ describe('WorkloadReport - 截图导出功能', () => {
       { prop: 'account', label: '账号', width: 110 },
     ]
     const rows = [
-      { cells: ['张三', 'zhangsan'] },
-      { cells: ['李四', 'lisi'] },
+      { cells: [{ text: '张三', style: { color: '#F56C6C', fontWeight: 'bold' } }, { text: 'zhangsan', style: null }] },
+      { cells: [{ text: '李四', style: null }, { text: 'lisi', style: { color: '#E6A23C', fontWeight: 'bold' } }] },
     ]
     const now = new Date(2026, 6, 24, 10, 30, 0)
 
@@ -1370,6 +1491,37 @@ describe('WorkloadReport - 截图导出功能', () => {
       const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
       expect(html).not.toContain('日期:')
       expect(html).not.toContain('班组:')
+    })
+  })
+
+  describe('buildScreenshotHtml - 预警颜色渲染', () => {
+    const columns = [
+      { prop: 'name', label: '姓名', width: 80 },
+      { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
+    ]
+    const rows = [
+      { cells: [
+        { text: '张三', style: null },
+        { text: '20.00%', style: { color: '#E6A23C', fontWeight: 'bold' } },
+      ]},
+    ]
+    const now = new Date(2026, 6, 24, 10, 30, 0)
+
+    it('should inline color style in cells with style', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).toContain('color: #E6A23C')
+      expect(html).toContain('font-weight: bold')
+    })
+
+    it('should not add extra color when style is null', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).not.toContain('color: undefined')
+    })
+
+    it('should still contain cell text', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).toContain('20.00%')
+      expect(html).toContain('张三')
     })
   })
 })

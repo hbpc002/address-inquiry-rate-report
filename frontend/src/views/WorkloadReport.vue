@@ -912,7 +912,21 @@ function buildScreenshotColumns(visibleMetricCols, gapTargets) {
   return cols
 }
 
-function formatScreenshotCell(row, col) {
+function getScreenshotMetricStyle(fieldKey, value, targets) {
+  if (!targets || !targets.length || value === null || value === undefined) return null
+  const target = targets.find(t => t.field === fieldKey)
+  if (!target) return null
+  let hit = false
+  switch (target.operator) {
+    case 'lt': hit = value < target.value; break
+    case 'le': hit = value <= target.value; break
+    case 'gt': hit = value > target.value; break
+    case 'ge': hit = value >= target.value; break
+  }
+  return hit ? { color: target.color, fontWeight: 'bold' } : null
+}
+
+function formatScreenshotCell(row, col, activeTargets) {
   let val
   if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
     val = row[col.prop]
@@ -921,16 +935,25 @@ function formatScreenshotCell(row, col) {
   } else {
     val = getMetricValue(row, col.prop)
   }
-  if (val === null || val === undefined) return '-'
-  if (col.isRate) {
+  let text
+  if (val === null || val === undefined) {
+    text = '-'
+  } else if (col.isRate) {
     const num = typeof val === 'number' ? val : parseFloat(val)
-    return isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+    text = isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+  } else if (typeof val === 'number') {
+    text = Number.isInteger(val) ? String(val) : val.toFixed(1)
+  } else {
+    text = String(val)
   }
-  if (typeof val === 'number') {
-    if (Number.isInteger(val)) return String(val)
-    return val.toFixed(1)
+  let style = null
+  if (text !== '-') {
+    const numericVal = typeof val === 'number' ? val : (val !== null && val !== undefined ? parseFloat(val) : null)
+    if (numericVal !== null && !isNaN(numericVal)) {
+      style = getScreenshotMetricStyle(col.prop, numericVal, activeTargets)
+    }
   }
-  return String(val)
+  return { text, style }
 }
 
 function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) {
@@ -940,7 +963,10 @@ function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) 
   const headerRow = columns.map(c => `<th style="padding: 8px 6px; border: 1px solid #d9d9d9; white-space: nowrap; font-weight: 600;">${c.label}</th>`).join('')
   const bodyRows = rows.map((r, i) => {
     const bg = i % 2 === 0 ? '#fafafa' : '#ffffff'
-    const cells = r.cells.map(c => `<td style="padding: 6px; border: 1px solid #e8e8e8; white-space: nowrap; background: ${bg};">${c}</td>`).join('')
+    const cells = r.cells.map(c => {
+      const extraStyle = c.style ? ` color: ${c.style.color}; font-weight: ${c.style.fontWeight};` : ''
+      return `<td style="padding: 6px; border: 1px solid #e8e8e8; white-space: nowrap; background: ${bg};${extraStyle}">${c.text}</td>`
+    }).join('')
     return `<tr>${cells}</tr>`
   }).join('')
   return `<div style="padding: 30px 30px 20px; font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif; color: #333; min-width: ${columns.reduce((s, c) => s + c.width, 0) + 60}px;">
@@ -985,8 +1011,9 @@ async function handleScreenshot() {
   else if (searchForm.class_name) filterInfo = `班级: ${searchForm.class_name}`
 
   const columns = buildScreenshotColumns(visibleMetricColumns.value, salaryCfg.gapTargets)
+  const targets = activeTargets.value
   const rows = data.map(row => ({
-    cells: columns.map(col => formatScreenshotCell(row, col))
+    cells: columns.map(col => formatScreenshotCell(row, col, targets))
   }))
 
   const container = document.createElement('div')
