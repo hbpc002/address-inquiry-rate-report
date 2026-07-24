@@ -660,7 +660,7 @@ class TestWorkloadReport:
         accounts = [item["account"] for item in data["items"]]
         assert "STTR0099" not in accounts
 
-    def test_report_tenure_filter_new(self):
+    def test_report_tenure_mode_le(self):
         from datetime import timedelta
         from app.models.employee import Employee
 
@@ -678,7 +678,8 @@ class TestWorkloadReport:
             db.close()
 
         resp = client.get("/api/workloads/report", params={
-            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "new"
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 3
         })
         assert resp.status_code == 200
         data = resp.json()
@@ -688,7 +689,7 @@ class TestWorkloadReport:
         assert "STTR00003" not in accounts
         assert data["stats"]["total_people"] == 1
 
-    def test_report_tenure_filter_experienced(self):
+    def test_report_tenure_mode_gt(self):
         from datetime import timedelta
         from app.models.employee import Employee
 
@@ -706,7 +707,8 @@ class TestWorkloadReport:
             db.close()
 
         resp = client.get("/api/workloads/report", params={
-            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "experienced"
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "gt", "tenure_months": 3
         })
         assert resp.status_code == 200
         data = resp.json()
@@ -716,7 +718,7 @@ class TestWorkloadReport:
         assert "STTR00003" in accounts
         assert data["stats"]["total_people"] == 2
 
-    def test_report_tenure_filter_all(self):
+    def test_report_tenure_mode_all(self):
         from datetime import timedelta
         from app.models.employee import Employee
 
@@ -737,6 +739,56 @@ class TestWorkloadReport:
         assert resp.status_code == 200
         data = resp.json()
         assert data["stats"]["total_people"] == 3
+
+    def test_report_tenure_mode_custom_months(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=60)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=150)
+            db.commit()
+        finally:
+            db.close()
+
+        # 1 month cutoff: only STTR00001 (60 days < 30*1=30? No, 60 > 30, so not le)
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 1
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR00001" not in accounts
+        assert "STTR00002" not in accounts
+
+        # 3 month cutoff: both are within 120 days? No, 60 < 90, 150 > 90. le=3 months => days <= 90
+        # STTR00001: 60 days -> hire_date > cutoff (today-90): 60 < 90 so True -> is new
+        # STTR00002: 150 days -> hire_date > cutoff: 150 > 90 so False -> not new
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 3
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR00001" in accounts
+        assert "STTR00002" not in accounts
+
+        # 6 month cutoff: both are within 180 days, so both are "le"
+        resp = client.get("/api/workloads/report", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 6
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        accounts = [item["account"] for item in data["items"]]
+        assert "STTR00001" in accounts
+        assert "STTR00002" in accounts
 
 
 class TestWorkloadMetricsFields:
@@ -967,7 +1019,7 @@ class TestWorkloadExport:
         lines = content.strip().split("\n")
         assert len(lines) == 1  # header only
 
-    def test_export_csv_tenure_filter_new(self):
+    def test_export_csv_tenure_mode_le(self):
         from datetime import timedelta
         from app.models.employee import Employee
 
@@ -983,7 +1035,8 @@ class TestWorkloadExport:
             db.close()
 
         resp = client.get("/api/workloads/report/export", params={
-            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "new"
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 3
         })
         assert resp.status_code == 200
         content = resp.content.decode("utf-8")
@@ -992,7 +1045,7 @@ class TestWorkloadExport:
         assert "STTR00001" in lines[1]
         assert "STTR00002" not in lines[1]
 
-    def test_export_csv_tenure_filter_experienced(self):
+    def test_export_csv_tenure_mode_gt(self):
         from datetime import timedelta
         from app.models.employee import Employee
 
@@ -1008,7 +1061,8 @@ class TestWorkloadExport:
             db.close()
 
         resp = client.get("/api/workloads/report/export", params={
-            "start_date": "2026-06-28", "end_date": "2026-06-28", "tenure_filter": "experienced"
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "gt", "tenure_months": 3
         })
         assert resp.status_code == 200
         content = resp.content.decode("utf-8")
@@ -1016,3 +1070,36 @@ class TestWorkloadExport:
         assert len(lines) == 2  # header + 1 experienced employee
         assert "STTR00002" in lines[1]
         assert "STTR00001" not in lines[1]
+
+    def test_export_csv_tenure_mode_custom_months(self):
+        from datetime import timedelta
+        from app.models.employee import Employee
+
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp1 = db.query(Employee).filter(Employee.emp_no == "STTR00001").first()
+            emp1.hire_date = today - timedelta(days=60)
+            emp2 = db.query(Employee).filter(Employee.emp_no == "STTR00002").first()
+            emp2.hire_date = today - timedelta(days=150)
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report/export", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 1
+        })
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) == 1  # header only, no records match 1 month
+
+        resp = client.get("/api/workloads/report/export", params={
+            "start_date": "2026-06-28", "end_date": "2026-06-28",
+            "tenure_mode": "le", "tenure_months": 6
+        })
+        assert resp.status_code == 200
+        content = resp.content.decode("utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) == 3  # header + both records

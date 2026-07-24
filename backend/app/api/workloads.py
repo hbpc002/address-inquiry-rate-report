@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from calendar import monthrange
 import uuid
 import pandas as pd
@@ -279,11 +279,11 @@ def get_workload_report(
     team_prefix: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
-    tenure_filter: Optional[str] = None,
+    tenure_mode: Optional[str] = None,
+    tenure_months: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    from datetime import timedelta
 
     if year_month:
         start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
@@ -329,18 +329,19 @@ def get_workload_report(
     if account:
         records = [r for r in records if account.lower() in (r.account or '').lower()]
 
-    if tenure_filter:
+    if tenure_mode:
+        months = tenure_months or 3
         today = datetime.now().date()
-        cutoff = today - timedelta(days=90)
+        cutoff = today - timedelta(days=months * 30)
         emp_tenure_map = {}
         for e in db.query(Employee.emp_no, Employee.hire_date).filter(Employee.status == "在职").all():
             if e.hire_date is not None:
                 emp_tenure_map[e.emp_no] = e.hire_date > cutoff
             else:
                 emp_tenure_map[e.emp_no] = False
-        if tenure_filter == "new":
+        if tenure_mode == "le":
             records = [r for r in records if emp_tenure_map.get(r.account, False)]
-        elif tenure_filter == "experienced":
+        elif tenure_mode == "gt":
             records = [r for r in records if not emp_tenure_map.get(r.account, False)]
 
     emp_agg = {}
@@ -594,13 +595,13 @@ def export_workload_report(
     team_prefix: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
-    tenure_filter: Optional[str] = None,
+    tenure_mode: Optional[str] = None,
+    tenure_months: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     """导出工作量报表 CSV"""
     require_permission(current_user, "workload_report.export")
-    from datetime import timedelta
 
     if year_month:
         start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
@@ -635,18 +636,19 @@ def export_workload_report(
     if account:
         records = [r for r in records if account.lower() in (r.account or '').lower()]
 
-    if tenure_filter:
+    if tenure_mode:
+        months = tenure_months or 3
         today = datetime.now().date()
-        cutoff = today - timedelta(days=90)
+        cutoff = today - timedelta(days=months * 30)
         emp_tenure_map = {}
         for e in db.query(Employee.emp_no, Employee.hire_date).filter(Employee.status == "在职").all():
             if e.hire_date is not None:
                 emp_tenure_map[e.emp_no] = e.hire_date > cutoff
             else:
                 emp_tenure_map[e.emp_no] = False
-        if tenure_filter == "new":
+        if tenure_mode == "le":
             records = [r for r in records if emp_tenure_map.get(r.account, False)]
-        elif tenure_filter == "experienced":
+        elif tenure_mode == "gt":
             records = [r for r in records if not emp_tenure_map.get(r.account, False)]
 
     import io, csv
