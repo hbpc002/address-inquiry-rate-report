@@ -1029,8 +1029,12 @@ async function handleScreenshot() {
   let title = '工作量报表'
   if (searchForm.team_desc) {
     title = `${searchForm.team_desc} ${title}`
+  } else if (filterType.value === 'team' && filterValue.value) {
+    title = `${filterValue.value} ${title}`
   } else if (searchForm.class_name) {
     title = `${searchForm.class_name} ${title}`
+  } else if (classFilter.value) {
+    title = `${classFilter.value} ${title}`
   }
 
   const columns = buildScreenshotColumns(visibleMetricColumns.value, salaryCfg.gapTargets)
