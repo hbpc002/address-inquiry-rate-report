@@ -1096,3 +1096,280 @@ describe('WorkloadReport - 总体满意率计算', () => {
     expect(totalSatisfactionRate(stats)).toBe(42.86)
   })
 })
+
+describe('WorkloadReport - 截图导出功能', () => {
+  function getMetricValue(row, field) {
+    const val = row.aggregated_metrics?.[field]
+    if (val === null || val === undefined) return null
+    return typeof val === 'number' ? val : parseFloat(val) || 0
+  }
+
+  function buildScreenshotColumns(visibleMetricCols, hasPermission, gapTargets) {
+    const cols = [
+      { prop: 'account', label: '账号', width: 110 },
+      { prop: 'name', label: '姓名', width: 80 },
+      { prop: 'emp_no', label: '工号', width: 80 },
+      { prop: 'team_desc', label: '班组', width: 140 },
+      { prop: 'date_count', label: '天数', width: 60 },
+      ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
+      { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
+      { prop: '_call_hourly_rate', label: '接话小时量', width: 90 },
+    ]
+    if (hasPermission('workload_report.view_call_salary')) {
+      cols.push({ prop: '_call_salary', label: '接话绩效(预测)', width: 100 })
+    }
+    if (hasPermission('workload_report.view_sat_salary')) {
+      cols.push({ prop: '_sat_salary', label: '满意度绩效(预测)', width: 100 })
+    }
+    if (hasPermission('workload_report.view_total_salary')) {
+      cols.push({ prop: '_total_salary', label: '合计绩效(预测)', width: 100 })
+    }
+    if (hasPermission('workload_report.view_gap')) {
+      gapTargets.forEach(target => {
+        cols.push({ prop: `gap_${target}`, label: `话务量差额(${target})`, width: 110 })
+      })
+    }
+    if (hasPermission('workload_report.view_sat_diff')) {
+      cols.push({ prop: '_sat_diff', label: '满意度差额', width: 100 })
+    }
+    return cols
+  }
+
+  function formatScreenshotCell(row, col) {
+    let val
+    if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
+      val = row[col.prop]
+    } else if (col.prop.startsWith('_') || col.prop.startsWith('gap_')) {
+      val = row[col.prop]
+    } else {
+      val = getMetricValue(row, col.prop)
+    }
+    if (val === null || val === undefined) return '-'
+    if (col.isRate) {
+      const num = typeof val === 'number' ? val : parseFloat(val)
+      return isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+    }
+    if (typeof val === 'number') {
+      if (Number.isInteger(val)) return String(val)
+      return val.toFixed(1)
+    }
+    return String(val)
+  }
+
+  function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) {
+    const pad = n => String(n).padStart(2, '0')
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
+    const colGroup = columns.map(c => `<col style="width: ${c.width}px">`).join('')
+    const headerRow = columns.map(c => `<th style="padding: 8px 6px; border: 1px solid #d9d9d9; white-space: nowrap; font-weight: 600;">${c.label}</th>`).join('')
+    const bodyRows = rows.map((r, i) => {
+      const bg = i % 2 === 0 ? '#fafafa' : '#ffffff'
+      const cells = r.cells.map(c => `<td style="padding: 6px; border: 1px solid #e8e8e8; white-space: nowrap; background: ${bg};">${c}</td>`).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
+    return `<div style="padding: 30px 30px 20px; font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif; color: #333; min-width: ${columns.reduce((s, c) => s + c.width, 0) + 60}px;">
+    <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #409eff;">
+      <h1 style="font-size: 20px; margin: 0 0 8px 0; color: #1d1d1f;">${title}</h1>
+      <div style="font-size: 13px; color: #666; display: flex; justify-content: center; gap: 24px;">
+        ${periodInfo ? `<span style="background: #f0f5ff; padding: 2px 10px; border-radius: 4px;">日期: ${periodInfo}</span>` : ''}
+        ${filterInfo ? `<span style="background: #f0f5ff; padding: 2px 10px; border-radius: 4px;">${filterInfo}</span>` : ''}
+      </div>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center;">
+      ${colGroup}
+      <thead>
+        <tr style="background: #409eff; color: #fff;">${headerRow}</tr>
+      </thead>
+      <tbody>${bodyRows || '<tr><td colspan="' + columns.length + '" style="padding: 30px; text-align: center; color: #999;">暂无数据</td></tr>'}</tbody>
+    </table>
+    <div style="text-align: right; font-size: 11px; color: #b0b0b0; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee;">
+      生成时间: ${dateStr}
+    </div>
+  </div>`
+  }
+
+  const hasAllPermissions = key => true
+  const hasNoPermissions = key => false
+  const hasSalaryPermissions = key => key !== 'workload_report.view_gap' && key !== 'workload_report.view_sat_diff'
+  const gapTargets = [2000, 2500, 3000]
+
+  describe('buildScreenshotColumns', () => {
+    it('should include basic fixed columns', () => {
+      const cols = buildScreenshotColumns([], hasNoPermissions, [])
+      expect(cols.map(c => c.prop)).toEqual([
+        'account', 'name', 'emp_no', 'team_desc', 'date_count',
+        '_ti_dan_lv', '_call_hourly_rate'
+      ])
+    })
+
+    it('should include visible metric columns', () => {
+      const metricCols = [
+        { field: '呼入人工服务-人工服务-通话次数', label: '通话次数', width: 80, isRate: false },
+        { field: '人工服务-满意度-满意率', label: '满意率', width: 80, isRate: true },
+      ]
+      const cols = buildScreenshotColumns(metricCols, hasNoPermissions, [])
+      expect(cols.map(c => c.prop)).toContain('呼入人工服务-人工服务-通话次数')
+      expect(cols.map(c => c.prop)).toContain('人工服务-满意度-满意率')
+      const metricCol = cols.find(c => c.prop === '人工服务-满意度-满意率')
+      expect(metricCol.isRate).toBe(true)
+    })
+
+    it('should include salary columns when user has permission', () => {
+      const cols = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      expect(cols.map(c => c.prop)).toContain('_call_salary')
+      expect(cols.map(c => c.prop)).toContain('_sat_salary')
+      expect(cols.map(c => c.prop)).toContain('_total_salary')
+      expect(cols.map(c => c.prop)).toContain('gap_2000')
+      expect(cols.map(c => c.prop)).toContain('gap_2500')
+      expect(cols.map(c => c.prop)).toContain('gap_3000')
+      expect(cols.map(c => c.prop)).toContain('_sat_diff')
+    })
+
+    it('should exclude salary columns without permission', () => {
+      const cols = buildScreenshotColumns([], hasNoPermissions, gapTargets)
+      expect(cols.map(c => c.prop)).not.toContain('_call_salary')
+      expect(cols.map(c => c.prop)).not.toContain('_sat_salary')
+      expect(cols.map(c => c.prop)).not.toContain('_total_salary')
+      expect(cols.map(c => c.prop)).not.toContain('gap_2000')
+      expect(cols.map(c => c.prop)).not.toContain('_sat_diff')
+    })
+
+    it('should include only permitted salary columns', () => {
+      const cols = buildScreenshotColumns([], hasSalaryPermissions, gapTargets)
+      expect(cols.map(c => c.prop)).toContain('_call_salary')
+      expect(cols.map(c => c.prop)).toContain('_sat_salary')
+      expect(cols.map(c => c.prop)).toContain('_total_salary')
+      expect(cols.map(c => c.prop)).not.toContain('gap_2000')
+      expect(cols.map(c => c.prop)).not.toContain('_sat_diff')
+    })
+
+    it('should handle empty gap targets', () => {
+      const cols = buildScreenshotColumns([], hasAllPermissions, [])
+      expect(cols.map(c => c.prop)).not.toContain('gap_2000')
+    })
+  })
+
+  describe('formatScreenshotCell', () => {
+    const row = {
+      account: 'zhangsan',
+      name: '张三',
+      emp_no: 'EMP001',
+      team_desc: '二班1组',
+      date_count: 22,
+      _ti_dan_lv: 0.156,
+      _call_hourly_rate: 3.8,
+      _call_salary: 3500.50,
+      _sat_salary: 120.25,
+      _total_salary: 3620.75,
+      _sat_diff: 15.5,
+      gap_2000: -150,
+      gap_2500: -650,
+      aggregated_metrics: {
+        '呼入人工服务-人工服务-通话次数': 150,
+        '人工服务-满意度-满意率': 0.95,
+        '呼入人工服务-人工服务-通话总时长(秒)': 28800,
+      }
+    }
+
+    it('should format basic text fields', () => {
+      expect(formatScreenshotCell(row, { prop: 'account' })).toBe('zhangsan')
+      expect(formatScreenshotCell(row, { prop: 'name' })).toBe('张三')
+      expect(formatScreenshotCell(row, { prop: 'team_desc' })).toBe('二班1组')
+    })
+
+    it('should format integer fields without decimals', () => {
+      expect(formatScreenshotCell(row, { prop: 'date_count' })).toBe('22')
+    })
+
+    it('should format decimal fields with 1 decimal', () => {
+      expect(formatScreenshotCell(row, { prop: '_call_hourly_rate' })).toBe('3.8')
+    })
+
+    it('should format rate fields as percentage', () => {
+      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true })).toBe('15.60%')
+      expect(formatScreenshotCell(row, { prop: '人工服务-满意度-满意率', isRate: true })).toBe('95.00%')
+    })
+
+    it('should format metric values from aggregated_metrics', () => {
+      expect(formatScreenshotCell(row, { prop: '呼入人工服务-人工服务-通话次数' })).toBe('150')
+    })
+
+    it('should format decimal salary values with 1 decimal', () => {
+      expect(formatScreenshotCell(row, { prop: '_call_salary' })).toBe('3500.5')
+      expect(formatScreenshotCell(row, { prop: '_sat_salary' })).toBe('120.3')
+    })
+
+    it('should format gap values (negative integers)', () => {
+      expect(formatScreenshotCell(row, { prop: 'gap_2000' })).toBe('-150')
+      expect(formatScreenshotCell(row, { prop: 'gap_2500' })).toBe('-650')
+    })
+
+    it('should return dash for null/undefined values', () => {
+      expect(formatScreenshotCell({}, { prop: 'name' })).toBe('-')
+      expect(formatScreenshotCell({}, { prop: '_ti_dan_lv', isRate: true })).toBe('-')
+    })
+  })
+
+  describe('buildScreenshotHtml', () => {
+    const columns = [
+      { prop: 'name', label: '姓名', width: 80 },
+      { prop: 'account', label: '账号', width: 110 },
+    ]
+    const rows = [
+      { cells: ['张三', 'zhangsan'] },
+      { cells: ['李四', 'lisi'] },
+    ]
+    const now = new Date(2026, 6, 24, 10, 30, 0)
+
+    it('should include title and period info', () => {
+      const html = buildScreenshotHtml('工作量报表', '2026-07', '', columns, [], now)
+      expect(html).toContain('工作量报表')
+      expect(html).toContain('日期: 2026-07')
+    })
+
+    it('should include filter info when provided', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '班组: 二班1组', columns, [], now)
+      expect(html).toContain('班组: 二班1组')
+    })
+
+    it('should include generation timestamp', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, [], now)
+      expect(html).toContain('2026-07-24 10:30')
+    })
+
+    it('should render all rows', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).toContain('张三')
+      expect(html).toContain('李四')
+      expect(html).toContain('zhangsan')
+      expect(html).toContain('lisi')
+    })
+
+    it('should render table header with column labels', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).toContain('姓名')
+      expect(html).toContain('账号')
+    })
+
+    it('should show empty message when no rows', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, [], now)
+      expect(html).toContain('暂无数据')
+    })
+
+    it('should alternate row background colors', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).toContain('#fafafa')
+      expect(html).toContain('#ffffff')
+    })
+
+    it('should calculate correct min-width from column widths', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).toContain(`min-width: ${80 + 110 + 60}px`)
+    })
+
+    it('should not show period or filter sections when empty', () => {
+      const html = buildScreenshotHtml('工作量报表', '', '', columns, rows, now)
+      expect(html).not.toContain('日期:')
+      expect(html).not.toContain('班组:')
+    })
+  })
+})

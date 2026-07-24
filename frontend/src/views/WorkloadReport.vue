@@ -4,7 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>工作量报表</span>
-          <el-button v-if="userStore.hasPermission('workload_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
+          <span>
+            <el-button v-if="userStore.hasPermission('workload_report.screenshot')" type="primary" size="small" :loading="screenshotLoading" @click="handleScreenshot">截图导出</el-button>
+            <el-button v-if="userStore.hasPermission('workload_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
+          </span>
         </div>
       </template>
 
@@ -282,6 +285,7 @@ import { getYesterday } from '../utils/date'
 import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
 import { downloadBlob } from '../utils/download'
+import html2canvas from 'html2canvas'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import ColumnWithTip from '../components/ColumnWithTip.vue'
 import { useFieldAnnotations } from '../composables/useFieldAnnotations'
@@ -292,6 +296,7 @@ const workloadAnnMap = ref({})
 const teams = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
+const screenshotLoading = ref(false)
 const drawerVisible = ref(false)
 const drawerTitle = ref('')
 const personalRecords = ref([])
@@ -874,6 +879,142 @@ function handleExport() {
     params.tenure_months = searchForm.tenure_months
   }
   downloadBlob('/workloads/report/export', params, `workload_report.csv`)
+}
+
+function buildScreenshotColumns(visibleMetricCols, gapTargets) {
+  const cols = [
+    { prop: 'account', label: '账号', width: 110 },
+    { prop: 'name', label: '姓名', width: 80 },
+    { prop: 'emp_no', label: '工号', width: 80 },
+    { prop: 'team_desc', label: '班组', width: 140 },
+    { prop: 'date_count', label: '天数', width: 60 },
+    ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
+    { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
+    { prop: '_call_hourly_rate', label: '接话小时量', width: 90 },
+  ]
+  if (userStore.hasPermission('workload_report.view_call_salary')) {
+    cols.push({ prop: '_call_salary', label: '接话绩效(预测)', width: 100 })
+  }
+  if (userStore.hasPermission('workload_report.view_sat_salary')) {
+    cols.push({ prop: '_sat_salary', label: '满意度绩效(预测)', width: 100 })
+  }
+  if (userStore.hasPermission('workload_report.view_total_salary')) {
+    cols.push({ prop: '_total_salary', label: '合计绩效(预测)', width: 100 })
+  }
+  if (userStore.hasPermission('workload_report.view_gap')) {
+    gapTargets.forEach(target => {
+      cols.push({ prop: `gap_${target}`, label: `话务量差额(${target})`, width: 110 })
+    })
+  }
+  if (userStore.hasPermission('workload_report.view_sat_diff')) {
+    cols.push({ prop: '_sat_diff', label: '满意度差额', width: 100 })
+  }
+  return cols
+}
+
+function formatScreenshotCell(row, col) {
+  let val
+  if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
+    val = row[col.prop]
+  } else if (col.prop.startsWith('_') || col.prop.startsWith('gap_')) {
+    val = row[col.prop]
+  } else {
+    val = getMetricValue(row, col.prop)
+  }
+  if (val === null || val === undefined) return '-'
+  if (col.isRate) {
+    const num = typeof val === 'number' ? val : parseFloat(val)
+    return isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+  }
+  if (typeof val === 'number') {
+    if (Number.isInteger(val)) return String(val)
+    return val.toFixed(1)
+  }
+  return String(val)
+}
+
+function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) {
+  const pad = n => String(n).padStart(2, '0')
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`
+  const colGroup = columns.map(c => `<col style="width: ${c.width}px">`).join('')
+  const headerRow = columns.map(c => `<th style="padding: 8px 6px; border: 1px solid #d9d9d9; white-space: nowrap; font-weight: 600;">${c.label}</th>`).join('')
+  const bodyRows = rows.map((r, i) => {
+    const bg = i % 2 === 0 ? '#fafafa' : '#ffffff'
+    const cells = r.cells.map(c => `<td style="padding: 6px; border: 1px solid #e8e8e8; white-space: nowrap; background: ${bg};">${c}</td>`).join('')
+    return `<tr>${cells}</tr>`
+  }).join('')
+  return `<div style="padding: 30px 30px 20px; font-family: 'Microsoft YaHei', 'PingFang SC', -apple-system, sans-serif; color: #333; min-width: ${columns.reduce((s, c) => s + c.width, 0) + 60}px;">
+    <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #409eff;">
+      <h1 style="font-size: 20px; margin: 0 0 8px 0; color: #1d1d1f;">${title}</h1>
+      <div style="font-size: 13px; color: #666; display: flex; justify-content: center; gap: 24px;">
+        ${periodInfo ? `<span style="background: #f0f5ff; padding: 2px 10px; border-radius: 4px;">日期: ${periodInfo}</span>` : ''}
+        ${filterInfo ? `<span style="background: #f0f5ff; padding: 2px 10px; border-radius: 4px;">${filterInfo}</span>` : ''}
+      </div>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center;">
+      ${colGroup}
+      <thead>
+        <tr style="background: #409eff; color: #fff;">${headerRow}</tr>
+      </thead>
+      <tbody>${bodyRows || '<tr><td colspan="' + columns.length + '" style="padding: 30px; text-align: center; color: #999;">暂无数据</td></tr>'}</tbody>
+    </table>
+    <div style="text-align: right; font-size: 11px; color: #b0b0b0; margin-top: 12px; padding-top: 8px; border-top: 1px solid #eee;">
+      生成时间: ${dateStr}
+    </div>
+  </div>`
+}
+
+async function handleScreenshot() {
+  const data = enrichedData.value
+  if (!data.length) {
+    ElMessage.warning('没有数据可供导出')
+    return
+  }
+
+  let periodInfo = ''
+  if (searchForm.type === 'day' && searchForm.date) {
+    periodInfo = searchForm.date
+  } else if (searchForm.type === 'month' && searchForm.month) {
+    periodInfo = searchForm.month
+  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
+    periodInfo = `${searchForm.start_date} ~ ${searchForm.end_date}`
+  }
+
+  let filterInfo = ''
+  if (searchForm.team_desc) filterInfo = `班组: ${searchForm.team_desc}`
+  else if (searchForm.class_name) filterInfo = `班级: ${searchForm.class_name}`
+
+  const columns = buildScreenshotColumns(visibleMetricColumns.value, salaryCfg.gapTargets)
+  const rows = data.map(row => ({
+    cells: columns.map(col => formatScreenshotCell(row, col))
+  }))
+
+  const container = document.createElement('div')
+  container.className = 'screenshot-container'
+  container.innerHTML = buildScreenshotHtml('工作量报表', periodInfo, filterInfo, columns, rows, new Date())
+  container.style.cssText = 'position: fixed; left: -9999px; top: 0; z-index: -1;'
+  document.body.appendChild(container)
+
+  screenshotLoading.value = true
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      onclone: () => {}
+    })
+    const link = document.createElement('a')
+    link.download = `工作量报表_${periodInfo || '报表'}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+    ElMessage.success('截图导出成功')
+  } catch (e) {
+    ElMessage.error('截图导出失败: ' + (e.message || '未知错误'))
+  } finally {
+    screenshotLoading.value = false
+    document.body.removeChild(container)
+  }
 }
 
 function handleTypeChange() {
