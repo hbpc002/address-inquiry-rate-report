@@ -103,16 +103,11 @@ def _migrate_db():
             ]
             for col_name, col_def in schedule_type_changes:
                 if col_name in schedule_cols:
-                    from sqlalchemy import DECIMAL as _DECIMAL
-                    col_info = inspector.get_columns('schedules', column_names=[col_name])[0]
-                    col_type = col_info['type']
-                    if isinstance(col_type, _DECIMAL):
-                        if col_type.precision != 7 or col_type.scale != 4:
-                            try:
-                                db.execute(text(f"ALTER TABLE schedules ALTER COLUMN {col_name} TYPE {col_def}"))
-                                print(f"Altered schedules.{col_name} to {col_def}")
-                            except Exception as e:
-                                print(f"Failed to alter {col_name}: {e}")
+                    try:
+                        db.execute(text(f"ALTER TABLE schedules ALTER COLUMN {col_name} TYPE {col_def}"))
+                        print(f"Altered schedules.{col_name} to {col_def}")
+                    except Exception as e:
+                        print(f"Failed to alter {col_name}: {e}")
 
         if 'shift_types' in tables:
             shift_type_cols = {col['name']: col for col in inspector.get_columns('shift_types')}
