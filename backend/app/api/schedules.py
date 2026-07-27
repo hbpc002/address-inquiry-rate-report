@@ -521,13 +521,17 @@ def import_attendance_report(
             weighted_attendance += seg['attendance_rate'] * seg_hours
 
         if total_work_hours > 0:
-            overall_punctuality = round(weighted_punctuality / total_work_hours, 2)
-            overall_utilization = round(weighted_utilization / total_work_hours, 2)
-            overall_attendance = round(weighted_attendance / total_work_hours, 2)
+            overall_punctuality = min(round(weighted_punctuality / total_work_hours, 4), 999.9999)
+            overall_utilization = min(round(weighted_utilization / total_work_hours, 4), 999.9999)
+            overall_attendance = min(round(weighted_attendance / total_work_hours, 4), 999.9999)
         else:
             overall_punctuality = 0.0
             overall_utilization = 0.0
             overall_attendance = 0.0
+
+        total_call = min(total_call, 999.9)
+        total_organize = min(total_organize, 999.9)
+        total_work_hours = min(total_work_hours, 999.9)
 
         is_night = '晚' in shift_name
         is_rest = (shift_name == '休息')

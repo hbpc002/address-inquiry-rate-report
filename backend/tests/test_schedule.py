@@ -14,6 +14,7 @@ from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
 from datetime import date
+import io
 
 
 _admin_user = {
@@ -206,3 +207,101 @@ class TestScheduleDeleteBatch:
         resp = client.delete("/api/schedules/by-date", params={"date": "2026-06-01"})
         assert resp.status_code == 200
         assert resp.json()["count"] == 2
+
+def _make_attendance_xlsx(rows: list[list]) -> io.BytesIO:
+    """Create an xlsx in the 排班出勤情况 format for import testing."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    header = ["日期", "部门", "班组", "姓名", "工号", "班次", "时间段",
+              "", "", "", "", "", "工作时长", "", "准时率", "通话时长", "整理时长", "利用率", "出勤率"]
+    ws.append(header)
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+class TestImportAttendanceReport:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            from app.models.user import User
+            if not db.query(User).filter(User.username == "admin").first():
+                user = User(id=1, username="admin", password_hash="hashed", display_name="Admin", role="admin")
+                db.add(user)
+                db.commit()
+        finally:
+            db.close()
+
+    def test_import_clamps_high_rates(self):
+        """极端比率值(>999.99)不应导致 NUMERIC overflow 错误，应被限幅"""
+        db = SessionLocal()
+        try:
+            emp = Employee(emp_no="E999", name="极端值测试", team="测试班组")
+            db.add(emp)
+            db.flush()
+            db.commit()
+        finally:
+            db.close()
+
+        xlsx = _make_attendance_xlsx([
+            ["2026-07-24", "客服中心", "测试班组", "极端值测试", "E999",
+             "正常班", "08:00~17:00", "", "", "", "", "", 8.5, "",
+             1500.0, 10.5, 1.2, 1200.0, 1500.0],
+        ])
+        resp = client.post(
+            "/api/schedules/import-attendance-report",
+            files={"file": ("attendance.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert resp.status_code == 200, f"导入失败: {resp.json()}"
+        data = resp.json()
+        assert data["schedules"] == 1
+
+        db = SessionLocal()
+        try:
+            s = db.query(Schedule).first()
+            assert s is not None
+            assert float(s.punctuality_rate) <= 999.9999
+            assert float(s.utilization_rate) <= 999.9999
+            assert float(s.attendance_rate) <= 999.9999
+        finally:
+            db.close()
+
+    def test_import_normal_rates_no_clamp(self):
+        """正常比率值应正确保存，不被限幅影响"""
+        db = SessionLocal()
+        try:
+            emp = Employee(emp_no="E888", name="正常值测试", team="测试班组")
+            db.add(emp)
+            db.flush()
+            db.commit()
+            emp_id = emp.id
+        finally:
+            db.close()
+
+        xlsx = _make_attendance_xlsx([
+            ["2026-07-24", "客服中心", "测试班组", "正常值测试", "E888",
+             "正常班", "08:00~17:00", "", "", "", "", "", 8.5, "",
+             85.5, 2.3, 0.5, 42.3, 88.0],
+        ])
+        resp = client.post(
+            "/api/schedules/import-attendance-report",
+            files={"file": ("attendance.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        )
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        try:
+            s = db.query(Schedule).first()
+            assert s is not None
+            assert float(s.punctuality_rate) == 85.5
+            assert float(s.utilization_rate) == 42.3
+            assert float(s.attendance_rate) == 88.0
+        finally:
+            db.close()
