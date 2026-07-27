@@ -94,6 +94,12 @@ const routes = [
         name: 'FieldAnnotations',
         component: () => import('../views/FieldAnnotations.vue'),
         meta: { permission: 'field_annotations.view' }
+      },
+      {
+        path: 'training-records',
+        name: 'TrainingRecords',
+        component: () => import('../views/TrainingRecords.vue'),
+        meta: { permission: 'training_records.view' }
       }
     ]
   }

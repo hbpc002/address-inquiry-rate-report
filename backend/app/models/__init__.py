@@ -11,6 +11,7 @@ from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
 from app.models.salary_config import SalaryConfig
 from app.models.field_annotation import FieldAnnotation
+from app.models.training_record import TrainingRecord
 
 __all__ = [
     "Base",
@@ -28,4 +29,5 @@ __all__ = [
     "AttendanceConfig",
     "SalaryConfig",
     "FieldAnnotation",
+    "TrainingRecord",
 ]

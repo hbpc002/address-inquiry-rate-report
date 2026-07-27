@@ -33,6 +33,10 @@
           <el-icon><Tickets /></el-icon>
           <span>签入签出报表</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('training_records')" index="/training-records">
+          <el-icon><EditPen /></el-icon>
+          <span>培训记录</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.canView('workload')" index="/workloads">
           <el-icon><Document /></el-icon>
           <span>工作量详单</span>

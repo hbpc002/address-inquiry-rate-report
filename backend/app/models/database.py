@@ -36,6 +36,7 @@ def init_db():
     from app.models.announcement import Announcement
     from app.models.workload import Workload
     from app.models.field_annotation import FieldAnnotation
+    from app.models.training_record import TrainingRecord
 
     Base.metadata.create_all(bind=engine)
     _migrate_db()
@@ -143,6 +144,29 @@ def _migrate_db():
                     print("Added column segment_details to daily_reports")
                 except Exception as e:
                     print(f"Failed to add column segment_details: {e}")
+
+        if 'training_records' not in tables:
+            try:
+                db.execute(text("""
+                    CREATE TABLE training_records (
+                        id SERIAL PRIMARY KEY,
+                        emp_no VARCHAR(20) NOT NULL,
+                        record_date DATE NOT NULL,
+                        start_time VARCHAR(5) NOT NULL,
+                        end_time VARCHAR(5) NOT NULL,
+                        duration_minutes INTEGER NOT NULL,
+                        type VARCHAR(20) NOT NULL DEFAULT '培训',
+                        reason TEXT,
+                        created_by VARCHAR(50),
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        updated_at TIMESTAMP
+                    )
+                """))
+                db.execute(text("CREATE INDEX idx_training_records_emp_no ON training_records(emp_no)"))
+                db.execute(text("CREATE INDEX idx_training_records_date ON training_records(record_date)"))
+                print("Created table training_records")
+            except Exception as e:
+                print(f"Failed to create training_records: {e}")
 
         db.commit()
     except Exception as e:
@@ -377,6 +401,13 @@ def _seed_field_annotations():
         {"report_type": "checkin", "field_path": "avg_attendance_rate", "field_label": "班表出勤率",
          "source": "排班导入数据中的扩展指标",
          "description": "反映员工按排班出勤的比例"},
+        {"report_type": "checkin", "field_path": "training_minutes", "field_label": "培训扣除(分)",
+         "source": "培训记录表(training_records)统计",
+         "formula": "∑(培训/请假记录的分钟数)", "description": "统计周期内培训/请假总分钟数"},
+        {"report_type": "checkin", "field_path": "computed_punctuality_rate", "field_label": "系统遵时率",
+         "source": "系统自动计算",
+         "formula": "(实际工时 + 培训工时) / 排班工时 × 100%",
+         "description": "将培训/请假时间视为有效出勤时间后的遵时率，保留原导入遵时率作对比"},
 
         {"report_type": "efficiency", "field_path": "attendance_rate", "field_label": "出勤率",
          "source": "考勤日报表统计", "formula": "出勤天数 / 应出勤天数"},

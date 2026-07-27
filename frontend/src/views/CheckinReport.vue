@@ -162,6 +162,16 @@
             {{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}
           </template>
         </el-table-column>
+        <el-table-column label="培训扣除(分)" width="90" sortable prop="training_minutes">
+          <template #default="{ row }">
+            {{ row.training_minutes != null ? row.training_minutes : 0 }}
+          </template>
+        </el-table-column>
+        <el-table-column label="系统遵时率" width="90" sortable prop="computed_punctuality_rate">
+          <template #default="{ row }">
+            {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="签入明细" min-width="350">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
@@ -252,6 +262,11 @@
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
+          <el-col :span="3">
+            <el-statistic title="培训总时长" :value="personalDetail.summary.total_training_minutes || 0">
+              <template #suffix>分</template>
+            </el-statistic>
+          </el-col>
         </el-row>
 
         <el-row :gutter="12" style="margin-bottom: 16px">
@@ -323,6 +338,16 @@
             <el-table-column label="班表出勤率" width="80">
               <template #default="{ row }">
                 {{ row.attendance_rate != null ? row.attendance_rate.toFixed(2) + '%' : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="培训(分)" width="65">
+              <template #default="{ row }">
+                {{ row.training_minutes || 0 }}
+              </template>
+            </el-table-column>
+            <el-table-column label="系统遵时率" width="80">
+              <template #default="{ row }">
+                {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
               </template>
             </el-table-column>
             <el-table-column prop="checkin_time" label="签到时间" width="110">

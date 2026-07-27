@@ -15,6 +15,7 @@ from app.models.schedule import Schedule
 from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
+from app.models.training_record import TrainingRecord
 from app.utils.logger import log_operation
 
 
@@ -385,6 +386,15 @@ def get_checkin_report(
             "avg_attendance_rate": float(row[5]) if row[5] is not None else None,
         }
 
+    training_stats = db.query(
+        TrainingRecord.emp_no,
+        func.sum(TrainingRecord.duration_minutes)
+    ).filter(
+        TrainingRecord.record_date >= query_start,
+        TrainingRecord.record_date <= query_end
+    ).group_by(TrainingRecord.emp_no).all()
+    training_map = {emp_no: int(total) for emp_no, total in training_stats}
+
     emp_stats = {}
     for c in checkins:
         key = c.emp_no
@@ -404,6 +414,8 @@ def get_checkin_report(
                 "total_organize_duration": sched_agg.get("total_organize_duration"),
                 "avg_utilization_rate": sched_agg.get("avg_utilization_rate"),
                 "avg_attendance_rate": sched_agg.get("avg_attendance_rate"),
+                "training_minutes": training_map.get(key, 0),
+                "computed_punctuality_rate": None,
                 "checkins": []
             }
         emp_stats[key]["checkin_count"] += 1
@@ -488,6 +500,14 @@ def get_checkin_report(
             else:
                 item["hour_status"] = "normal"
                 item["hour_status_text"] = f"正常 ({ratio*100:.0f}%)"
+
+        training_hours = item.get("training_minutes", 0) / 60.0
+        scheduled = item.get("scheduled_hours", 0)
+        if scheduled > 0:
+            effective_hours = item["total_hours"] + training_hours
+            item["computed_punctuality_rate"] = round((effective_hours / scheduled) * 100, 2)
+        else:
+            item["computed_punctuality_rate"] = None
     
     items = list(emp_stats.values())
     items.sort(key=lambda x: x["checkin_count"], reverse=True)
@@ -550,6 +570,18 @@ def get_personal_report(
     ).all()
     schedule_map = {s.schedule_date: s for s in schedules}
 
+    training_recs = db.query(TrainingRecord).filter(
+        TrainingRecord.emp_no == emp_no,
+        TrainingRecord.record_date >= start,
+        TrainingRecord.record_date <= end
+    ).all()
+    training_map = {}
+    for tr in training_recs:
+        d = tr.record_date.isoformat()
+        if d not in training_map:
+            training_map[d] = 0
+        training_map[d] += tr.duration_minutes
+
     daily_map = {}
     for c in checkins:
         d = c.checkin_time.date()
@@ -584,6 +616,14 @@ def get_personal_report(
             entry["checkins"][0]["checkin_time"],
             entry["checkins"][-1]["checkout_time"]
         )
+        training_minutes = training_map.get(entry["date"], 0)
+        scheduled_hours = float(report.scheduled_hours) if report and report.scheduled_hours else 0
+        actual_hours = float(report.actual_hours) if report and report.actual_hours else 0
+        if scheduled_hours > 0:
+            computed_punctuality = round((actual_hours + training_minutes / 60.0) / scheduled_hours * 100, 2)
+        else:
+            computed_punctuality = None
+
         daily_stats.append({
             "date": entry["date"],
             "checkin_time": entry["checkins"][0]["checkin_time"] if entry["checkins"] else None,
@@ -591,16 +631,18 @@ def get_personal_report(
             "duration": round(entry["total_duration"], 1),
             "shift_name": shift_name,
             "is_long_hour": entry["total_duration"] > long_hour_threshold,
-            "scheduled_hours": float(report.scheduled_hours) if report and report.scheduled_hours else 0,
+            "scheduled_hours": scheduled_hours,
             "status": report.status if report else '',
-            "actual_hours": float(report.actual_hours) if report and report.actual_hours else 0,
+            "actual_hours": actual_hours,
             "late_minutes": report.late_minutes if report else 0,
             "early_minutes": report.early_minutes if report else 0,
             "punctuality_rate": float(sched.punctuality_rate) if sched and sched.punctuality_rate is not None else None,
             "call_duration": float(sched.call_duration) if sched and sched.call_duration is not None else None,
             "organize_duration": float(sched.organize_duration) if sched and sched.organize_duration is not None else None,
             "utilization_rate": float(sched.utilization_rate) if sched and sched.utilization_rate is not None else None,
-            "attendance_rate": float(sched.attendance_rate) if sched and sched.attendance_rate is not None else None
+            "attendance_rate": float(sched.attendance_rate) if sched and sched.attendance_rate is not None else None,
+            "training_minutes": training_minutes,
+            "computed_punctuality_rate": computed_punctuality
         })
 
     attend_days = len(daily_stats)
@@ -664,7 +706,8 @@ def get_personal_report(
             "team_avg_hours": team_avg["avg_hours"],
             "team_avg_checkin_count": team_avg["avg_checkin_count"],
             "total_call_duration": round(sum(d.get("call_duration") or 0 for d in daily_stats), 1),
-            "total_organize_duration": round(sum(d.get("organize_duration") or 0 for d in daily_stats), 1)
+            "total_organize_duration": round(sum(d.get("organize_duration") or 0 for d in daily_stats), 1),
+            "total_training_minutes": sum(d.get("training_minutes") or 0 for d in daily_stats)
         },
             "daily_stats": daily_stats
     }

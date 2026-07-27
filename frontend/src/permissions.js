@@ -121,6 +121,14 @@ export const PERMISSION_REGISTRY = {
       edit: '编辑',
     },
   },
+  training_records: {
+    label: '培训记录',
+    permissions: {
+      view: '查看',
+      create: '新增',
+      delete: '删除',
+    },
+  },
 }
 
 export function getAllPermissionKeys() {
