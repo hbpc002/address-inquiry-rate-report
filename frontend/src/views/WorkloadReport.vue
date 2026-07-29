@@ -883,8 +883,10 @@ function handleExport() {
 
 function buildScreenshotColumns(visibleMetricCols, gapTargets) {
   const cols = [
+    { prop: '_index', label: '排名', width: 55 },
     { prop: 'account', label: '账号', width: 110 },
     { prop: 'name', label: '姓名', width: 80 },
+    { prop: 'team_desc', label: '班组', width: 140 },
     { prop: 'date_count', label: '天数', width: 60 },
     ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
     { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
@@ -924,7 +926,10 @@ function getScreenshotMetricStyle(fieldKey, value, targets) {
   return hit ? { color: target.color, fontWeight: 'bold' } : null
 }
 
-function formatScreenshotCell(row, col, activeTargets) {
+function formatScreenshotCell(row, col, activeTargets, rowIndex) {
+  if (col.prop === '_index') {
+    return { text: String(rowIndex + 1), style: null }
+  }
   let val
   if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
     val = row[col.prop]
@@ -1039,8 +1044,8 @@ async function handleScreenshot() {
 
   const columns = buildScreenshotColumns(visibleMetricColumns.value, salaryCfg.gapTargets)
   const targets = activeTargets.value
-  const rows = data.map(row => ({
-    cells: columns.map(col => formatScreenshotCell(row, col, targets))
+  const rows = data.map((row, i) => ({
+    cells: columns.map(col => formatScreenshotCell(row, col, targets, i))
   }))
 
   const container = document.createElement('div')

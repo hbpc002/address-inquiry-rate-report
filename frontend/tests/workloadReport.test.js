@@ -1106,8 +1106,10 @@ describe('WorkloadReport - 截图导出功能', () => {
 
   function buildScreenshotColumns(visibleMetricCols, hasPermission, gapTargets) {
     const cols = [
+      { prop: '_index', label: '排名', width: 55 },
       { prop: 'account', label: '账号', width: 110 },
       { prop: 'name', label: '姓名', width: 80 },
+      { prop: 'team_desc', label: '班组', width: 140 },
       { prop: 'date_count', label: '天数', width: 60 },
       ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
       { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
@@ -1147,7 +1149,10 @@ describe('WorkloadReport - 截图导出功能', () => {
     return hit ? { color: target.color, fontWeight: 'bold' } : null
   }
 
-  function formatScreenshotCell(row, col, activeTargets) {
+  function formatScreenshotCell(row, col, activeTargets, rowIndex) {
+    if (col.prop === '_index') {
+      return { text: String(rowIndex + 1), style: null }
+    }
     let val
     if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
       val = row[col.prop]
@@ -1227,7 +1232,7 @@ describe('WorkloadReport - 截图导出功能', () => {
     it('should include basic fixed columns', () => {
       const cols = buildScreenshotColumns([], hasNoPermissions, [])
       expect(cols.map(c => c.prop)).toEqual([
-        'account', 'name', 'date_count',
+        '_index', 'account', 'name', 'team_desc', 'date_count',
         '_ti_dan_lv', '_call_hourly_rate'
       ])
     })
@@ -1341,46 +1346,52 @@ describe('WorkloadReport - 截图导出功能', () => {
     }
 
     it('should format basic text fields', () => {
-      expect(formatScreenshotCell(row, { prop: 'account' }, []).text).toBe('zhangsan')
-      expect(formatScreenshotCell(row, { prop: 'name' }, []).text).toBe('张三')
-      expect(formatScreenshotCell(row, { prop: 'team_desc' }, []).text).toBe('二班1组')
+      expect(formatScreenshotCell(row, { prop: 'account' }, [], 0).text).toBe('zhangsan')
+      expect(formatScreenshotCell(row, { prop: 'name' }, [], 0).text).toBe('张三')
+      expect(formatScreenshotCell(row, { prop: 'team_desc' }, [], 0).text).toBe('二班1组')
     })
 
     it('should format integer fields without decimals', () => {
-      expect(formatScreenshotCell(row, { prop: 'date_count' }, []).text).toBe('22')
+      expect(formatScreenshotCell(row, { prop: 'date_count' }, [], 0).text).toBe('22')
     })
 
     it('should format decimal fields with 1 decimal', () => {
-      expect(formatScreenshotCell(row, { prop: '_call_hourly_rate' }, []).text).toBe('3.8')
+      expect(formatScreenshotCell(row, { prop: '_call_hourly_rate' }, [], 0).text).toBe('3.8')
     })
 
     it('should format rate fields as percentage', () => {
-      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, []).text).toBe('15.60%')
-      expect(formatScreenshotCell(row, { prop: '人工服务-满意度-满意率', isRate: true }, []).text).toBe('95.00%')
+      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, [], 0).text).toBe('15.60%')
+      expect(formatScreenshotCell(row, { prop: '人工服务-满意度-满意率', isRate: true }, [], 0).text).toBe('95.00%')
     })
 
     it('should format metric values from aggregated_metrics', () => {
-      expect(formatScreenshotCell(row, { prop: '呼入人工服务-人工服务-通话次数' }, []).text).toBe('150')
+      expect(formatScreenshotCell(row, { prop: '呼入人工服务-人工服务-通话次数' }, [], 0).text).toBe('150')
     })
 
     it('should format decimal salary values with 1 decimal', () => {
-      expect(formatScreenshotCell(row, { prop: '_call_salary' }, []).text).toBe('3500.5')
-      expect(formatScreenshotCell(row, { prop: '_sat_salary' }, []).text).toBe('120.3')
+      expect(formatScreenshotCell(row, { prop: '_call_salary' }, [], 0).text).toBe('3500.5')
+      expect(formatScreenshotCell(row, { prop: '_sat_salary' }, [], 0).text).toBe('120.3')
     })
 
     it('should format gap values (negative integers)', () => {
-      expect(formatScreenshotCell(row, { prop: 'gap_2000' }, []).text).toBe('-150')
-      expect(formatScreenshotCell(row, { prop: 'gap_2500' }, []).text).toBe('-650')
+      expect(formatScreenshotCell(row, { prop: 'gap_2000' }, [], 0).text).toBe('-150')
+      expect(formatScreenshotCell(row, { prop: 'gap_2500' }, [], 0).text).toBe('-650')
     })
 
     it('should return dash with null style for null/undefined values', () => {
-      const result = formatScreenshotCell({}, { prop: 'name' }, [])
+      const result = formatScreenshotCell({}, { prop: 'name' }, [], 0)
       expect(result.text).toBe('-')
       expect(result.style).toBeNull()
     })
 
     it('should return no style when targets list is empty', () => {
-      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, []).style).toBeNull()
+      expect(formatScreenshotCell(row, { prop: '_ti_dan_lv', isRate: true }, [], 0).style).toBeNull()
+    })
+
+    it('should return sequential rank for _index column', () => {
+      expect(formatScreenshotCell(row, { prop: '_index' }, [], 0).text).toBe('1')
+      expect(formatScreenshotCell(row, { prop: '_index' }, [], 5).text).toBe('6')
+      expect(formatScreenshotCell(row, { prop: '_index' }, [], 0).style).toBeNull()
     })
   })
 
