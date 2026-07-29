@@ -349,3 +349,142 @@ def test_training_record_date_filter():
         assert len(leave_only) == 0
     finally:
         db.close()
+
+
+def _build_simple_xlsx_training(today_str: str) -> bytes:
+    """Build a training-records-format xlsx (last sheet only, simplified)."""
+    import zipfile as zf
+    import io as io_b
+
+    ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+
+    def cell(ref, value, t=""):
+        if t == "inlineStr":
+            return f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>'
+        return f'<c r="{ref}"><v>{value}</v></c>'
+
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<worksheet xmlns="{ns}">'
+        "<sheetData>"
+        f'<row r="1">{cell("A1","工号","inlineStr")}{cell("B1","班组","inlineStr")}{cell("C1","姓名","inlineStr")}{cell("D1","培训总时长","inlineStr")}{cell("E1",today_str,"inlineStr")}</row>'
+        f'<row r="2"><c r="A1"/><c r="B1"/><c r="C1"/><c r="D1"/><c r="E1" t="inlineStr"><is><t>签出时间段</t></is></c></row>'
+        f'<row r="3"/>'
+        f'<row r="4">{cell("A1","E001","inlineStr")}{cell("B1","一班1组","inlineStr")}{cell("C1","张三","inlineStr")}{cell("D1","")}{cell("E1","09:00-10:30","inlineStr")}</row>'
+        "</sheetData>"
+        "</worksheet>"
+    )
+
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '</Types>'
+    )
+
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>'
+    )
+
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        "<sheets>"
+        '<sheet name="sheet1" sheetId="1" r:id="rId1"/>'
+        "</sheets>"
+        "</workbook>"
+    )
+
+    workbook_rels = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '</Relationships>'
+    )
+
+    buf = io_b.BytesIO()
+    with zf.ZipFile(buf, "w", zf.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("xl/workbook.xml", workbook)
+        z.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        z.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+
+    return buf.getvalue()
+
+
+def test_import_training_records_endpoint():
+    """测试培训记录导入端点"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.models.database import SessionLocal as _SessionLocal
+    from app.models.employee import Employee
+    from app.models.shift_type import ShiftType
+    from app.core.security import get_password_hash
+
+    # Clean up first
+    db = _SessionLocal()
+    db.query(TrainingRecord).delete()
+    db.commit()
+    db.close()
+
+    client = TestClient(app)
+
+    # First create the employee
+    db = _SessionLocal()
+    emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
+    if not emp:
+        shift = ShiftType(shift_name="早班", time_segments=[{"start": "08:00", "end": "18:00"}], work_hours=8.0, color="#409EFF", is_active=True)
+        db.add(shift)
+        db.commit()
+        db.refresh(shift)
+        emp = Employee(emp_no="E001", name="张三", team="一班1组", dept="广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表", role="组员", status="在职", created_by=1)
+        db.add(emp)
+        db.commit()
+        db.refresh(emp)
+    db.close()
+
+    today = datetime.now().date().strftime("%Y%m%d")
+    xlsx_bytes = _build_simple_xlsx_training(today)
+
+    from app.core.security import create_access_token, get_password_hash
+    # Setup admin user
+    from app.models.role import Role
+    admin_role = db.query(Role).filter(Role.name == 'admin').first()
+    if not admin_role:
+        admin_role = Role(name='admin', permissions='{}', is_system=True)
+        db.add(admin_role)
+        db.commit()
+        db.refresh(admin_role)
+    admin_user = db.query(User).filter(User.username == 'admin').first()
+    if not admin_user:
+        admin_user = User(username='admin', password_hash=get_password_hash('admin'), display_name='Admin', role='admin', role_id=admin_role.id)
+        db.add(admin_user)
+        db.commit()
+        db.refresh(admin_user)
+    token = create_access_token(data={"sub": str(admin_user.id)})
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post(
+        "/api/training-records/import",
+        files={"file": ("test.xlsx", xlsx_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert "成功导入 1 条培训记录" in data["message"]
+
+    db = _SessionLocal()
+    records = db.query(TrainingRecord).filter(TrainingRecord.emp_no == "E001").all()
+    assert len(records) == 1
+    assert records[0].duration_minutes == 90
+    assert records[0].type == "培训"
+    db.close()

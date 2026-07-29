@@ -7,6 +7,7 @@
           <el-space>
             <el-button v-if="userStore.hasPermission('training_records.view')" @click="loadData">刷新</el-button>
             <el-button v-if="userStore.hasPermission('training_records.create')" type="primary" @click="openBatchDialog">批量录入</el-button>
+            <el-button v-if="userStore.hasPermission('training_records.create')" type="success" @click="importVisible = true">导入培训记录</el-button>
           </el-space>
         </div>
       </template>
@@ -97,9 +98,30 @@
       <div style="font-size: 12px; color: #909399; margin-top: -8px; margin-bottom: 8px;">
         将创建 {{ batchForm.selectedEmps.length * batchForm.dates.length }} 条记录
       </div>
+       <template #footer>
+         <el-button @click="batchDialogVisible = false">取消</el-button>
+         <el-button type="primary" :loading="submitting" @click="handleBatchCreate" :disabled="!canSubmit">确认录入</el-button>
+       </template>
+     </el-dialog>
+
+     <el-dialog v-model="importVisible" title="导入培训记录" width="500px">
+       <el-upload
+        drag
+        :auto-upload="false"
+        :on-change="handleFileChange"
+        accept=".xlsx"
+        :show-file-list="true"
+        :file-list="importFileList"
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">拖拽 xlsx 文件到此处，或<em>点击选择</em></div>
+        <template #tip>
+          <div class="el-upload__tip">仅支持 .xlsx 格式，取最后一个工作表导入</div>
+        </template>
+      </el-upload>
       <template #footer>
-        <el-button @click="batchDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleBatchCreate" :disabled="!canSubmit">确认录入</el-button>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" @click="handleImport" :disabled="!importFile">确认导入</el-button>
       </template>
     </el-dialog>
   </div>
@@ -109,6 +131,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 
@@ -117,6 +140,10 @@ const tableData = ref([])
 const stats = reactive({ total: 0, total_minutes: 0 })
 const batchDialogVisible = ref(false)
 const submitting = ref(false)
+const importVisible = ref(false)
+const importing = ref(false)
+const importFile = ref(null)
+const importFileList = ref([])
 
 const searchForm = reactive({
   start_date: '',
@@ -225,6 +252,43 @@ async function handleDelete(row) {
     if (e !== 'cancel') {
       ElMessage.error('删除失败: ' + (e.response?.data?.detail || e.message))
     }
+  }
+}
+
+function handleFileChange(file) {
+  const isXlsx = file.name.endsWith('.xlsx')
+  if (!isXlsx) {
+    ElMessage.warning('请上传 .xlsx 格式的文件')
+    importFileList.value = []
+    return false
+  }
+  importFile.value = file.raw
+  importFileList.value = [file]
+  return false
+}
+
+async function handleImport() {
+  if (!importFile.value) {
+    ElMessage.warning('请先选择文件')
+    return
+  }
+  importing.value = true
+  const formData = new FormData()
+  formData.append('file', importFile.value)
+  try {
+    const res = await api.post('/training-records/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    ElMessage.success(res.data.message)
+    importVisible.value = false
+    importFile.value = null
+    importFileList.value = []
+    loadData()
+  } catch (e) {
+    const detail = e.response?.data?.detail || e.message
+    ElMessage.error('导入失败: ' + detail)
+  } finally {
+    importing.value = false
   }
 }
 
