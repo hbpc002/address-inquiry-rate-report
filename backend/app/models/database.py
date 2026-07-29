@@ -406,8 +406,8 @@ def _seed_field_annotations():
          "formula": "∑(培训/请假记录的分钟数)", "description": "统计周期内培训/请假总分钟数"},
         {"report_type": "checkin", "field_path": "computed_punctuality_rate", "field_label": "系统遵时率",
          "source": "系统自动计算",
-         "formula": "(实际工时 + 培训工时) / 排班工时 × 100%",
-         "description": "将培训/请假时间视为有效出勤时间后的遵时率，保留原导入遵时率作对比"},
+         "formula": "(实际工时 - 培训工时) / (排班工时 - 培训工时) × 100%",
+         "description": "将培训时间从实际工时和排班工时中同时扣除后的遵时率，保留原导入遵时率作对比"},
 
         {"report_type": "efficiency", "field_path": "attendance_rate", "field_label": "出勤率",
          "source": "考勤日报表统计", "formula": "出勤天数 / 应出勤天数"},

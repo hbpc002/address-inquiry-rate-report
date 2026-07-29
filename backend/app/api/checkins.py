@@ -504,8 +504,12 @@ def get_checkin_report(
         training_hours = item.get("training_minutes", 0) / 60.0
         scheduled = item.get("scheduled_hours", 0)
         if scheduled > 0:
-            effective_hours = item["total_hours"] + training_hours
-            item["computed_punctuality_rate"] = round((effective_hours / scheduled) * 100, 2)
+            effective_hours = max(0, item["total_hours"] - training_hours)
+            effective_scheduled = scheduled - training_hours
+            if effective_scheduled > 0:
+                item["computed_punctuality_rate"] = round((effective_hours / effective_scheduled) * 100, 2)
+            else:
+                item["computed_punctuality_rate"] = None
         else:
             item["computed_punctuality_rate"] = None
     
@@ -620,7 +624,12 @@ def get_personal_report(
         scheduled_hours = float(report.scheduled_hours) if report and report.scheduled_hours else 0
         actual_hours = float(report.actual_hours) if report and report.actual_hours else 0
         if scheduled_hours > 0:
-            computed_punctuality = round((actual_hours + training_minutes / 60.0) / scheduled_hours * 100, 2)
+            effective_hours = max(0, actual_hours - training_minutes / 60.0)
+            effective_scheduled = scheduled_hours - training_minutes / 60.0
+            if effective_scheduled > 0:
+                computed_punctuality = round((effective_hours / effective_scheduled) * 100, 2)
+            else:
+                computed_punctuality = None
         else:
             computed_punctuality = None
 
