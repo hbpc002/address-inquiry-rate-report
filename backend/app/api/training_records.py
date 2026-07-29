@@ -162,13 +162,18 @@ def _date_col_name(col_letter: str) -> str:
     return "".join(c for c in col_letter if c.isalpha())
 
 
-def _parse_xlsx_cell_text(cell, ns) -> str:
+def _parse_xlsx_cell_text(cell, ns, shared_strings: list[str]) -> str:
     t = cell.get("t", "")
     v_el = cell.find("s:v", ns)
     v = v_el.text if v_el is not None else ""
     if t == "inlineStr":
         t_el = cell.find(".//s:t", ns)
         return t_el.text if t_el is not None else ""
+    if t == "s":
+        try:
+            return shared_strings[int(v)]
+        except (ValueError, IndexError):
+            return v
     return v
 
 
@@ -186,19 +191,23 @@ async def import_training_records(
 
     ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 
-    sheets = []
     with zipfile.ZipFile(io.BytesIO(content), "r") as z:
-        for name in z.namelist():
-            if not name.startswith("xl/worksheets/") or not name.endswith(".xml"):
-                continue
-            sheets.append((name, z.read(name)))
+        sheet_files = sorted(
+            [n for n in z.namelist() if n.startswith("xl/worksheets/") and n.endswith(".xml")]
+        )
+        if not sheet_files:
+            raise HTTPException(status_code=400, detail="文件不包含任何工作表")
+        xml_content = z.read(sheet_files[-1])
 
-    if not sheets:
-        raise HTTPException(status_code=400, detail="文件不包含任何工作表")
+        shared_strings = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            sst_root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+            shared_strings = [
+                si.findtext(".//s:t", "", ns) for si in sst_root.findall(".//s:si", ns)
+            ]
 
-    xml_content = sheets[-1][1]
-    root = ET.fromstring(xml_content)
-    all_rows = root.findall(".//s:row", ns)
+        root = ET.fromstring(xml_content)
+        all_rows = root.findall(".//s:row", ns)
 
     if len(all_rows) < 3:
         raise HTTPException(status_code=400, detail="文件格式无效，至少需要3行")
@@ -209,7 +218,7 @@ async def import_training_records(
     for cell in header1_cells:
         ref = cell.get("r")
         col_letter = _date_col_name(ref)
-        value = _parse_xlsx_cell_text(cell, ns).strip()
+        value = _parse_xlsx_cell_text(cell, ns, shared_strings).strip()
         if re.match(r"^\d{8}$", value):
             date_cols[col_letter] = value
 
@@ -221,7 +230,7 @@ async def import_training_records(
     for cell in header2_cells:
         ref = cell.get("r")
         col_letter = _date_col_name(ref)
-        value = _parse_xlsx_cell_text(cell, ns).strip()
+        value = _parse_xlsx_cell_text(cell, ns, shared_strings).strip()
         if value == "签出时间段":
             for dcol, dval in date_cols.items():
                 if col_letter == dcol:
@@ -247,7 +256,7 @@ async def import_training_records(
         for cell in cells:
             ref = cell.get("r")
             col_letter = _date_col_name(ref)
-            cell_map[col_letter] = _parse_xlsx_cell_text(cell, ns)
+            cell_map[col_letter] = _parse_xlsx_cell_text(cell, ns, shared_strings)
 
         emp_no = (cell_map.get("A") or "").strip()
         team = (cell_map.get("B") or "").strip()

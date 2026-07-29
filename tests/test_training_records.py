@@ -427,11 +427,19 @@ def test_import_training_records_endpoint():
     from app.models.database import SessionLocal as _SessionLocal
     from app.models.employee import Employee
     from app.models.shift_type import ShiftType
+    from app.models.schedule import Schedule
+    from app.models.checkin import Checkin
+    from app.models.daily_report import DailyReport
     from app.core.security import get_password_hash
 
-    # Clean up first
+    # Clean up dependent tables first, then User, then User again
     db = _SessionLocal()
     db.query(TrainingRecord).delete()
+    db.query(Checkin).delete()
+    db.query(DailyReport).delete()
+    db.query(Schedule).delete()
+    db.query(ShiftType).delete()
+    db.query(Employee).delete()
     db.commit()
     db.close()
 
@@ -445,7 +453,7 @@ def test_import_training_records_endpoint():
         db.add(shift)
         db.commit()
         db.refresh(shift)
-        emp = Employee(emp_no="E001", name="张三", team="一班1组", dept="广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表", role="组员", status="在职", created_by=1)
+        emp = Employee(emp_no="E001", name="张三", team="一班1组", dept="广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表", role="组员", status="在职", created_by=None)
         db.add(emp)
         db.commit()
         db.refresh(emp)
