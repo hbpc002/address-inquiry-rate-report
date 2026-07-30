@@ -162,13 +162,24 @@ def _date_col_name(col_letter: str) -> str:
     return "".join(c for c in col_letter if c.isalpha())
 
 
+def _next_col_letter(col: str) -> str:
+    """Get the next column letter (A->B, Z->AA, AZ->BA, etc.)"""
+    letters = list(col)
+    for i in range(len(letters) - 1, -1, -1):
+        if letters[i] < "Z":
+            letters[i] = chr(ord(letters[i]) + 1)
+            return "".join(letters)
+        letters[i] = "A"
+    return "A" + "".join(letters)
+
+
 def _parse_xlsx_cell_text(cell, ns, shared_strings: list[str]) -> str:
     t = cell.get("t", "")
     v_el = cell.find("s:v", ns)
     v = v_el.text if v_el is not None else ""
     if t == "inlineStr":
         t_el = cell.find(".//s:t", ns)
-        return t_el.text if t_el is not None else ""
+        return t_el.text if t_el is not None and t_el.text is not None else ""
     if t == "s":
         try:
             return shared_strings[int(v)]
@@ -225,16 +236,21 @@ async def import_training_records(
     if not date_cols:
         raise HTTPException(status_code=400, detail="未能在表头中识别日期列")
 
+    # Build row 1 column -> value mapping
     header2_cells = all_rows[1].findall("s:c", ns)
-    time_cols = {}
+    header2_map = {}
     for cell in header2_cells:
         ref = cell.get("r")
         col_letter = _date_col_name(ref)
         value = _parse_xlsx_cell_text(cell, ns, shared_strings).strip()
-        if value == "签出时间段":
-            for dcol, dval in date_cols.items():
-                if col_letter == dcol:
-                    time_cols[dcol] = dval
+        header2_map[col_letter] = value
+
+    # For each date column, check the next column for "签出时间段"
+    time_cols = {}
+    for dcol, dval in sorted(date_cols.items(), key=lambda x: x[0]):
+        next_col = _next_col_letter(dcol)
+        if header2_map.get(next_col) == "签出时间段":
+            time_cols[dcol] = dval
 
     if not time_cols:
         raise HTTPException(status_code=400, detail="未能找到时间段列")
@@ -275,7 +291,8 @@ async def import_training_records(
 
         for dcol in date_col_letters:
             date_str = time_cols[dcol]
-            time_value = (cell_map.get(dcol) or "").strip()
+            time_col_letter = _next_col_letter(dcol)
+            time_value = (cell_map.get(time_col_letter) or "").strip()
             if not time_value or time_value == "0":
                 continue
 

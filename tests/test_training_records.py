@@ -352,7 +352,7 @@ def test_training_record_date_filter():
 
 
 def _build_simple_xlsx_training(today_str: str) -> bytes:
-    """Build a training-records-format xlsx (last sheet only, simplified)."""
+    """Build a training-records-format xlsx matching the real file's two-column-per-date layout."""
     import zipfile as zf
     import io as io_b
 
@@ -363,14 +363,18 @@ def _build_simple_xlsx_training(today_str: str) -> bytes:
             return f'<c r="{ref}" t="inlineStr"><is><t>{value}</t></is></c>'
         return f'<c r="{ref}"><v>{value}</v></c>'
 
+    # Real file layout:
+    # Row 1: date in E1, empty in F1, next date in G1, empty in H1, ...
+    # Row 2: "签出培训时长" in E2, "签出时间段" in F2, ...
+    # Data rows: time period in F4 (next column after date)
     sheet_xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<worksheet xmlns="{ns}">'
         "<sheetData>"
-        f'<row r="1">{cell("A1","工号","inlineStr")}{cell("B1","班组","inlineStr")}{cell("C1","姓名","inlineStr")}{cell("D1","培训总时长","inlineStr")}{cell("E1",today_str,"inlineStr")}</row>'
-        f'<row r="2"><c r="A1"/><c r="B1"/><c r="C1"/><c r="D1"/><c r="E1" t="inlineStr"><is><t>签出时间段</t></is></c></row>'
+        f'<row r="1">{cell("A1","工号","inlineStr")}{cell("B1","班组","inlineStr")}{cell("C1","姓名","inlineStr")}{cell("D1","培训总时长","inlineStr")}{cell("E1",today_str,"inlineStr")}{cell("F1","","inlineStr")}</row>'
+        f'<row r="2">{cell("A2","","inlineStr")}{cell("B2","","inlineStr")}{cell("C2","","inlineStr")}{cell("D2","","inlineStr")}{cell("E2","签出培训时长","inlineStr")}{cell("F2","签出时间段","inlineStr")}</row>'
         f'<row r="3"/>'
-        f'<row r="4">{cell("A1","E001","inlineStr")}{cell("B1","一班1组","inlineStr")}{cell("C1","张三","inlineStr")}{cell("D1","")}{cell("E1","09:00-10:30","inlineStr")}</row>'
+        f'<row r="4">{cell("A4","E001","inlineStr")}{cell("B4","一班1组","inlineStr")}{cell("C4","张三","inlineStr")}{cell("D4","","inlineStr")}{cell("E4","","inlineStr")}{cell("F4","09:00-10:30","inlineStr")}</row>'
         "</sheetData>"
         "</worksheet>"
     )
