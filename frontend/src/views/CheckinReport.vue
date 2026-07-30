@@ -119,59 +119,59 @@
       </el-row>
 
       <el-table :data="paginatedData" border stripe show-summary max-height="calc(100vh - 350px)">
-        <el-table-column prop="emp_no" label="账号" width="100" />
-        <el-table-column prop="name" label="用户名" width="100" />
-        <el-table-column prop="dept" label="所属部门" min-width="150" />
-        <el-table-column prop="team" label="班组" width="100" />
-        <el-table-column prop="checkin_count" label="签入次数" width="80" sortable />
-        <el-table-column prop="total_hours" label="工作时长" width="80" sortable>
+        <ColumnWithTip prop="emp_no" label="账号" width="100" :annotation="checkinAnnMap['emp_no']" />
+        <ColumnWithTip prop="name" label="用户名" width="100" :annotation="checkinAnnMap['name']" />
+        <ColumnWithTip prop="dept" label="所属部门" min-width="150" :annotation="checkinAnnMap['dept']" />
+        <ColumnWithTip prop="team" label="班组" width="100" :annotation="checkinAnnMap['team']" />
+        <ColumnWithTip prop="checkin_count" label="签入次数" width="80" sortable :annotation="checkinAnnMap['checkin_count']" />
+        <ColumnWithTip prop="total_hours" label="工作时长" width="80" sortable :annotation="checkinAnnMap['total_hours']">
           <template #default="{ row }">
             {{ row.total_hours.toFixed(1) }}
           </template>
-        </el-table-column>
-        <el-table-column prop="hour_status_text" label="工时状态" width="120">
+        </ColumnWithTip>
+        <ColumnWithTip prop="hour_status_text" label="工时状态" width="120" :annotation="checkinAnnMap['hour_status_text']">
           <template #default="{ row }">
             <el-tag v-if="row.hour_status === 'overtime'" type="danger" size="small">超时</el-tag>
             <el-tag v-else-if="row.hour_status === 'undertime'" type="warning" size="small">过短</el-tag>
             <el-tag v-else-if="row.hour_status === 'normal'" type="success" size="small">正常</el-tag>
             <span v-else>-</span>
           </template>
-        </el-table-column>
-        <el-table-column label="遵时率" width="80" sortable prop="avg_punctuality_rate">
+        </ColumnWithTip>
+        <ColumnWithTip prop="avg_punctuality_rate" label="遵时率" width="80" sortable :annotation="checkinAnnMap['avg_punctuality_rate']">
           <template #default="{ row }">
             {{ row.avg_punctuality_rate != null ? row.avg_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
-        </el-table-column>
-        <el-table-column label="通话时长" width="80" sortable prop="total_call_duration">
+        </ColumnWithTip>
+        <ColumnWithTip prop="total_call_duration" label="通话时长" width="80" sortable :annotation="checkinAnnMap['total_call_duration']">
           <template #default="{ row }">
             {{ row.total_call_duration != null ? row.total_call_duration.toFixed(1) + 'h' : '-' }}
           </template>
-        </el-table-column>
-        <el-table-column label="整理时长" width="80" sortable prop="total_organize_duration">
+        </ColumnWithTip>
+        <ColumnWithTip prop="total_organize_duration" label="整理时长" width="80" sortable :annotation="checkinAnnMap['total_organize_duration']">
           <template #default="{ row }">
             {{ row.total_organize_duration != null ? row.total_organize_duration.toFixed(1) + 'h' : '-' }}
           </template>
-        </el-table-column>
-        <el-table-column label="工时利用率" width="90" sortable prop="avg_utilization_rate">
+        </ColumnWithTip>
+        <ColumnWithTip prop="avg_utilization_rate" label="工时利用率" width="90" sortable :annotation="checkinAnnMap['avg_utilization_rate']">
           <template #default="{ row }">
             {{ row.avg_utilization_rate != null ? row.avg_utilization_rate.toFixed(2) + '%' : '-' }}
           </template>
-        </el-table-column>
-        <el-table-column label="班表出勤率" width="90" sortable prop="avg_attendance_rate">
+        </ColumnWithTip>
+        <ColumnWithTip prop="avg_attendance_rate" label="班表出勤率" width="90" sortable :annotation="checkinAnnMap['avg_attendance_rate']">
           <template #default="{ row }">
             {{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}
           </template>
-        </el-table-column>
-        <el-table-column label="培训扣除(分)" width="90" sortable prop="training_minutes">
+        </ColumnWithTip>
+        <ColumnWithTip prop="training_minutes" label="培训扣除(分)" width="90" sortable :annotation="checkinAnnMap['training_minutes']">
           <template #default="{ row }">
             {{ row.training_minutes != null ? row.training_minutes : 0 }}
           </template>
-        </el-table-column>
-        <el-table-column label="系统遵时率" width="90" sortable prop="computed_punctuality_rate">
+        </ColumnWithTip>
+        <ColumnWithTip prop="computed_punctuality_rate" label="系统遵时率" width="90" sortable :annotation="checkinAnnMap['computed_punctuality_rate']">
           <template #default="{ row }">
             {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
-        </el-table-column>
+        </ColumnWithTip>
         <el-table-column label="签入明细" min-width="350">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
@@ -214,23 +214,45 @@
 
         <el-row :gutter="12" class="stats-row">
           <el-col :span="3">
-            <el-statistic title="排班总工时" :value="personalDetail.summary.total_scheduled_hours" :precision="1">
+            <el-statistic :precision="1">
+              <template #title>
+                <el-tooltip :content="summaryAnn.total_scheduled_hours?.source || ''" effect="light" placement="top">
+                  <span>排班总工时 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.total_scheduled_hours }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="累计工时" :value="personalDetail.summary.total_hours" :precision="1">
+            <el-statistic :precision="1">
+              <template #title>
+                <el-tooltip :content="summaryAnn.total_hours?.source || ''" effect="light" placement="top">
+                  <span>累计工时 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.total_hours }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="班组平均工时" :value="personalDetail.summary.team_avg_hours" :precision="1">
+            <el-statistic :precision="1">
+              <template #title>
+                <el-tooltip :content="summaryAnn.team_avg_hours?.source || ''" effect="light" placement="top">
+                  <span>班组平均工时 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.team_avg_hours }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="4">
             <div class="stat-custom">
-              <div class="stat-label">出勤/排班</div>
+              <div class="stat-label">
+                <el-tooltip :content="summaryAnn.attend_days?.source || ''" effect="light" placement="top">
+                  <span>出勤/排班 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </div>
               <div class="stat-value">
                 <span class="stat-number">{{ personalDetail.summary.attend_days }}</span>
                 <span class="stat-sub">/{{ personalDetail.summary.scheduled_days }}天</span>
@@ -238,32 +260,68 @@
             </div>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="超长工时" :value="localLongHourDays">
+            <el-statistic>
+              <template #title>
+                <el-tooltip :content="summaryAnn.long_hour_days?.source || ''" effect="light" placement="top">
+                  <span>超长工时 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ localLongHourDays }}</template>
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="晚签天数" :value="personalDetail.summary.late_days">
+            <el-statistic>
+              <template #title>
+                <el-tooltip :content="summaryAnn.late_days?.source || ''" effect="light" placement="top">
+                  <span>晚签天数 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.late_days }}</template>
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="提前签出天数" :value="personalDetail.summary.early_days">
+            <el-statistic>
+              <template #title>
+                <el-tooltip :content="summaryAnn.early_days?.source || ''" effect="light" placement="top">
+                  <span>提前签出天数 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.early_days }}</template>
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="通话总时长" :value="personalDetail.summary.total_call_duration || 0" :precision="1">
+            <el-statistic :precision="1">
+              <template #title>
+                <el-tooltip :content="summaryAnn.total_call_duration?.source || ''" effect="light" placement="top">
+                  <span>通话总时长 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.total_call_duration || 0 }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="整理总时长" :value="personalDetail.summary.total_organize_duration || 0" :precision="1">
+            <el-statistic :precision="1">
+              <template #title>
+                <el-tooltip :content="summaryAnn.total_organize_duration?.source || ''" effect="light" placement="top">
+                  <span>整理总时长 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.total_organize_duration || 0 }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic title="培训总时长" :value="personalDetail.summary.total_training_minutes || 0">
+            <el-statistic>
+              <template #title>
+                <el-tooltip :content="summaryAnn.total_training_minutes?.source || ''" effect="light" placement="top">
+                  <span>培训总时长 <i style="color:#1a73e8;font-style:normal;cursor:help">ⓘ</i></span>
+                </el-tooltip>
+              </template>
+              <template #default>{{ personalDetail.summary.total_training_minutes || 0 }}</template>
               <template #suffix>分</template>
             </el-statistic>
           </el-col>
@@ -309,63 +367,63 @@
 
         <div style="overflow-x: auto;">
           <el-table :data="localDailyStats" border stripe size="small" max-height="400">
-            <el-table-column prop="date" label="日期" width="90" />
-            <el-table-column prop="scheduled_hours" label="排班工时" width="70">
+            <ColumnWithTip prop="date" label="日期" width="90" :annotation="checkinDetailAnnMap['date']" />
+            <ColumnWithTip prop="scheduled_hours" label="排班工时" width="70" :annotation="checkinDetailAnnMap['scheduled_hours']">
               <template #default="{ row }">
                 {{ row.scheduled_hours ? row.scheduled_hours.toFixed(1) + 'h' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column label="遵时率" width="70">
+            </ColumnWithTip>
+            <ColumnWithTip label="遵时率" width="70" :annotation="checkinDetailAnnMap['punctuality_rate']">
               <template #default="{ row }">
                 {{ row.punctuality_rate != null ? row.punctuality_rate.toFixed(2) + '%' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column label="通话时长" width="70">
+            </ColumnWithTip>
+            <ColumnWithTip label="通话时长" width="70" :annotation="checkinDetailAnnMap['call_duration']">
               <template #default="{ row }">
                 {{ row.call_duration != null ? row.call_duration.toFixed(1) + 'h' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column label="整理时长" width="70">
+            </ColumnWithTip>
+            <ColumnWithTip label="整理时长" width="70" :annotation="checkinDetailAnnMap['organize_duration']">
               <template #default="{ row }">
                 {{ row.organize_duration != null ? row.organize_duration.toFixed(1) + 'h' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column label="工时利用率" width="80">
+            </ColumnWithTip>
+            <ColumnWithTip label="工时利用率" width="80" :annotation="checkinDetailAnnMap['utilization_rate']">
               <template #default="{ row }">
                 {{ row.utilization_rate != null ? row.utilization_rate.toFixed(2) + '%' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column label="班表出勤率" width="80">
+            </ColumnWithTip>
+            <ColumnWithTip label="班表出勤率" width="80" :annotation="checkinDetailAnnMap['attendance_rate']">
               <template #default="{ row }">
                 {{ row.attendance_rate != null ? row.attendance_rate.toFixed(2) + '%' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column label="培训(分)" width="65">
+            </ColumnWithTip>
+            <ColumnWithTip label="培训(分)" width="65" :annotation="checkinDetailAnnMap['training_minutes']">
               <template #default="{ row }">
                 {{ row.training_minutes || 0 }}
               </template>
-            </el-table-column>
-            <el-table-column label="系统遵时率" width="80">
+            </ColumnWithTip>
+            <ColumnWithTip label="系统遵时率" width="80" :annotation="checkinDetailAnnMap['computed_punctuality_rate']">
               <template #default="{ row }">
                 {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column prop="checkin_time" label="签到时间" width="110">
+            </ColumnWithTip>
+            <ColumnWithTip prop="checkin_time" label="签到时间" width="110" :annotation="checkinDetailAnnMap['checkin_time']">
               <template #default="{ row }">
                 {{ row.checkin_time ? row.checkin_time.slice(11, 16) : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column prop="checkout_time" label="签退时间" width="110">
+            </ColumnWithTip>
+            <ColumnWithTip prop="checkout_time" label="签退时间" width="110" :annotation="checkinDetailAnnMap['checkout_time']">
               <template #default="{ row }">
                 {{ row.checkout_time ? row.checkout_time.slice(11, 16) : '-' }}
               </template>
-            </el-table-column>
-            <el-table-column prop="duration" label="签入工时" width="80">
+            </ColumnWithTip>
+            <ColumnWithTip prop="duration" label="签入工时" width="80" :annotation="checkinDetailAnnMap['duration']">
               <template #default="{ row }">
                 <span :class="{ 'text-danger': row.is_long_hour }">{{ row.duration.toFixed(1) }}h</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="status" label="状态" width="70">
+            </ColumnWithTip>
+            <ColumnWithTip prop="status" label="状态" width="70" :annotation="checkinDetailAnnMap['status']">
               <template #default="{ row }">
                 <el-tag v-if="row.status === '正常'" type="success" size="small">正常</el-tag>
                 <el-tag v-else-if="row.status === '迟到'" type="warning" size="small">迟到</el-tag>
@@ -375,32 +433,32 @@
                 <el-tag v-else-if="row.status === '休息'" type="info" size="small">休息</el-tag>
                 <span v-else>-</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="late_minutes" label="晚签" width="60">
+            </ColumnWithTip>
+            <ColumnWithTip prop="late_minutes" label="晚签" width="60" :annotation="checkinDetailAnnMap['late_minutes']">
               <template #default="{ row }">
                 <span v-if="row.late_minutes > 0" class="text-danger">{{ row.late_minutes }}分</span>
                 <span v-else>-</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="early_minutes" label="提前签出" width="70">
+            </ColumnWithTip>
+            <ColumnWithTip prop="early_minutes" label="提前签出" width="70" :annotation="checkinDetailAnnMap['early_minutes']">
               <template #default="{ row }">
                 <span v-if="row.early_minutes > 0" class="text-danger">{{ row.early_minutes }}分</span>
                 <span v-else>-</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="shift_name" label="班次" width="80">
+            </ColumnWithTip>
+            <ColumnWithTip prop="shift_name" label="班次" width="80" :annotation="checkinDetailAnnMap['shift_name']">
               <template #default="{ row }">
                 <el-tag v-if="row.shift_name === '早班'" type="primary" size="small">早班</el-tag>
                 <el-tag v-else-if="row.shift_name === '中班'" type="warning" size="small">中班</el-tag>
                 <el-tag v-else type="info" size="small">{{ row.shift_name }}</el-tag>
               </template>
-            </el-table-column>
-            <el-table-column label="超长" width="60">
+            </ColumnWithTip>
+            <ColumnWithTip label="超长" width="60" :annotation="checkinDetailAnnMap['is_long_hour']">
               <template #default="{ row }">
                 <el-tag v-if="row.is_long_hour" type="danger" size="small">是</el-tag>
                 <span v-else>-</span>
               </template>
-            </el-table-column>
+            </ColumnWithTip>
           </el-table>
         </div>
       </template>
@@ -420,6 +478,8 @@ import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
+import ColumnWithTip from '../components/ColumnWithTip.vue'
+import { useFieldAnnotations } from '../composables/useFieldAnnotations'
 
 const tableData = ref([])
 const teams = ref([])
@@ -430,6 +490,11 @@ const drawerVisible = ref(false)
 const personalDetail = ref(null)
 const drawerTitle = ref('')
 const localThreshold = ref(9.5)
+
+const checkinAnnotator = useFieldAnnotations('checkin')
+const checkinDetailAnnotator = useFieldAnnotations('checkin_detail')
+const checkinAnnMap = ref({})
+const checkinDetailAnnMap = ref({})
 
 watch(personalDetail, (val) => {
   if (val && val.summary && val.summary.long_hour_threshold) {
@@ -489,6 +554,20 @@ const stats = reactive({
   overtime_count: 0,
   undertime_count: 0
 })
+
+const summaryAnn = computed(() => ({
+  total_scheduled_hours: checkinDetailAnnMap.value['summary_total_scheduled_hours'],
+  total_hours: checkinDetailAnnMap.value['summary_total_hours'],
+  team_avg_hours: checkinDetailAnnMap.value['summary_team_avg_hours'],
+  attend_days: checkinDetailAnnMap.value['summary_attend_days'],
+  scheduled_days: checkinDetailAnnMap.value['summary_scheduled_days'],
+  long_hour_days: checkinDetailAnnMap.value['summary_long_hour_days'],
+  late_days: checkinDetailAnnMap.value['summary_late_days'],
+  early_days: checkinDetailAnnMap.value['summary_early_days'],
+  total_call_duration: checkinDetailAnnMap.value['summary_total_call_duration'],
+  total_organize_duration: checkinDetailAnnMap.value['summary_total_organize_duration'],
+  total_training_minutes: checkinDetailAnnMap.value['summary_total_training_minutes'],
+}))
 
 const filterType = ref('')
 const filterValue = ref('')
@@ -776,6 +855,8 @@ onMounted(() => {
   }
   loadTeams()
   loadData()
+  checkinAnnotator.loadAnnotations().then(m => { checkinAnnMap.value = m })
+  checkinDetailAnnotator.loadAnnotations().then(m => { checkinDetailAnnMap.value = m })
 })
 </script>
 

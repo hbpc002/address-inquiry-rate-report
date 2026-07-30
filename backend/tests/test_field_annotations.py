@@ -154,6 +154,54 @@ def test_default_values():
         db.close()
 
 
+def test_checkin_annotations_seeded():
+    db = SessionLocal()
+    try:
+        results = db.query(FieldAnnotation).filter(
+            FieldAnnotation.report_type == "checkin"
+        ).order_by(FieldAnnotation.sort_order, FieldAnnotation.id).all()
+        assert len(results) >= 10
+        for r in results:
+            assert r.report_type == "checkin"
+        paths = [r.field_path for r in results]
+        assert "emp_no" in paths
+        assert "checkin_count" in paths
+        assert "total_hours" in paths
+        assert "avg_punctuality_rate" in paths
+    finally:
+        db.close()
+
+
+def test_checkin_detail_annotations_seeded():
+    db = SessionLocal()
+    try:
+        results = db.query(FieldAnnotation).filter(
+            FieldAnnotation.report_type == "checkin_detail"
+        ).order_by(FieldAnnotation.sort_order, FieldAnnotation.id).all()
+        assert len(results) >= 10
+        for r in results:
+            assert r.report_type == "checkin_detail"
+        paths = [r.field_path for r in results]
+        assert "date" in paths or "scheduled_hours" in paths
+        assert "summary_total_hours" in paths
+    finally:
+        db.close()
+
+
+def test_checkin_detail_summary_prefix():
+    db = SessionLocal()
+    try:
+        results = db.query(FieldAnnotation).filter(
+            FieldAnnotation.report_type == "checkin_detail",
+            FieldAnnotation.field_path.like("summary_%")
+        ).all()
+        assert len(results) >= 5
+        for r in results:
+            assert r.field_path.startswith("summary_")
+    finally:
+        db.close()
+
+
 def test_sort_order():
     db = SessionLocal()
     try:
