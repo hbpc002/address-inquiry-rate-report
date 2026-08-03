@@ -280,29 +280,26 @@
 
         <el-row :gutter="12" class="stats-row">
           <el-col :span="3">
-            <el-statistic :precision="1">
+            <el-statistic :precision="1" :value="personalDetail.summary.total_scheduled_hours">
               <template #title>
-                <span>排班总工时 <template v-if="summaryTip('total_scheduled_hours')"><el-tooltip :content="summaryContent('total_scheduled_hours')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>排班总工时 <el-tooltip v-if="summaryTip('total_scheduled_hours')" :content="summaryContent('total_scheduled_hours')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.total_scheduled_hours }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic :precision="1">
+            <el-statistic :precision="1" :value="personalDetail.summary.total_hours">
               <template #title>
-                <span>累计工时 <template v-if="summaryTip('total_hours')"><el-tooltip :content="summaryContent('total_hours')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>累计工时 <el-tooltip v-if="summaryTip('total_hours')" :content="summaryContent('total_hours')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.total_hours }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic :precision="1">
+            <el-statistic :precision="1" :value="personalDetail.summary.team_avg_hours">
               <template #title>
-                <span>班组平均工时 <template v-if="summaryTip('team_avg_hours')"><el-tooltip :content="summaryContent('team_avg_hours')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>班组平均工时 <el-tooltip v-if="summaryTip('team_avg_hours')" :content="summaryContent('team_avg_hours')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.team_avg_hours }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
@@ -318,56 +315,50 @@
             </div>
           </el-col>
           <el-col :span="3">
-            <el-statistic>
+            <el-statistic :value="localLongHourDays">
               <template #title>
-                <span>超长工时 <template v-if="summaryTip('long_hour_days')"><el-tooltip :content="summaryContent('long_hour_days')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>超长工时 <el-tooltip v-if="summaryTip('long_hour_days')" :content="summaryContent('long_hour_days')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ localLongHourDays }}</template>
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic>
+            <el-statistic :value="personalDetail.summary.late_days">
               <template #title>
-                <span>晚签天数 <template v-if="summaryTip('late_days')"><el-tooltip :content="summaryContent('late_days')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>晚签天数 <el-tooltip v-if="summaryTip('late_days')" :content="summaryContent('late_days')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.late_days }}</template>
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic>
+            <el-statistic :value="personalDetail.summary.early_days">
               <template #title>
-                <span>提前签出天数 <template v-if="summaryTip('early_days')"><el-tooltip :content="summaryContent('early_days')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>提前签出天数 <el-tooltip v-if="summaryTip('early_days')" :content="summaryContent('early_days')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.early_days }}</template>
               <template #suffix>天</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic :precision="1">
+            <el-statistic :precision="1" :value="personalDetail.summary.total_call_duration || 0">
               <template #title>
-                <span>通话总时长 <template v-if="summaryTip('total_call_duration')"><el-tooltip :content="summaryContent('total_call_duration')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>通话总时长 <el-tooltip v-if="summaryTip('total_call_duration')" :content="summaryContent('total_call_duration')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.total_call_duration || 0 }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic :precision="1">
+            <el-statistic :precision="1" :value="personalDetail.summary.total_organize_duration || 0">
               <template #title>
-                <span>整理总时长 <template v-if="summaryTip('total_organize_duration')"><el-tooltip :content="summaryContent('total_organize_duration')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>整理总时长 <el-tooltip v-if="summaryTip('total_organize_duration')" :content="summaryContent('total_organize_duration')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.total_organize_duration || 0 }}</template>
               <template #suffix>h</template>
             </el-statistic>
           </el-col>
           <el-col :span="3">
-            <el-statistic>
+            <el-statistic :value="personalDetail.summary.total_training_minutes || 0">
               <template #title>
-                <span>培训总时长 <template v-if="summaryTip('total_training_minutes')"><el-tooltip :content="summaryContent('total_training_minutes')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></template></span>
+                <span>培训总时长 <el-tooltip v-if="summaryTip('total_training_minutes')" :content="summaryContent('total_training_minutes')" effect="light" placement="top"><i class="tip-ico">ⓘ</i></el-tooltip></span>
               </template>
-              <template #default>{{ personalDetail.summary.total_training_minutes || 0 }}</template>
               <template #suffix>分</template>
             </el-statistic>
           </el-col>

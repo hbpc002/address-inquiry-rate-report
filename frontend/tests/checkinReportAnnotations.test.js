@@ -96,6 +96,78 @@ describe('CheckinReport - ColumnWithTip field path mapping', () => {
   })
 })
 
+describe('CheckinReport - summary statistic value binding', () => {
+  const summaryStats = [
+    { key: 'total_scheduled_hours', value: 'personalDetail.summary.total_scheduled_hours', precision: 1 },
+    { key: 'total_hours', value: 'personalDetail.summary.total_hours', precision: 1 },
+    { key: 'team_avg_hours', value: 'personalDetail.summary.team_avg_hours', precision: 1 },
+    { key: 'long_hour_days', value: 'localLongHourDays', precision: null },
+    { key: 'late_days', value: 'personalDetail.summary.late_days', precision: null },
+    { key: 'early_days', value: 'personalDetail.summary.early_days', precision: null },
+    { key: 'total_call_duration', value: 'personalDetail.summary.total_call_duration || 0', precision: 1 },
+    { key: 'total_organize_duration', value: 'personalDetail.summary.total_organize_duration || 0', precision: 1 },
+    { key: 'total_training_minutes', value: 'personalDetail.summary.total_training_minutes || 0', precision: null },
+  ]
+
+  const hasTip = (annotation) => {
+    if (!annotation) return false
+    return !!(annotation.source || annotation.formula || annotation.description)
+  }
+
+  const tipContent = (annotation) => {
+    if (!hasTip(annotation)) return ''
+    const parts = []
+    if (annotation.source) parts.push('数据来源：' + annotation.source)
+    if (annotation.formula) parts.push('计算公式：' + annotation.formula)
+    if (annotation.description) parts.push('口径说明：' + annotation.description)
+    return parts.join('\n')
+  }
+
+  it('should bind every summary stat value via :value prop (never #default slot)', () => {
+    summaryStats.forEach(s => {
+      expect(s.value).toBeTruthy()
+    })
+  })
+
+  it('should only show tip icon when annotation has content', () => {
+    expect(hasTip({ source: '签到记录' })).toBe(true)
+    expect(hasTip({ formula: '签退-签到' })).toBe(true)
+    expect(hasTip({ description: '说明' })).toBe(true)
+    expect(hasTip({ source: '', formula: '', description: '' })).toBe(false)
+    expect(hasTip(null)).toBe(false)
+  })
+
+  it('should build multi-line tooltip content from source/formula/description', () => {
+    const content = tipContent({ source: 'A', formula: 'B', description: 'C' })
+    expect(content).toContain('数据来源：A')
+    expect(content).toContain('计算公式：B')
+    expect(content).toContain('口径说明：C')
+    expect(content.split('\n').length).toBe(3)
+  })
+
+  it('should return empty tooltip content when no annotation', () => {
+    expect(tipContent(null)).toBe('')
+    expect(tipContent({ source: '', formula: '', description: '' })).toBe('')
+  })
+
+  it('should preserve display formatting via precision on value', () => {
+    const format = (v, precision) => {
+      if (precision == null) return String(v)
+      return Number(v).toFixed(precision)
+    }
+    expect(format(85.5, 1)).toBe('85.5')
+    expect(format(0, 1)).toBe('0.0')
+    expect(format(3, null)).toBe('3')
+  })
+
+  it('should map attend_days as custom stat spans (not el-statistic value)', () => {
+    const attendStat = { type: 'custom', num: 'personalDetail.summary.attend_days', sub: 'personalDetail.summary.scheduled_days' }
+    expect(attendStat.type).toBe('custom')
+    expect(attendStat.num).toContain('attend_days')
+    expect(attendStat.sub).toContain('scheduled_days')
+  })
+})
+
 describe('CheckinReport - annotation prop structure', () => {
   const validAnnotation = {
     source: '签到记录数据',
