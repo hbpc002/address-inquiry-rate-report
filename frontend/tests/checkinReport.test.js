@@ -245,3 +245,127 @@ describe('CheckinReport - 班组报表排序与分页测试', () => {
     expect(paginated[1].emp_no).toBe('E002')
   })
 })
+
+describe('CheckinReport - 班组聚合与班级维度测试', () => {
+  const teamReportData = [
+    { emp_no: 'E001', name: '张三', team: '一班1组', late_days: 1, late_minutes: 30, early_days: 1, early_minutes: 10, checkin_count: 2, attend_days: 3 },
+    { emp_no: 'E002', name: '李四', team: '一班1组', late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0, checkin_count: 1, attend_days: 1 },
+    { emp_no: 'E003', name: '王五', team: '一班2组', late_days: 2, late_minutes: 45, early_days: 0, early_minutes: 0, checkin_count: 1, attend_days: 2 },
+    { emp_no: 'E004', name: '赵六', team: '二班1组', late_days: 1, late_minutes: 20, early_days: 0, early_minutes: 5, checkin_count: 1, attend_days: 2 },
+  ]
+
+  const extractClass = (team) => {
+    const m = team && team.match(/^(.+?)([\d一二三四五六七八九十]+)组$/)
+    return m ? m[1] : team
+  }
+
+  function buildTeamRanking(data) {
+    const teamMap = {}
+    data.forEach(d => {
+      const team = d.team || '未知班组'
+      if (!teamMap[team]) {
+        teamMap[team] = { count: 0, checkin_count: 0, attend_days: 0, late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0 }
+      }
+      const t = teamMap[team]
+      t.count++
+      t.checkin_count += d.checkin_count || 0
+      t.attend_days += d.attend_days || 0
+      t.late_days += d.late_days || 0
+      t.late_minutes += d.late_minutes || 0
+      t.early_days += d.early_days || 0
+      t.early_minutes += d.early_minutes || 0
+    })
+    return Object.entries(teamMap)
+      .map(([team, data]) => ({ team, ...data }))
+      .sort((a, b) => b.late_minutes - a.late_minutes)
+  }
+
+  it('按班组聚合人数/签到/晚签/早退指标', () => {
+    const ranking = buildTeamRanking(teamReportData)
+    const team1 = ranking.find(r => r.team === '一班1组')
+    expect(team1.count).toBe(2)
+    expect(team1.checkin_count).toBe(3)
+    expect(team1.attend_days).toBe(4)
+    expect(team1.late_days).toBe(1)
+    expect(team1.late_minutes).toBe(30)
+    expect(team1.early_minutes).toBe(10)
+  })
+
+  it('按晚签总分钟降序排名', () => {
+    const ranking = buildTeamRanking(teamReportData)
+    expect(ranking[0].team).toBe('一班2组')
+    expect(ranking[1].team).toBe('一班1组')
+    expect(ranking[2].team).toBe('二班1组')
+  })
+
+  it('班级维度提取（一班1组 -> 一班）', () => {
+    expect(extractClass('一班1组')).toBe('一班')
+    expect(extractClass('热线一组')).toBe('热线')
+    expect(extractClass('无数字')).toBe('无数字')
+  })
+
+  it('班级聚合汇总多班组', () => {
+    const ranking = buildTeamRanking(teamReportData)
+    const classMap = {}
+    ranking.forEach(t => {
+      const cls = extractClass(t.team)
+      if (!cls) return
+      if (!classMap[cls]) classMap[cls] = { count: 0, team_count: 0, checkin_count: 0, attend_days: 0, late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0 }
+      const c = classMap[cls]
+      c.count += t.count
+      c.team_count++
+      c.checkin_count += t.checkin_count
+      c.attend_days += t.attend_days
+      c.late_days += t.late_days
+      c.late_minutes += t.late_minutes
+      c.early_days += t.early_days
+      c.early_minutes += t.early_minutes
+    })
+    const yiban = Object.entries(classMap).map(([name, d]) => ({ name, ...d })).find(c => c.name === '一班')
+    expect(yiban.team_count).toBe(2)
+    expect(yiban.count).toBe(3)
+    expect(yiban.late_minutes).toBe(75)
+  })
+
+  it('点击班级过滤班组排名表', () => {
+    const ranking = buildTeamRanking(teamReportData)
+    const filtered = ranking.filter(t => extractClass(t.team) === '一班')
+    expect(filtered.length).toBe(2)
+    expect(filtered.map(t => t.team).sort()).toEqual(['一班1组', '一班2组'])
+  })
+
+  it('点击班组联动筛选成员明细，再次点击清除', () => {
+    let teamFilterType = ''
+    let teamFilterValue = ''
+    const handleTeamRankRowClick = (row) => {
+      if (teamFilterType === 'team' && teamFilterValue === row.team) {
+        teamFilterType = ''
+        teamFilterValue = ''
+      } else {
+        teamFilterType = 'team'
+        teamFilterValue = row.team
+      }
+    }
+
+    handleTeamRankRowClick({ team: '一班1组' })
+    expect(teamFilterType).toBe('team')
+    expect(teamFilterValue).toBe('一班1组')
+
+    const members = teamReportData.filter(d => d.team === teamFilterValue)
+    expect(members.map(m => m.name)).toEqual(['张三', '李四'])
+
+    handleTeamRankRowClick({ team: '一班1组' })
+    expect(teamFilterType).toBe('')
+    expect(teamFilterValue).toBe('')
+  })
+
+  it('成员晚签分钟柱状图数据', () => {
+    const selectedTeam = '一班1组'
+    const data = teamReportData
+      .filter(d => d.team === selectedTeam)
+      .map(d => ({ name: d.name, late_minutes: d.late_minutes || 0 }))
+      .sort((a, b) => b.late_minutes - a.late_minutes)
+    expect(data[0]).toEqual({ name: '张三', late_minutes: 30 })
+    expect(data[1]).toEqual({ name: '李四', late_minutes: 0 })
+  })
+})
