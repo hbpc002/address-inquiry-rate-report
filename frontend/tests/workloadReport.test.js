@@ -1617,3 +1617,207 @@ describe('WorkloadReport - 截图导出功能', () => {
     })
   })
 })
+
+describe('WorkloadReport - 导出筛选功能', () => {
+  function buildScreenshotColumns(visibleMetricCols, hasPermission, gapTargets) {
+    const cols = [
+      { prop: '_index', label: '排名', width: 55 },
+      { prop: 'account', label: '账号', width: 110 },
+      { prop: 'name', label: '姓名', width: 80 },
+      { prop: 'team_desc', label: '班组', width: 140 },
+      { prop: 'date_count', label: '天数', width: 60 },
+      ...visibleMetricCols.map(c => ({ prop: c.field, label: c.label, width: c.width, isRate: c.isRate })),
+      { prop: '_ti_dan_lv', label: '提单率', width: 85, isRate: true },
+      { prop: '_call_hourly_rate', label: '接话小时量', width: 90 },
+    ]
+    if (hasPermission('workload_report.view_call_salary')) {
+      cols.push({ prop: '_call_salary', label: '接话绩效(预测)', width: 100 })
+    }
+    if (hasPermission('workload_report.view_sat_salary')) {
+      cols.push({ prop: '_sat_salary', label: '满意度绩效(预测)', width: 100 })
+    }
+    if (hasPermission('workload_report.view_total_salary')) {
+      cols.push({ prop: '_total_salary', label: '合计绩效(预测)', width: 100 })
+    }
+    if (hasPermission('workload_report.view_gap')) {
+      gapTargets.forEach(target => {
+        cols.push({ prop: `gap_${target}`, label: `话务量差额(${target})`, width: 110 })
+      })
+    }
+    if (hasPermission('workload_report.view_sat_diff')) {
+      cols.push({ prop: '_sat_diff', label: '满意度差额', width: 100 })
+    }
+    return cols
+  }
+
+  function getMetricValue(row, field) {
+    const val = row.aggregated_metrics?.[field]
+    if (val === null || val === undefined) return null
+    return typeof val === 'number' ? val : parseFloat(val) || 0
+  }
+
+  function getScreenshotMetricStyle(fieldKey, value, targets) {
+    if (!targets || !targets.length || value === null || value === undefined) return null
+    const target = targets.find(t => t.field === fieldKey)
+    if (!target) return null
+    let hit = false
+    switch (target.operator) {
+      case 'lt': hit = value < target.value; break
+      case 'le': hit = value <= target.value; break
+      case 'gt': hit = value > target.value; break
+      case 'ge': hit = value >= target.value; break
+    }
+    return hit ? { color: target.color, fontWeight: 'bold' } : null
+  }
+
+  function formatScreenshotCell(row, col, activeTargets, rowIndex) {
+    if (col.prop === '_index') {
+      return { text: String(rowIndex + 1), style: null }
+    }
+    let val
+    if (col.prop === 'account' || col.prop === 'name' || col.prop === 'emp_no' || col.prop === 'team_desc' || col.prop === 'date_count') {
+      val = row[col.prop]
+    } else if (col.prop.startsWith('_') || col.prop.startsWith('gap_')) {
+      val = row[col.prop]
+    } else {
+      val = getMetricValue(row, col.prop)
+    }
+    let text
+    if (val === null || val === undefined) {
+      text = '-'
+    } else if (col.isRate) {
+      const num = typeof val === 'number' ? val : parseFloat(val)
+      text = isNaN(num) ? '-' : (num * 100).toFixed(2) + '%'
+    } else if (typeof val === 'number') {
+      text = Number.isInteger(val) ? String(val) : val.toFixed(1)
+    } else {
+      text = String(val)
+    }
+    let style = null
+    if (text !== '-') {
+      const numericVal = typeof val === 'number' ? val : (val !== null && val !== undefined ? parseFloat(val) : null)
+      if (numericVal !== null && !isNaN(numericVal)) {
+        style = getScreenshotMetricStyle(col.prop, numericVal, activeTargets)
+      }
+    }
+    return { text, style }
+  }
+
+  function generateCSV(columns, data, activeTargets) {
+    const headers = columns.map(c => c.label)
+    const rows = data.map((row, i) =>
+      columns.map(col => {
+        const cell = formatScreenshotCell(row, col, activeTargets, i)
+        return cell.text
+      })
+    )
+    return [headers, ...rows].map(line =>
+      line.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+    ).join('\n')
+  }
+
+  function generateFilename(teamDesc, className) {
+    if (teamDesc) return `${teamDesc}_工作量报表.csv`
+    if (className) return `${className}_工作量报表.csv`
+    return 'workload_report_filtered.csv'
+  }
+
+  const hasAllPermissions = key => true
+  const gapTargets = [2000, 2500, 3000]
+
+  const sampleTargets = [
+    { field: '人工服务-满意度-满意率', label: '满意率', operator: 'lt', value: 0.95, color: '#F56C6C', enabled: true },
+    { field: '_ti_dan_lv', label: '提单率', operator: 'gt', value: 0.15, color: '#E6A23C', enabled: true },
+  ]
+
+  const filteredData = [
+    {
+      account: 'zhangsan', name: '张三', team_desc: '二班1组', date_count: 22,
+      _ti_dan_lv: 0.156, _call_hourly_rate: 3.8,
+      aggregated_metrics: {
+        '呼入人工服务-人工服务-通话次数': 150,
+        '人工服务-满意度-满意率': 0.95,
+      }
+    },
+    {
+      account: 'lisi', name: '李四', team_desc: '二班1组', date_count: 20,
+      _ti_dan_lv: 0.20, _call_hourly_rate: 4.2,
+      aggregated_metrics: {
+        '呼入人工服务-人工服务-通话次数': 200,
+        '人工服务-满意度-满意率': 0.90,
+      }
+    },
+  ]
+
+  describe('generateCSV', () => {
+    it('should include headers and data rows', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines.length).toBe(3)
+      expect(lines[0]).toContain('排名')
+      expect(lines[0]).toContain('账号')
+      expect(lines[0]).toContain('姓名')
+      expect(lines[0]).toContain('班组')
+      expect(lines[1]).toContain('张三')
+      expect(lines[2]).toContain('李四')
+    })
+
+    it('should escape double quotes in values', () => {
+      const data = [{
+        account: 'a', name: 'Test "Quote"', team_desc: 'G1', date_count: 1,
+        _ti_dan_lv: 0.1, _call_hourly_rate: 1,
+      }]
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, data, [])
+      expect(csv).toContain('Test ""Quote""')
+    })
+
+    it('should format rate fields as percentage', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('15.60%')
+      expect(lines[2]).toContain('20.00%')
+    })
+
+    it('should include ranking column', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('"1"')
+      expect(lines[2]).toContain('"2"')
+    })
+
+    it('should apply warning colors to cell text in CSV', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, sampleTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[2]).toContain('20.00%')
+    })
+  })
+
+  describe('generateFilename', () => {
+    it('should use team_desc in filename', () => {
+      expect(generateFilename('二班1组', '')).toBe('二班1组_工作量报表.csv')
+    })
+
+    it('should use class_name in filename', () => {
+      expect(generateFilename('', '一班')).toBe('一班_工作量报表.csv')
+    })
+
+    it('should use default filename when no filter', () => {
+      expect(generateFilename('', '')).toBe('workload_report_filtered.csv')
+    })
+  })
+
+  describe('handleExportFiltered - empty data', () => {
+    it('should return only header when no filtered data', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, [], [])
+      const lines = csv.split('\n')
+      expect(lines.length).toBe(1)
+      expect(lines[0]).toContain('排名')
+    })
+  })
+})

@@ -7,6 +7,7 @@
           <span>
             <el-button v-if="userStore.hasPermission('workload_report.screenshot')" type="primary" size="small" :loading="screenshotLoading" @click="handleScreenshot">截图导出</el-button>
             <el-button v-if="userStore.hasPermission('workload_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
+            <el-button v-if="userStore.hasPermission('workload_report.export')" type="warning" size="small" @click="handleExportFiltered">导出筛选</el-button>
           </span>
         </div>
       </template>
@@ -879,6 +880,42 @@ function handleExport() {
     params.tenure_months = searchForm.tenure_months
   }
   downloadBlob('/workloads/report/export', params, `workload_report.csv`)
+}
+
+function handleExportFiltered() {
+  const data = filteredData.value
+  if (!data.length) {
+    ElMessage.warning('没有筛选数据可供导出')
+    return
+  }
+
+  const columns = buildScreenshotColumns(visibleMetricColumns.value, salaryCfg.gapTargets)
+  const headers = columns.map(c => c.label)
+
+  const rows = data.map(row =>
+    columns.map(col => {
+      const cell = formatScreenshotCell(row, col, activeTargets.value, 0)
+      return cell.text
+    })
+  )
+
+  const csvContent = [headers, ...rows].map(line =>
+    line.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  ).join('\n')
+
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  let filename = 'workload_report_filtered.csv'
+  if (searchForm.team_desc) {
+    filename = `${searchForm.team_desc}_工作量报表.csv`
+  } else if (searchForm.class_name) {
+    filename = `${searchForm.class_name}_工作量报表.csv`
+  }
+  link.download = filename
+  link.href = URL.createObjectURL(blob)
+  link.click()
+  URL.revokeObjectURL(link.href)
+  ElMessage.success('导出筛选成功')
 }
 
 function buildScreenshotColumns(visibleMetricCols, gapTargets) {
