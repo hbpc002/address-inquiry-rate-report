@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from typing import Optional
 from datetime import datetime
 import csv
@@ -531,6 +531,104 @@ def get_checkin_report(
         },
         "items": items
     }
+
+
+@router.get("/team-report")
+def get_team_report(
+    date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    team: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """按班组报表：统计每位员工的晚签/早退情况，便于查看组内谁晚签多、谁提前签出多（可排序）"""
+    from datetime import timedelta
+
+    # 与 report 一致的日期范围解析
+    if date:
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+        query_start = d
+        query_end = d
+    elif year_month:
+        query_start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
+        if year_month == datetime.now().strftime("%Y-%m"):
+            query_end = datetime.now().date()
+        else:
+            next_month = (query_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            query_end = next_month - timedelta(days=1)
+    elif start_date and end_date:
+        query_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        query_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        query_start = datetime.now().date()
+        query_end = query_start
+
+    emp_filters = [
+        Employee.team != '',
+        Employee.dept.like(TARGET_DEPT + '%'),
+    ]
+    if team:
+        emp_filters.append(Employee.team == team)
+    if name:
+        emp_filters.append(Employee.name.ilike(f'%{name}%'))
+    if emp_no:
+        emp_filters.append(Employee.emp_no.ilike(f'%{emp_no}%'))
+
+    emp_rows = db.query(
+        Employee.emp_no,
+        Employee.name,
+        Employee.team,
+        Employee.dept,
+        func.sum(func.coalesce(DailyReport.late_minutes, 0)),
+        func.sum(func.coalesce(DailyReport.early_minutes, 0)),
+        func.sum(case((DailyReport.late_minutes > 0, 1), else_=0)),
+        func.sum(case((DailyReport.early_minutes > 0, 1), else_=0)),
+        func.sum(case((DailyReport.actual_checkin.isnot(None), 1), else_=0)),
+    ).join(DailyReport, DailyReport.emp_id == Employee.id).filter(
+        *emp_filters,
+        DailyReport.schedule_date >= query_start,
+        DailyReport.schedule_date <= query_end
+    ).group_by(
+        Employee.emp_no,
+        Employee.name,
+        Employee.team,
+        Employee.dept
+    ).all()
+
+    # 签到次数来自签到表，与汇总报表口径一致
+    checkin_counts = db.query(
+        Employee.emp_no,
+        func.count(Checkin.id)
+    ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+        Employee.team != '',
+        Employee.dept.like(TARGET_DEPT + '%'),
+        func.date(Checkin.checkin_time) >= query_start,
+        func.date(Checkin.checkin_time) <= query_end
+    ).group_by(Employee.emp_no).all()
+    checkin_count_map = {emp_no: cnt for emp_no, cnt in checkin_counts}
+
+    items = []
+    for emp_no, emp_name, team_name, dept, late_min, early_min, late_days, early_days, attend_days in emp_rows:
+        items.append({
+            "emp_no": emp_no,
+            "name": emp_name,
+            "team": team_name,
+            "dept": dept or '',
+            "checkin_count": checkin_count_map.get(emp_no, 0),
+            "late_days": int(late_days or 0),
+            "late_minutes": int(late_min or 0),
+            "early_days": int(early_days or 0),
+            "early_minutes": int(early_min or 0),
+            "attend_days": int(attend_days or 0),
+        })
+
+    items.sort(key=lambda x: x["late_minutes"], reverse=True)
+
+    return {"items": items}
 
 
 @router.get("/personal-report")

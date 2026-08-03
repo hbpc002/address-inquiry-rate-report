@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.checkin import Checkin
 from app.models.employee import Employee
+from app.models.daily_report import DailyReport
 from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
@@ -312,3 +313,124 @@ class TestCheckinReport:
         data = resp.json()
         assert len(data["items"]) == 0
         assert data["stats"]["emp_count"] == 0
+
+
+class TestTeamReport:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            for table in ["daily_reports", "schedules", "checkins", "employees"]:
+                db.execute(text(f"DELETE FROM {table}"))
+            db.commit()
+            TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+            emps = [
+                Employee(emp_no="E001", name="张三", team="热线一组", dept=TARGET_DEPT),
+                Employee(emp_no="E002", name="李四", team="热线一组", dept=TARGET_DEPT),
+                Employee(emp_no="E003", name="王五", team="热线二组", dept=TARGET_DEPT),
+                Employee(emp_no="E004", name="无班组", team="", dept=TARGET_DEPT),
+            ]
+            db.add_all(emps)
+            db.flush()
+            emp_map = {e.emp_no: e.id for e in emps}
+
+            reports = [
+                DailyReport(emp_id=emp_map["E001"], schedule_date=date(2026, 5, 10), scheduled_hours=8.0,
+                            actual_hours=8.0, status="迟到", late_minutes=30, early_minutes=0,
+                            actual_checkin=datetime(2026, 5, 10, 8, 30, 0), actual_checkout=datetime(2026, 5, 10, 17, 0, 0)),
+                DailyReport(emp_id=emp_map["E001"], schedule_date=date(2026, 5, 11), scheduled_hours=8.0,
+                            actual_hours=8.0, status="正常", late_minutes=0, early_minutes=0,
+                            actual_checkin=datetime(2026, 5, 11, 8, 0, 0), actual_checkout=datetime(2026, 5, 11, 17, 0, 0)),
+                DailyReport(emp_id=emp_map["E001"], schedule_date=date(2026, 5, 12), scheduled_hours=8.0,
+                            actual_hours=7.5, status="早退", late_minutes=0, early_minutes=10,
+                            actual_checkin=datetime(2026, 5, 12, 8, 0, 0), actual_checkout=datetime(2026, 5, 12, 16, 50, 0)),
+                DailyReport(emp_id=emp_map["E002"], schedule_date=date(2026, 5, 10), scheduled_hours=8.0,
+                            actual_hours=8.0, status="正常", late_minutes=0, early_minutes=0,
+                            actual_checkin=datetime(2026, 5, 10, 8, 0, 0), actual_checkout=datetime(2026, 5, 10, 17, 0, 0)),
+                DailyReport(emp_id=emp_map["E003"], schedule_date=date(2026, 5, 10), scheduled_hours=8.0,
+                            actual_hours=8.0, status="正常", late_minutes=0, early_minutes=0,
+                            actual_checkin=datetime(2026, 5, 10, 8, 0, 0), actual_checkout=datetime(2026, 5, 10, 17, 0, 0)),
+            ]
+            db.add_all(reports)
+            db.add_all([
+                Checkin(emp_no="E001", name="张三", checkin_time=datetime(2026, 5, 10, 8, 30, 0),
+                        checkout_time=datetime(2026, 5, 10, 17, 0, 0), dept=TARGET_DEPT, import_batch="team-test"),
+                Checkin(emp_no="E001", name="张三", checkin_time=datetime(2026, 5, 11, 8, 0, 0),
+                        checkout_time=datetime(2026, 5, 11, 17, 0, 0), dept=TARGET_DEPT, import_batch="team-test"),
+                Checkin(emp_no="E002", name="李四", checkin_time=datetime(2026, 5, 10, 8, 0, 0),
+                        checkout_time=datetime(2026, 5, 10, 17, 0, 0), dept=TARGET_DEPT, import_batch="team-test"),
+            ])
+            db.commit()
+        finally:
+            db.close()
+
+    def _get_item(self, data, emp_no):
+        for item in data["items"]:
+            if item["emp_no"] == emp_no:
+                return item
+        return None
+
+    def test_team_report_range_aggregation(self):
+        resp = client.get("/api/checkins/team-report", params={
+            "start_date": "2026-05-10", "end_date": "2026-05-12"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        e001 = self._get_item(data, "E001")
+        assert e001 is not None
+        assert e001["late_days"] == 1
+        assert e001["late_minutes"] == 30
+        assert e001["early_days"] == 1
+        assert e001["early_minutes"] == 10
+        assert e001["attend_days"] == 3
+        assert e001["checkin_count"] == 2
+
+    def test_team_report_day(self):
+        resp = client.get("/api/checkins/team-report", params={"date": "2026-05-10"})
+        assert resp.status_code == 200
+        data = resp.json()
+        e001 = self._get_item(data, "E001")
+        assert e001 is not None
+        assert e001["late_days"] == 1
+        assert e001["late_minutes"] == 30
+        assert e001["early_days"] == 0
+        assert e001["early_minutes"] == 0
+        e002 = self._get_item(data, "E002")
+        assert e002 is not None
+        assert e002["late_days"] == 0
+        assert e002["early_days"] == 0
+
+    def test_team_report_team_filter(self):
+        resp = client.get("/api/checkins/team-report", params={
+            "start_date": "2026-05-10", "end_date": "2026-05-12", "team": "热线一组"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        emp_nos = [item["emp_no"] for item in data["items"]]
+        assert "E001" in emp_nos
+        assert "E002" in emp_nos
+        assert "E003" not in emp_nos
+
+    def test_team_report_excludes_no_team(self):
+        resp = client.get("/api/checkins/team-report", params={
+            "start_date": "2026-05-10", "end_date": "2026-05-12"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        emp_nos = [item["emp_no"] for item in data["items"]]
+        assert "E004" not in emp_nos
+
+    def test_team_report_sorted_by_late_minutes(self):
+        resp = client.get("/api/checkins/team-report", params={
+            "start_date": "2026-05-10", "end_date": "2026-05-12"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        minutes = [item["late_minutes"] for item in data["items"]]
+        assert minutes == sorted(minutes, reverse=True)
+
+    def test_team_report_no_data(self):
+        resp = client.get("/api/checkins/team-report", params={"date": "2020-01-01"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["items"]) == 0

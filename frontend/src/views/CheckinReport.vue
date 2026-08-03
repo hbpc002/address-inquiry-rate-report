@@ -47,7 +47,9 @@
         </el-form-item>
       </el-form>
 
-      <el-row :gutter="20" class="stats-row">
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="汇总" name="summary">
+          <el-row :gutter="20" class="stats-row">
         <el-col :span="4">
           <el-statistic title="签入人次" :value="stats.total_checkins" />
         </el-col>
@@ -172,14 +174,28 @@
             {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <el-table-column label="签入明细" min-width="350">
+        <el-table-column label="签入明细" min-width="280">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
-              <div v-for="(c, idx) in row.checkins" :key="idx" style="display: inline-block; margin: 2px 8px 2px 0;">
-                <el-tag size="small">{{ idx + 1 }}: {{ c.checkin_time || '-' }} → {{ c.checkout_time || '-' }}</el-tag>
-                <span style="margin-left: 4px; font-size: 12px; color: #666;">
-                  ({{ c.duration.toFixed(1) }}h)
-                </span>
+              <div class="checkin-list">
+                <template v-if="!expandedCheckins.has(row.emp_no)">
+                  <el-tag v-for="(c, idx) in row.checkins.slice(0, 2)" :key="idx" size="small" style="margin: 2px 4px 2px 0;">
+                    {{ idx + 1 }}: {{ c.checkin_time || '-' }} → {{ c.checkout_time || '-' }}
+                    <span style="margin-left: 2px; font-size: 12px; color: #666;">({{ c.duration.toFixed(1) }}h)</span>
+                  </el-tag>
+                </template>
+                <template v-else>
+                  <el-tag v-for="(c, idx) in row.checkins" :key="idx" size="small" style="margin: 2px 4px 2px 0;">
+                    {{ idx + 1 }}: {{ c.checkin_time || '-' }} → {{ c.checkout_time || '-' }}
+                    <span style="margin-left: 2px; font-size: 12px; color: #666;">({{ c.duration.toFixed(1) }}h)</span>
+                  </el-tag>
+                </template>
+                <div style="margin-top: 2px;">
+                  <el-button link type="primary" size="small" @click="toggleCheckins(row.emp_no)">
+                    <template v-if="expandedCheckins.has(row.emp_no)">收起</template>
+                    <template v-else>展开全部({{ row.checkins.length }})</template>
+                  </el-button>
+                </div>
               </div>
             </template>
             <span v-else>-</span>
@@ -201,6 +217,56 @@
         layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 15px; justify-content: flex-end"
       />
+        </el-tab-pane>
+
+        <el-tab-pane label="班组报表" name="team">
+          <div style="margin-bottom: 12px; font-size: 13px; color: #909399">
+            统计每位员工的晚签（迟到）与提前签出情况，点击列头可排序，便于查看组内谁晚签多、谁提前签出多
+          </div>
+          <el-table :data="teamReportPaginated" border stripe max-height="calc(100vh - 350px)">
+            <el-table-column type="index" label="排名" width="60" />
+            <el-table-column prop="emp_no" label="账号" width="100" />
+            <el-table-column prop="name" label="用户名" width="100" />
+            <el-table-column prop="team" label="班组" width="110" />
+            <el-table-column prop="checkin_count" label="签到次数" width="90" sortable />
+            <el-table-column prop="attend_days" label="出勤天数" width="90" sortable />
+            <el-table-column prop="late_days" label="晚签天数" width="90" sortable>
+              <template #default="{ row }">
+                <span :class="{ 'text-danger': row.late_days > 0 }">{{ row.late_days }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="late_minutes" label="晚签总分钟" width="100" sortable>
+              <template #default="{ row }">
+                <span :class="{ 'text-danger': row.late_minutes > 0 }">{{ row.late_minutes }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="early_days" label="提前签出天数" width="110" sortable>
+              <template #default="{ row }">
+                <span :class="{ 'text-danger': row.early_days > 0 }">{{ row.early_days }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="early_minutes" label="提前签出总分钟" width="120" sortable>
+              <template #default="{ row }">
+                <span :class="{ 'text-danger': row.early_minutes > 0 }">{{ row.early_minutes }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="60" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openDetail(row)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-pagination
+            v-if="teamReportData.length > 0"
+            v-model:current-page="teamPage"
+            v-model:page-size="teamPageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="teamReportData.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            style="margin-top: 15px; justify-content: flex-end"
+          />
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <el-drawer v-model="drawerVisible" :title="drawerTitle" size="70%" direction="rtl">
@@ -465,6 +531,33 @@ const tableData = ref([])
 const teams = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
+
+const savedTab = sessionStorage.getItem('checkin-report-active-tab')
+const activeTab = ref(savedTab || 'summary')
+watch(activeTab, (val) => {
+  sessionStorage.setItem('checkin-report-active-tab', val)
+})
+
+const teamReportData = ref([])
+const teamPage = ref(1)
+const teamPageSize = ref(20)
+const expandedCheckins = ref(new Set())
+
+function toggleCheckins(empNo) {
+  const next = new Set(expandedCheckins.value)
+  if (next.has(empNo)) {
+    next.delete(empNo)
+  } else {
+    next.add(empNo)
+  }
+  expandedCheckins.value = next
+}
+
+const teamReportPaginated = computed(() => {
+  const start = (teamPage.value - 1) * teamPageSize.value
+  const end = start + teamPageSize.value
+  return teamReportData.value.slice(start, end)
+})
 
 const drawerVisible = ref(false)
 const personalDetail = ref(null)
@@ -783,8 +876,33 @@ async function loadData() {
     filterType.value = ''
     filterValue.value = ''
     tableData.value = res.data.items || []
+    loadTeamReport()
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function loadTeamReport() {
+  try {
+    const params = {}
+    
+    if (searchForm.type === 'day' && searchForm.date) {
+      params.date = searchForm.date
+    } else if (searchForm.type === 'month' && searchForm.month) {
+      params.year_month = searchForm.month
+    } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
+      params.start_date = searchForm.start_date
+      params.end_date = searchForm.end_date
+    }
+    
+    if (searchForm.name) params.name = searchForm.name
+    if (searchForm.emp_no) params.emp_no = searchForm.emp_no
+    if (searchForm.team) params.team = searchForm.team
+    
+    const res = await api.get('/checkins/team-report', { params })
+    teamReportData.value = res.data.items || []
+  } catch (e) {
+    ElMessage.error('加载班组报表失败: ' + (e.response?.data?.detail || e.message))
   }
 }
 

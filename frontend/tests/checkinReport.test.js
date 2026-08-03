@@ -166,3 +166,82 @@ describe('CheckinReport - 筛选逻辑测试', () => {
     })
   })
 })
+
+describe('CheckinReport - 签入明细折叠展开测试', () => {
+  it('签入明细默认折叠（空展开集合）', () => {
+    const expandedCheckins = new Set()
+    expect(expandedCheckins.has('E001')).toBe(false)
+    expect(expandedCheckins.size).toBe(0)
+  })
+
+  it('展开后加入集合，再次点击收起', () => {
+    let expandedCheckins = new Set()
+    const toggleCheckins = (empNo) => {
+      const next = new Set(expandedCheckins)
+      if (next.has(empNo)) {
+        next.delete(empNo)
+      } else {
+        next.add(empNo)
+      }
+      expandedCheckins = next
+    }
+
+    toggleCheckins('E001')
+    expect(expandedCheckins.has('E001')).toBe(true)
+
+    toggleCheckins('E001')
+    expect(expandedCheckins.has('E001')).toBe(false)
+  })
+
+  it('不同员工展开状态互不影响', () => {
+    let expandedCheckins = new Set()
+    const toggleCheckins = (empNo) => {
+      const next = new Set(expandedCheckins)
+      if (next.has(empNo)) {
+        next.delete(empNo)
+      } else {
+        next.add(empNo)
+      }
+      expandedCheckins = next
+    }
+
+    toggleCheckins('E001')
+    toggleCheckins('E002')
+    expect(expandedCheckins.has('E001')).toBe(true)
+    expect(expandedCheckins.has('E002')).toBe(true)
+
+    toggleCheckins('E001')
+    expect(expandedCheckins.has('E001')).toBe(false)
+    expect(expandedCheckins.has('E002')).toBe(true)
+  })
+})
+
+describe('CheckinReport - 班组报表排序与分页测试', () => {
+  const teamReportData = [
+    { emp_no: 'E001', name: '张三', team: '热线一组', late_days: 1, late_minutes: 30, early_days: 1, early_minutes: 10, checkin_count: 2, attend_days: 3 },
+    { emp_no: 'E002', name: '李四', team: '热线一组', late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0, checkin_count: 1, attend_days: 1 },
+    { emp_no: 'E003', name: '王五', team: '热线二组', late_days: 2, late_minutes: 45, early_days: 0, early_minutes: 0, checkin_count: 1, attend_days: 2 },
+  ]
+
+  it('按晚签总分钟降序排序，晚签多的人排前面', () => {
+    const sorted = [...teamReportData].sort((a, b) => b.late_minutes - a.late_minutes)
+    expect(sorted[0].emp_no).toBe('E003')
+    expect(sorted[1].emp_no).toBe('E001')
+    expect(sorted[2].emp_no).toBe('E002')
+  })
+
+  it('提前签出总分钟排序', () => {
+    const sorted = [...teamReportData].sort((a, b) => b.early_minutes - a.early_minutes)
+    expect(sorted[0].emp_no).toBe('E001')
+  })
+
+  it('分页切片取当前页数据', () => {
+    const pageSize = 2
+    const page = 1
+    const start = (page - 1) * pageSize
+    const paginated = teamReportData.slice(start, start + pageSize)
+    expect(paginated.length).toBe(2)
+    expect(paginated[0].emp_no).toBe('E001')
+    expect(paginated[1].emp_no).toBe('E002')
+  })
+})
