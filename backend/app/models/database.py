@@ -565,12 +565,18 @@ def _seed_field_annotations():
 
     db = SessionLocal()
     try:
-        existing = db.query(FieldAnnotation).count()
-        if existing == 0:
-            for item in seed:
+        inserted = 0
+        for item in seed:
+            exists = db.query(FieldAnnotation).filter(
+                FieldAnnotation.report_type == item["report_type"],
+                FieldAnnotation.field_path == item["field_path"],
+            ).first()
+            if not exists:
                 db.add(FieldAnnotation(**item))
+                inserted += 1
+        if inserted:
             db.commit()
-            print(f"已插入 {len(seed)} 条字段批注")
+            print(f"已新增 {inserted} 条字段批注")
     except Exception as e:
         db.rollback()
         print(f"字段批注初始化失败: {e}")
