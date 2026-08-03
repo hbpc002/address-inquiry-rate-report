@@ -221,64 +221,9 @@
 
         <el-tab-pane label="班组报表" name="team">
           <div style="margin-bottom: 12px; font-size: 13px; color: #909399">
-            按班组/班级聚合统计晚签（迟到）与提前签出情况，点击饼图或排名表可下钻查看组内员工明细，再点击「详情」查看个人多维统计
+            统计每位员工的晚签（迟到）与提前签出情况，点击列头可排序，便于查看组内谁晚签多、谁提前签出多
           </div>
-
-          <el-row :gutter="20" v-if="teamRanking.length" style="margin-bottom: 20px">
-            <el-col :span="8">
-              <el-card shadow="hover">
-                <div style="margin-bottom: 10px; font-size: 14px; color: #606266; display: flex; align-items: center; gap: 12px;">
-                  <span>签入人次占比</span>
-                  <el-radio-group v-model="viewMode" size="small">
-                    <el-radio-button value="team">按班组</el-radio-button>
-                    <el-radio-button value="class">按班级</el-radio-button>
-                  </el-radio-group>
-                </div>
-                <Echart :options="teamChartOptions" height="300px" @click="handleTeamPieClick" />
-              </el-card>
-            </el-col>
-            <el-col :span="16">
-              <el-card shadow="hover">
-                <el-table v-if="viewMode === 'team'" :data="classFilter ? classFilteredRanking : teamRanking" size="small" border stripe max-height="300" @row-click="handleTeamRankRowClick">
-                  <el-table-column label="排名" width="55" type="index" />
-                  <el-table-column label="班组" prop="team" />
-                  <el-table-column label="组长" prop="leader" min-width="60" />
-                  <el-table-column label="人数" width="55" prop="count" sortable />
-                  <el-table-column label="签到次数" width="80" prop="checkin_count" sortable />
-                  <el-table-column label="出勤天数" width="75" prop="attend_days" sortable />
-                  <el-table-column label="晚签天数" width="75" prop="late_days" sortable />
-                  <el-table-column label="晚签总分钟" width="90" prop="late_minutes" sortable>
-                    <template #default="{ row }">
-                      <span :class="{ 'text-danger': row.late_minutes > 0 }">{{ row.late_minutes }}</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="早退天数" width="75" prop="early_days" sortable />
-                  <el-table-column label="早退总分钟" width="90" prop="early_minutes" sortable>
-                    <template #default="{ row }">
-                      <span :class="{ 'text-danger': row.early_minutes > 0 }">{{ row.early_minutes }}</span>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <el-table v-else :data="classRanking" size="small" border stripe max-height="300" @row-click="handleClassRowClick">
-                  <el-table-column label="排名" width="55" type="index" />
-                  <el-table-column label="班级" prop="name" />
-                  <el-table-column label="班组数" width="70" prop="team_count" />
-                  <el-table-column label="人数" width="55" prop="count" sortable />
-                  <el-table-column label="签到次数" width="85" prop="checkin_count" sortable />
-                  <el-table-column label="晚签总分钟" width="90" prop="late_minutes" sortable />
-                  <el-table-column label="早退总分钟" width="90" prop="early_minutes" sortable />
-                </el-table>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <div v-if="selectedTeam" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 13px; color: #606266">当前班组：</span>
-            <el-tag type="primary">{{ selectedTeam }}</el-tag>
-            <el-button link type="primary" size="small" @click="clearTeamFilter">清除筛选</el-button>
-          </div>
-
-          <el-table :data="teamMemberPaginated" border stripe max-height="calc(100vh - 350px)">
+          <el-table :data="teamReportPaginated" border stripe max-height="calc(100vh - 350px)">
             <el-table-column type="index" label="排名" width="60" />
             <el-table-column prop="emp_no" label="账号" width="100" />
             <el-table-column prop="name" label="用户名" width="100" />
@@ -312,11 +257,11 @@
             </el-table-column>
           </el-table>
           <el-pagination
-            v-if="teamMemberData.length > 0"
+            v-if="teamReportData.length > 0"
             v-model:current-page="teamPage"
             v-model:page-size="teamPageSize"
             :page-sizes="[10, 20, 50, 100]"
-            :total="teamMemberData.length"
+            :total="teamReportData.length"
             layout="total, sizes, prev, pager, next, jumper"
             style="margin-top: 15px; justify-content: flex-end"
           />
@@ -588,11 +533,6 @@ const teamReportData = ref([])
 const teamPage = ref(1)
 const teamPageSize = ref(20)
 const expandedCheckins = ref(new Set())
-const viewMode = ref('team')
-const classFilter = ref('')
-const teamFilterType = ref('')
-const teamFilterValue = ref('')
-const teamLeaders = ref({})
 
 function toggleCheckins(empNo) {
   const next = new Set(expandedCheckins.value)
@@ -604,204 +544,11 @@ function toggleCheckins(empNo) {
   expandedCheckins.value = next
 }
 
-watch(viewMode, (val) => {
-  if (val === 'class') classFilter.value = ''
-})
-
-const selectedTeam = computed(() => {
-  return teamFilterType.value === 'team' ? teamFilterValue.value : ''
-})
-
-const teamMemberData = computed(() => {
-  if (teamFilterType.value === 'team' && teamFilterValue.value) {
-    return teamReportData.value.filter(d => d.team === teamFilterValue.value)
-  }
-  return teamReportData.value
-})
-
-const teamMemberPaginated = computed(() => {
+const teamReportPaginated = computed(() => {
   const start = (teamPage.value - 1) * teamPageSize.value
   const end = start + teamPageSize.value
-  return teamMemberData.value.slice(start, end)
+  return teamReportData.value.slice(start, end)
 })
-
-function extractClass(team) {
-  const m = team && team.match(/^(.+?)([\d一二三四五六七八九十]+)组$/)
-  return m ? m[1] : team
-}
-
-const teamRanking = computed(() => {
-  const teamMap = {}
-  teamReportData.value.forEach(d => {
-    const team = d.team || '未知班组'
-    if (!teamMap[team]) {
-      teamMap[team] = { count: 0, checkin_count: 0, attend_days: 0, late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0 }
-    }
-    const t = teamMap[team]
-    t.count++
-    t.checkin_count += d.checkin_count || 0
-    t.attend_days += d.attend_days || 0
-    t.late_days += d.late_days || 0
-    t.late_minutes += d.late_minutes || 0
-    t.early_days += d.early_days || 0
-    t.early_minutes += d.early_minutes || 0
-  })
-  return Object.entries(teamMap)
-    .map(([team, data]) => ({
-      team,
-      leader: teamLeaders.value[team] || '',
-      count: data.count,
-      checkin_count: data.checkin_count,
-      attend_days: data.attend_days,
-      late_days: data.late_days,
-      late_minutes: data.late_minutes,
-      early_days: data.early_days,
-      early_minutes: data.early_minutes
-    }))
-    .sort((a, b) => b.late_minutes - a.late_minutes)
-})
-
-const classRanking = computed(() => {
-  const classMap = {}
-  teamRanking.value.forEach(t => {
-    const cls = extractClass(t.team)
-    if (!cls) return
-    if (!classMap[cls]) {
-      classMap[cls] = { count: 0, team_count: 0, checkin_count: 0, attend_days: 0, late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0 }
-    }
-    const c = classMap[cls]
-    c.count += t.count
-    c.team_count++
-    c.checkin_count += t.checkin_count
-    c.attend_days += t.attend_days
-    c.late_days += t.late_days
-    c.late_minutes += t.late_minutes
-    c.early_days += t.early_days
-    c.early_minutes += t.early_minutes
-  })
-  return Object.entries(classMap)
-    .map(([name, data]) => ({ name, ...data }))
-    .sort((a, b) => b.late_minutes - a.late_minutes)
-})
-
-const classFilteredRanking = computed(() => {
-  if (!classFilter.value) return teamRanking.value
-  return teamRanking.value.filter(t => extractClass(t.team) === classFilter.value)
-})
-
-const teamChartData = computed(() => {
-  return teamRanking.value
-    .map(r => ({
-      name: r.team,
-      value: Math.round(r.checkin_count),
-      peopleCount: r.count,
-      lateMinutes: r.late_minutes,
-      earlyMinutes: r.early_minutes
-    }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8)
-})
-
-const classChartData = computed(() => {
-  return classRanking.value
-    .map(r => ({
-      name: r.name,
-      value: Math.round(r.checkin_count),
-      peopleCount: r.count,
-      lateMinutes: r.late_minutes,
-      earlyMinutes: r.early_minutes
-    }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8)
-})
-
-const classFilteredChartData = computed(() => {
-  if (!classFilter.value) return teamChartData.value
-  return teamChartData.value.filter(t => extractClass(t.name) === classFilter.value)
-})
-
-const teamMemberChartData = computed(() => {
-  if (!selectedTeam.value) return []
-  return teamReportData.value
-    .filter(d => d.team === selectedTeam.value)
-    .map(d => ({ name: d.name || '未知', late_minutes: d.late_minutes || 0 }))
-    .sort((a, b) => b.late_minutes - a.late_minutes)
-})
-
-const teamChartOptions = computed(() => {
-  if (selectedTeam.value) {
-    const data = teamMemberChartData.value
-    if (!data.length) return {}
-    const options = createBarOptions(data.map(d => d.name), data.map(d => d.late_minutes), `${selectedTeam.value} 成员晚签分钟`, '姓名', '晚签分钟')
-    options.xAxis.axisLabel = { rotate: 45, interval: 0 }
-    options.grid.bottom = '25%'
-    return options
-  }
-  if (classFilter.value) {
-    const data = classFilteredChartData.value
-    if (!data.length) return {}
-    return createPieOptions(data, `${classFilter.value} 签入人次占比`, undefined, '签入人次')
-  }
-  if (viewMode.value === 'class' && classChartData.value.length) {
-    return createPieOptions(classChartData.value, '班级签入人次占比', undefined, '签入人次')
-  }
-  if (!teamChartData.value.length) return {}
-  return createPieOptions(teamChartData.value, '班组签入人次占比', undefined, '签入人次')
-})
-
-function clearTeamFilter() {
-  teamFilterType.value = ''
-  teamFilterValue.value = ''
-  teamPage.value = 1
-}
-
-function handleTeamPieClick(params) {
-  if (!params.name) return
-  if (teamFilterType.value === 'team') {
-    clearTeamFilter()
-    return
-  }
-  if (viewMode.value === 'class') {
-    classFilter.value = params.name
-    viewMode.value = 'team'
-    return
-  }
-  teamFilterType.value = 'team'
-  teamFilterValue.value = params.name
-  teamPage.value = 1
-}
-
-function handleTeamRankRowClick(row) {
-  if (teamFilterType.value === 'team' && teamFilterValue.value === row.team) {
-    clearTeamFilter()
-  } else {
-    teamFilterType.value = 'team'
-    teamFilterValue.value = row.team
-    teamPage.value = 1
-  }
-}
-
-function handleClassRowClick(row) {
-  if (classFilter.value === row.name) {
-    classFilter.value = ''
-  } else {
-    classFilter.value = row.name
-    viewMode.value = 'team'
-  }
-}
-
-async function loadTeamLeaders() {
-  try {
-    const res = await api.get('/employees/leaders')
-    const map = {}
-    ;(res.data || []).forEach(item => {
-      if (item.team) map[item.team] = item.leader
-    })
-    teamLeaders.value = map
-  } catch (e) {
-    console.error(e)
-  }
-}
 
 const drawerVisible = ref(false)
 const personalDetail = ref(null)
@@ -1119,8 +866,6 @@ async function loadData() {
     stats.undertime_count = res.data.stats.undertime_count || 0
     filterType.value = ''
     filterValue.value = ''
-    clearTeamFilter()
-    classFilter.value = ''
     tableData.value = res.data.items || []
     loadTeamReport()
   } catch (e) {
@@ -1213,7 +958,6 @@ onMounted(() => {
     handleTypeChange()
   }
   loadTeams()
-  loadTeamLeaders()
   loadData()
   checkinAnnotator.loadAnnotations().then(m => { checkinAnnMap.value = m })
   checkinDetailAnnotator.loadAnnotations().then(m => { checkinDetailAnnMap.value = m })
