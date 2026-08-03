@@ -1703,9 +1703,41 @@ describe('WorkloadReport - 导出筛选功能', () => {
     return { text, style }
   }
 
+  function enrichData(data, gapTargets) {
+    return data.map(row => {
+      const callCount = getMetricValue(row, '呼入人工服务-人工服务-通话次数') || 0
+      const ticketCount = getMetricValue(row, '呼入人工服务-工单-生成总量') || 0
+      const workDuration = getMetricValue(row, '总体-工作总时长(秒)') || 0
+      const callSalary = calcCallSalary(callCount)
+      const satSalary = calcSatSalary(row)
+      const totalSalary = satSalary !== null ? callSalary + satSalary : callSalary
+
+      const gapValues = {}
+      for (const target of gapTargets) {
+        gapValues[`gap_${target}`] = target - callCount
+      }
+
+      const satDiffVal = calcSatDiff(row)
+
+      return {
+        ...row,
+        _call_count: callCount,
+        _ticket_count: ticketCount,
+        _call_hourly_rate: workDuration > 0 ? +(callCount / (workDuration / 3600)).toFixed(1) : 0,
+        _ti_dan_lv: callCount > 0 ? ticketCount / callCount : 0,
+        _call_salary: callSalary,
+        _sat_salary: satSalary,
+        _total_salary: totalSalary,
+        _sat_diff: satDiffVal,
+        ...gapValues
+      }
+    })
+  }
+
   function generateCSV(columns, data, activeTargets) {
+    const enriched = enrichData(data, gapTargets)
     const headers = columns.map(c => c.label)
-    const rows = data.map((row, i) =>
+    const rows = enriched.map((row, i) =>
       columns.map(col => {
         const cell = formatScreenshotCell(row, col, activeTargets, i)
         return cell.text
@@ -1733,18 +1765,30 @@ describe('WorkloadReport - 导出筛选功能', () => {
   const filteredData = [
     {
       account: 'zhangsan', name: '张三', team_desc: '二班1组', date_count: 22,
-      _ti_dan_lv: 0.156, _call_hourly_rate: 3.8,
       aggregated_metrics: {
-        '呼入人工服务-人工服务-通话次数': 150,
+        '呼入人工服务-人工服务-通话次数': 190,
+        '呼入人工服务-工单-生成总量': 29.64,
+        '总体-工作总时长(秒)': 180000,
         '人工服务-满意度-满意率': 0.95,
+        '呼入人工服务-满意度-非常满意量': 10,
+        '呼入人工服务-满意度-满意量': 20,
+        '呼入人工服务-满意度-一般量': 2,
+        '呼入人工服务-满意度-不满意量': 1,
+        '呼入人工服务-满意度-非常不满意量': 1,
       }
     },
     {
       account: 'lisi', name: '李四', team_desc: '二班1组', date_count: 20,
-      _ti_dan_lv: 0.20, _call_hourly_rate: 4.2,
       aggregated_metrics: {
-        '呼入人工服务-人工服务-通话次数': 200,
+        '呼入人工服务-人工服务-通话次数': 210,
+        '呼入人工服务-工单-生成总量': 42,
+        '总体-工作总时长(秒)': 180000,
         '人工服务-满意度-满意率': 0.90,
+        '呼入人工服务-满意度-非常满意量': 10,
+        '呼入人工服务-满意度-满意量': 20,
+        '呼入人工服务-满意度-一般量': 2,
+        '呼入人工服务-满意度-不满意量': 1,
+        '呼入人工服务-满意度-非常不满意量': 1,
       }
     },
   ]
@@ -1794,6 +1838,57 @@ describe('WorkloadReport - 导出筛选功能', () => {
       const csv = generateCSV(columns, filteredData, sampleTargets)
       const lines = csv.split('\n')
       expect(lines[2]).toContain('20.00%')
+    })
+  })
+
+  describe('handleExportFiltered - computed columns from raw data', () => {
+    it('should compute 提单率 from raw aggregated_metrics', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('15.60%')
+      expect(lines[2]).toContain('20.00%')
+    })
+
+    it('should compute 接话小时量 from raw work duration', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('3.8')
+      expect(lines[2]).toContain('4.2')
+    })
+
+    it('should compute 接话绩效(预测) from call tiers', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('"190"')
+      expect(lines[2]).toContain('"210"')
+    })
+
+    it('should compute 满意度绩效(预测) and 合计绩效(预测)', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('"15"')
+      expect(lines[1]).toContain('"205"')
+    })
+
+    it('should compute 话务量差额 and 满意度差额 from raw data', () => {
+      const columns = buildScreenshotColumns([], hasAllPermissions, gapTargets)
+      const csv = generateCSV(columns, filteredData, sampleTargets)
+      const lines = csv.split('\n')
+      expect(lines[1]).toContain('"1810"')
+      expect(lines[2]).toContain('"1790"')
+    })
+
+    it('should not expose computed fields on the raw row', () => {
+      const enriched = enrichData(filteredData, gapTargets)
+      expect(filteredData[0]).not.toHaveProperty('_ti_dan_lv')
+      expect(enriched[0]).toHaveProperty('_ti_dan_lv')
+      expect(enriched[0]._ti_dan_lv).toBeCloseTo(0.156)
+      expect(enriched[0]._call_hourly_rate).toBeCloseTo(3.8)
+      expect(enriched[0]._sat_diff).toBeCloseTo(46)
     })
   })
 

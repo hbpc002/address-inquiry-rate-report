@@ -883,7 +883,7 @@ function handleExport() {
 }
 
 function handleExportFiltered() {
-  const data = filteredData.value
+  const data = enrichedData.value
   if (!data.length) {
     ElMessage.warning('没有筛选数据可供导出')
     return
