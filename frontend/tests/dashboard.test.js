@@ -28,6 +28,14 @@ function getProductionByTeam(mergedData, teamName) {
   return mergedData.find(d => d.team === teamName)
 }
 
+function buildTeamXAxis(hoursData) {
+  return {
+    type: 'category',
+    data: hoursData.map(d => d.team),
+    axisLabel: { interval: 0, rotate: 28, margin: 8 },
+  }
+}
+
 describe('dashboard - calcTiDanLv', () => {
   it('calculates ticket rate correctly', () => {
     expect(calcTiDanLv(100, 10)).toBe(10.0)
@@ -98,5 +106,35 @@ describe('dashboard - mergeTeamData', () => {
     }))
     const merged = mergeTeamData(manyHours, [])
     expect(merged).toHaveLength(10)
+  })
+})
+
+describe('dashboard - buildTeamXAxis', () => {
+  const hoursData = [
+    { team: '热线一组', emp_count: 10, scheduled_hours: 800, actual_hours: 750 },
+    { team: '热线二组', emp_count: 8, scheduled_hours: 640, actual_hours: 600 },
+    { team: '投诉组', emp_count: 5, scheduled_hours: 400, actual_hours: 380 },
+  ]
+
+  it('uses single-line team names as categories (no emp_count suffix)', () => {
+    const axis = buildTeamXAxis(hoursData)
+    expect(axis.data).toEqual(['热线一组', '热线二组', '投诉组'])
+    expect(axis.data.every(d => !d.includes('\n'))).toBe(true)
+  })
+
+  it('forces interval 0 so no labels are auto-hidden', () => {
+    const axis = buildTeamXAxis(hoursData)
+    expect(axis.axisLabel.interval).toBe(0)
+  })
+
+  it('rotates labels to avoid overlap', () => {
+    const axis = buildTeamXAxis(hoursData)
+    expect(axis.axisLabel.rotate).toBe(28)
+  })
+
+  it('keeps every team visible regardless of count', () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({ team: `班组${i + 1}`, emp_count: 5 }))
+    const axis = buildTeamXAxis(many)
+    expect(axis.data).toHaveLength(12)
   })
 })

@@ -259,8 +259,8 @@ const mergedTeamOptions = computed(() => {
       }
     },
     legend: { data: ['应出勤工时', '实际工时', '通话量', '提单率'], bottom: 0 },
-    grid: { left: '3%', right: '12%', bottom: '22%', containLabel: true },
-    xAxis: { type: 'category', data: hoursData.map(d => `${d.team}\n(${d.emp_count}人)`) },
+    grid: { left: '3%', right: '12%', bottom: 45, containLabel: true },
+    xAxis: { type: 'category', data: hoursData.map(d => d.team), axisLabel: { interval: 0, rotate: 28, margin: 8 } },
     yAxis: [
       { type: 'value', name: '工时(h)' },
       { type: 'value', name: '通话量', position: 'right' },
