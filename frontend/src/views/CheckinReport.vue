@@ -47,6 +47,15 @@
         </el-form-item>
       </el-form>
 
+      <div style="margin-bottom: 12px">
+        <FieldFilterPanel
+          :fields="summaryFilterFields"
+          v-model="summaryFilter.conditions"
+          persist-key="checkin-report-summary-filter"
+          @change="handleSummaryFilterChange"
+        />
+      </div>
+
       <el-tabs v-model="activeTab">
         <el-tab-pane label="汇总" name="summary">
           <el-row :gutter="20" class="stats-row">
@@ -213,7 +222,7 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :total="tableData.length"
+        :total="summaryFilter.filtered(tableData).length"
         layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 15px; justify-content: flex-end"
       />
@@ -222,6 +231,14 @@
         <el-tab-pane label="班组报表" name="team">
           <div style="margin-bottom: 12px; font-size: 13px; color: #909399">
             统计每位员工的晚签（迟到）与提前签出情况，点击列头可排序，便于查看组内谁晚签多、谁提前签出多
+          </div>
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              :fields="teamFilterFields"
+              v-model="teamFilter.conditions"
+              persist-key="checkin-report-team-filter"
+              @change="handleTeamFilterChange"
+            />
           </div>
           <el-table :data="teamReportPaginated" border stripe max-height="calc(100vh - 350px)">
             <el-table-column type="index" label="排名" width="60" />
@@ -261,7 +278,7 @@
             v-model:current-page="teamPage"
             v-model:page-size="teamPageSize"
             :page-sizes="[10, 20, 50, 100]"
-            :total="teamReportData.length"
+            :total="teamFilter.filtered(teamReportData).length"
             layout="total, sizes, prev, pager, next, jumper"
             style="margin-top: 15px; justify-content: flex-end"
           />
@@ -517,6 +534,8 @@ import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import ColumnWithTip from '../components/ColumnWithTip.vue'
 import { useFieldAnnotations } from '../composables/useFieldAnnotations'
+import FieldFilterPanel from '../components/FieldFilterPanel.vue'
+import { useFieldFilter } from '../composables/useFieldFilter'
 
 const tableData = ref([])
 const teams = ref([])
@@ -545,9 +564,10 @@ function toggleCheckins(empNo) {
 }
 
 const teamReportPaginated = computed(() => {
+  const filtered = teamFilter.filtered(teamReportData.value)
   const start = (teamPage.value - 1) * teamPageSize.value
   const end = start + teamPageSize.value
-  return teamReportData.value.slice(start, end)
+  return filtered.slice(start, end)
 })
 
 const drawerVisible = ref(false)
@@ -591,6 +611,7 @@ const paginatedData = computed(() => {
   } else if (filterType.value === 'team') {
     data = data.filter(d => d.team === filterValue.value)
   }
+  data = summaryFilter.filtered(data)
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
   return data.slice(start, end)
@@ -650,6 +671,35 @@ const summaryContent = (key) => {
 
 const filterType = ref('')
 const filterValue = ref('')
+
+const summaryFilterFields = [
+  { key: 'total_hours', label: '工作时长', unit: 'number', get: row => row.total_hours ?? null },
+  { key: 'checkin_count', label: '签入次数', unit: 'number', get: row => row.checkin_count ?? null },
+  { key: 'avg_punctuality_rate', label: '遵时率(%)', unit: 'percent', get: row => row.avg_punctuality_rate ?? null },
+  { key: 'computed_punctuality_rate', label: '系统遵时率(%)', unit: 'percent', get: row => row.computed_punctuality_rate ?? null },
+  { key: 'avg_utilization_rate', label: '工时利用率(%)', unit: 'percent', get: row => row.avg_utilization_rate ?? null },
+  { key: 'avg_attendance_rate', label: '班表出勤率(%)', unit: 'percent', get: row => row.avg_attendance_rate ?? null },
+  { key: 'total_call_duration', label: '通话时长', unit: 'number', get: row => row.total_call_duration ?? null },
+  { key: 'total_organize_duration', label: '整理时长', unit: 'number', get: row => row.total_organize_duration ?? null },
+  { key: 'training_minutes', label: '培训扣除(分)', unit: 'number', get: row => row.training_minutes ?? null }
+]
+const summaryFilter = useFieldFilter(summaryFilterFields, { persistKey: 'checkin-report-summary-filter' })
+function handleSummaryFilterChange() {
+  currentPage.value = 1
+}
+
+const teamFilterFields = [
+  { key: 'checkin_count', label: '签到次数', unit: 'number', get: row => row.checkin_count ?? null },
+  { key: 'attend_days', label: '出勤天数', unit: 'number', get: row => row.attend_days ?? null },
+  { key: 'late_days', label: '晚签天数', unit: 'number', get: row => row.late_days ?? null },
+  { key: 'late_minutes', label: '晚签总分钟', unit: 'number', get: row => row.late_minutes ?? null },
+  { key: 'early_days', label: '提前签出天数', unit: 'number', get: row => row.early_days ?? null },
+  { key: 'early_minutes', label: '提前签出总分钟', unit: 'number', get: row => row.early_minutes ?? null }
+]
+const teamFilter = useFieldFilter(teamFilterFields, { persistKey: 'checkin-report-team-filter' })
+function handleTeamFilterChange() {
+  teamPage.value = 1
+}
 
 const overtimeNames = computed(() => {
   return tableData.value.filter(d => d.hour_status === 'overtime').map(d => d.name).slice(0, 5)

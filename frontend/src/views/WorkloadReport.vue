@@ -68,6 +68,16 @@
         </el-form-item>
       </el-form>
 
+      <div style="margin-bottom: 12px">
+        <FieldFilterPanel
+          :fields="filterFields"
+          v-model="fieldFilter.conditions"
+          :loading="dataLoading"
+          persist-key="workload-report-field-filter"
+          @change="handleFieldFilterChange"
+        />
+      </div>
+
       <el-row :gutter="20" class="stats-row">
         <el-col :span="3">
           <el-statistic title="总人数" :value="stats.total_people" />
@@ -234,7 +244,7 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :total="filteredData.length"
+        :total="fieldFilter.filtered(enrichedData).length"
         layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 15px; justify-content: flex-end"
       />
@@ -290,6 +300,8 @@ import html2canvas from 'html2canvas'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import ColumnWithTip from '../components/ColumnWithTip.vue'
 import { useFieldAnnotations } from '../composables/useFieldAnnotations'
+import FieldFilterPanel from '../components/FieldFilterPanel.vue'
+import { useFieldFilter } from '../composables/useFieldFilter'
 
 const tableData = ref([])
 const workloadAnnotator = useFieldAnnotations('workload')
@@ -792,8 +804,92 @@ const enrichedData = computed(() => {
   })
 })
 
+const SAT_FIELDS = [
+  '呼入人工服务-满意度-非常满意量',
+  '呼入人工服务-满意度-满意量',
+  '呼入人工服务-满意度-一般量',
+  '呼入人工服务-满意度-不满意量',
+  '呼入人工服务-满意度-非常不满意量'
+]
+
+function satDenominator(row) {
+  return SAT_FIELDS.reduce((s, f) => s + (getMetricValue(row, f) || 0), 0)
+}
+
+function satRate(row, fieldKeys) {
+  const denom = satDenominator(row)
+  if (denom <= 0) return null
+  const num = fieldKeys.reduce((s, f) => s + (getMetricValue(row, f) || 0), 0)
+  return +(num / denom * 100).toFixed(2)
+}
+
+const filterFields = computed(() => {
+  const fields = []
+  for (const f of allMetricFields.value) {
+    if (f.isRate) {
+      fields.push({
+        key: f.field,
+        label: f.label + '(%)',
+        unit: 'percent',
+        get: row => {
+          const v = getMetricValue(row, f.field)
+          return v === null || v === undefined ? null : +(v * 100).toFixed(2)
+        }
+      })
+    } else {
+      fields.push({ key: f.field, label: f.label, unit: 'number', get: row => getMetricValue(row, f.field) })
+    }
+  }
+  fields.push({
+    key: '__sat_rate', label: '满意率(%)', unit: 'percent',
+    get: row => satRate(row, ['呼入人工服务-满意度-非常满意量', '呼入人工服务-满意度-满意量'])
+  })
+  fields.push({
+    key: '__dis_sat_rate', label: '不满意率(%)', unit: 'percent',
+    get: row => satRate(row, ['呼入人工服务-满意度-不满意量', '呼入人工服务-满意度-非常不满意量'])
+  })
+  fields.push({
+    key: '__very_dis_sat_rate', label: '非常不满意率(%)', unit: 'percent',
+    get: row => satRate(row, ['呼入人工服务-满意度-非常不满意量'])
+  })
+  fields.push({
+    key: '__general_rate', label: '一般率(%)', unit: 'percent',
+    get: row => satRate(row, ['呼入人工服务-满意度-一般量'])
+  })
+  fields.push({
+    key: '__very_sat_rate', label: '非常满意率(%)', unit: 'percent',
+    get: row => satRate(row, ['呼入人工服务-满意度-非常满意量'])
+  })
+  fields.push({ key: '_ti_dan_lv', label: '提单率(%)', unit: 'percent', get: row => (row._ti_dan_lv ?? null) === null ? null : +(row._ti_dan_lv * 100).toFixed(2) })
+  fields.push({ key: '_call_hourly_rate', label: '接话小时量', unit: 'number', get: row => row._call_hourly_rate ?? null })
+  if (userStore.hasPermission('workload_report.view_call_salary')) {
+    fields.push({ key: '_call_salary', label: '接话绩效(预测)', unit: 'number', get: row => row._call_salary ?? null })
+  }
+  if (userStore.hasPermission('workload_report.view_sat_salary')) {
+    fields.push({ key: '_sat_salary', label: '满意度绩效(预测)', unit: 'number', get: row => row._sat_salary ?? null })
+  }
+  if (userStore.hasPermission('workload_report.view_total_salary')) {
+    fields.push({ key: '_total_salary', label: '合计绩效(预测)', unit: 'number', get: row => row._total_salary ?? null })
+  }
+  if (userStore.hasPermission('workload_report.view_sat_diff')) {
+    fields.push({ key: '_sat_diff', label: '满意度差额', unit: 'number', get: row => row._sat_diff ?? null })
+  }
+  for (const target of salaryCfg.gapTargets) {
+    fields.push({ key: `gap_${target}`, label: `话务量差额(${target})`, unit: 'number', get: row => row[`gap_${target}`] ?? null })
+  }
+  return fields
+})
+
+const fieldFilter = useFieldFilter(filterFields, { persistKey: 'workload-report-field-filter' })
+
+const dataLoading = ref(false)
+
+function handleFieldFilterChange() {
+  currentPage.value = 1
+}
+
 const paginatedData = computed(() => {
-  let data = enrichedData.value
+  let data = fieldFilter.filtered(enrichedData.value)
   if (sortBy.value && sortOrder.value) {
     data = [...data].sort((a, b) => {
       let aVal, bVal
@@ -883,7 +979,7 @@ function handleExport() {
 }
 
 function handleExportFiltered() {
-  const data = enrichedData.value
+  const data = fieldFilter.filtered(enrichedData.value)
   if (!data.length) {
     ElMessage.warning('没有筛选数据可供导出')
     return
@@ -1031,7 +1127,7 @@ function buildScreenshotHtml(title, periodInfo, filterInfo, columns, rows, now) 
 }
 
 async function handleScreenshot() {
-  let data = enrichedData.value
+  let data = fieldFilter.filtered(enrichedData.value)
   if (!data.length) {
     ElMessage.warning('没有数据可供导出')
     return
@@ -1233,6 +1329,7 @@ async function loadTeamLeaders() {
 
 async function loadData() {
   clearFilter()
+  dataLoading.value = true
   try {
     const params = {}
     if (searchForm.type === 'day' && searchForm.date) {
@@ -1287,6 +1384,8 @@ async function loadData() {
     }
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    dataLoading.value = false
   }
 }
 

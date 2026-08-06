@@ -27,6 +27,16 @@
             </el-form-item>
           </el-form>
 
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'employee'"
+              :fields="empFilterFields"
+              v-model="empFilter.conditions"
+              persist-key="efficiency-emp-filter"
+              @change="handleEmpFilterChange"
+            />
+          </div>
+
           <el-row :gutter="20" class="stats-row">
             <el-col :span="4">
               <el-statistic title="员工人数" :value="empStats.total" />
@@ -61,7 +71,7 @@
             </el-col>
           </el-row>
 
-          <el-table :data="empData" border stripe>
+          <el-table :data="empFilter.filtered(empData)" border stripe>
             <el-table-column prop="emp_no" label="工号" width="100" />
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="100" />
@@ -120,9 +130,19 @@
             </el-form-item>
           </el-form>
 
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'warning'"
+              :fields="warnFilterFields"
+              v-model="warnFilter.conditions"
+              persist-key="efficiency-warning-filter"
+              @change="warnFilterChange"
+            />
+          </div>
+
           <el-alert v-if="warningData.length" :title="`共 ${warningData.length} 人需要关注`" type="warning" style="margin-bottom: 20px" />
 
-          <el-table :data="warningData" border stripe>
+          <el-table :data="warnFilter.filtered(warningData)" border stripe>
             <el-table-column type="index" label="序号" width="60" />
             <el-table-column prop="emp_no" label="工号" width="100" />
             <el-table-column prop="name" label="姓名" width="100" />
@@ -172,7 +192,17 @@
             </el-col>
           </el-row>
 
-          <el-table :data="rankingData" border stripe>
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'ranking'"
+              :fields="rankFilterFields"
+              v-model="rankFilter.conditions"
+              persist-key="efficiency-rank-filter"
+              @change="rankFilterChange"
+            />
+          </div>
+
+          <el-table :data="rankFilter.filtered(rankingData)" border stripe>
             <el-table-column type="index" label="排名" width="60" />
             <el-table-column prop="emp_no" label="工号" width="100" />
             <el-table-column prop="name" label="姓名" width="100" />
@@ -233,7 +263,17 @@
             </el-col>
           </el-row>
 
-          <el-table :data="trendData" border stripe v-if="trendData.length">
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'trend'"
+              :fields="trendFilterFields"
+              v-model="trendFilter.conditions"
+              persist-key="efficiency-trend-filter"
+              @change="trendFilterChange"
+            />
+          </div>
+
+          <el-table :data="trendFilter.filtered(trendData)" border stripe v-if="trendData.length">
             <el-table-column prop="year_month" label="月份" width="100" />
             <el-table-column prop="emp_no" label="工号" width="100" />
             <el-table-column prop="name" label="姓名" width="100" />
@@ -357,6 +397,8 @@ import { downloadBlob } from '../utils/download'
 import Echart from '../components/Echart.vue'
 import { createLineOptions, createBarOptions, createPieOptions, createHorizontalBarOptions } from '../utils/echarts'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
+import FieldFilterPanel from '../components/FieldFilterPanel.vue'
+import { useFieldFilter } from '../composables/useFieldFilter'
 
 const savedTab = sessionStorage.getItem('efficiency-active-tab')
 const activeTab = ref(savedTab || 'employee')
@@ -381,6 +423,47 @@ const empData = ref([])
 const warningData = ref([])
 const rankingData = ref([])
 const trendData = ref([])
+
+const empFilterFields = [
+  { key: 'attendance_rate', label: '出勤率', unit: 'percent', get: row => row.attendance_rate ?? null },
+  { key: 'efficiency_rate', label: '工时效率', unit: 'percent', get: row => row.efficiency_rate ?? null },
+  { key: 'scheduled_hours', label: '计划工时', unit: 'number', get: row => row.scheduled_hours ?? null },
+  { key: 'actual_hours', label: '实际工时', unit: 'number', get: row => row.actual_hours ?? null },
+  { key: 'overtime_hours', label: '加班工时', unit: 'number', get: row => row.overtime_hours ?? null },
+  { key: 'late_days', label: '迟到天数', unit: 'number', get: row => row.late_days ?? null },
+  { key: 'absent_days', label: '缺勤天数', unit: 'number', get: row => row.absent_days ?? null },
+  { key: 'work_days', label: '出勤天数', unit: 'number', get: row => row.work_days ?? null }
+]
+const empFilter = useFieldFilter(empFilterFields, { persistKey: 'efficiency-emp-filter' })
+function empFilterChange() {}
+
+const warnFilterFields = [
+  { key: 'count', label: '预警次数', unit: 'number', get: row => row.count ?? null }
+]
+const warnFilter = useFieldFilter(warnFilterFields, { persistKey: 'efficiency-warning-filter' })
+function warnFilterChange() {}
+
+const rankFilterFields = [
+  { key: 'efficiency_rate', label: '效能得分', unit: 'number', get: row => row.efficiency_rate ?? null },
+  { key: 'attendance_rate', label: '出勤率', unit: 'percent', get: row => row.attendance_rate ?? null },
+  { key: 'work_hours', label: '工时得分', unit: 'number', get: row => row.work_hours ?? null },
+  { key: 'late_days', label: '迟到天数', unit: 'number', get: row => row.late_days ?? null },
+  { key: 'absent_days', label: '缺勤天数', unit: 'number', get: row => row.absent_days ?? null }
+]
+const rankFilter = useFieldFilter(rankFilterFields, { persistKey: 'efficiency-rank-filter' })
+function rankFilterChange() {}
+
+const trendFilterFields = [
+  { key: 'attendance_rate', label: '出勤率', unit: 'percent', get: row => row.attendance_rate ?? null },
+  { key: 'efficiency_rate', label: '工时效率', unit: 'percent', get: row => row.efficiency_rate ?? null },
+  { key: 'scheduled_hours', label: '计划工时', unit: 'number', get: row => row.scheduled_hours ?? null },
+  { key: 'actual_hours', label: '实际工时', unit: 'number', get: row => row.actual_hours ?? null },
+  { key: 'late_days', label: '迟到天数', unit: 'number', get: row => row.late_days ?? null },
+  { key: 'absent_days', label: '缺勤天数', unit: 'number', get: row => row.absent_days ?? null },
+  { key: 'work_days', label: '出勤天数', unit: 'number', get: row => row.work_days ?? null }
+]
+const trendFilter = useFieldFilter(trendFilterFields, { persistKey: 'efficiency-trend-filter' })
+function trendFilterChange() {}
 
 const detailDialogVisible = ref(false)
 const detailData = ref({})

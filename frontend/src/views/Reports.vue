@@ -49,6 +49,16 @@
             </el-form-item>
           </el-form>
 
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'daily'"
+              :fields="dailyFilterFields"
+              v-model="dailyFilter.conditions"
+              persist-key="reports-daily-filter"
+              @change="handleDailyFilterChange"
+            />
+          </div>
+
           <el-row :gutter="20" class="stats-row">
             <el-col :span="3">
               <el-statistic title="应到人数" :value="dailyStats.total" />
@@ -89,7 +99,7 @@
             </el-col>
           </el-row>
 
-          <el-table :data="dailyData" border stripe show-summary :row-class-name="dailySegmentRowClass">
+          <el-table :data="dailyDisplayData" border stripe show-summary :row-class-name="dailySegmentRowClass">
             <el-table-column prop="schedule_date" label="日期" width="110" />
             <el-table-column prop="emp_no" label="工号" width="110" />
             <el-table-column prop="name" label="姓名" width="100" />
@@ -146,12 +156,12 @@
             </ColumnWithTip>
           </el-table>
           <el-pagination
-            v-if="dailyPagination.total > dailyPagination.limit"
+            v-if="dailyDisplayTotal > dailyPagination.limit"
             v-model:current-page="dailyPagination.page"
             v-model:page-size="dailyPagination.limit"
-            :total="dailyPagination.total"
+            :total="dailyDisplayTotal"
             layout="total, prev, pager, next"
-            @current-change="loadDaily"
+            @current-change="handleDailyPageChange"
             style="margin-top: 15px"
           />
         </el-tab-pane>
@@ -182,6 +192,16 @@
               <el-button @click="resetMonthly">重置</el-button>
             </el-form-item>
           </el-form>
+
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'month'"
+              :fields="monthlyFilterFields"
+              v-model="monthlyFilter.conditions"
+              persist-key="reports-monthly-filter"
+              @change="handleMonthlyFilterChange"
+            />
+          </div>
 
           <el-row :gutter="20" class="stats-row">
             <el-col :span="4">
@@ -224,7 +244,7 @@
             </el-col>
           </el-row>
 
-          <el-table :data="monthlyData" border stripe show-summary>
+          <el-table :data="monthlyDisplayData" border stripe show-summary>
             <el-table-column prop="emp_no" label="工号" width="110" />
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="110" />
@@ -257,12 +277,12 @@
             <ColumnWithTip prop="timeoff_days" label="休息" width="65" :annotation="monthlyAnnMap['timeoff_days']" />
           </el-table>
           <el-pagination
-            v-if="monthlyPagination.total > monthlyPagination.limit"
+            v-if="monthlyDisplayTotal > monthlyPagination.limit"
             v-model:current-page="monthlyPagination.page"
             v-model:page-size="monthlyPagination.limit"
-            :total="monthlyPagination.total"
+            :total="monthlyDisplayTotal"
             layout="total, prev, pager, next"
-            @current-change="loadMonthly"
+            @current-change="handleMonthlyPageChange"
             style="margin-top: 15px"
           />
         </el-tab-pane>
@@ -305,6 +325,16 @@
             </el-form-item>
           </el-form>
 
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'daterange'"
+              :fields="rangeFilterFields"
+              v-model="rangeFilter.conditions"
+              persist-key="reports-range-filter"
+              @change="handleRangeFilterChange"
+            />
+          </div>
+
           <el-row :gutter="20" class="stats-row">
             <el-col :span="4">
               <el-statistic title="员工人数" :value="rangeStats.total" />
@@ -339,7 +369,7 @@
             </el-col>
           </el-row>
 
-          <el-table :data="rangeData" border stripe show-summary>
+          <el-table :data="rangeDisplayData" border stripe show-summary>
             <el-table-column prop="emp_no" label="工号" width="110" />
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="110" />
@@ -373,12 +403,12 @@
             <ColumnWithTip prop="work_days" label="出勤天数" width="85" sortable :annotation="monthlyAnnMap['work_days']" />
           </el-table>
           <el-pagination
-            v-if="rangePagination.total > rangePagination.limit"
+            v-if="rangeDisplayTotal > rangePagination.limit"
             v-model:current-page="rangePagination.page"
             v-model:page-size="rangePagination.limit"
-            :total="rangePagination.total"
+            :total="rangeDisplayTotal"
             layout="total, prev, pager, next"
-            @current-change="loadRange"
+            @current-change="handleRangePageChange"
             style="margin-top: 15px"
           />
         </el-tab-pane>
@@ -393,6 +423,16 @@
             </el-form-item>
           </el-form>
 
+          <div style="margin-bottom: 12px">
+            <FieldFilterPanel
+              v-if="activeTab === 'ranking'"
+              :fields="rankingFilterFields"
+              v-model="rankingFilter.conditions"
+              persist-key="reports-rank-filter"
+              @change="handleRankingFilterChange"
+            />
+          </div>
+
           <el-row :gutter="20" v-if="rankingData.length" style="margin-bottom: 20px">
             <el-col :span="24">
               <el-card shadow="hover">
@@ -401,7 +441,7 @@
             </el-col>
           </el-row>
 
-          <el-table :data="rankingData" border stripe>
+          <el-table :data="rankingDisplayData" border stripe>
             <el-table-column type="index" label="排名" width="60" />
             <el-table-column prop="team" label="班组" width="150" />
             <el-table-column prop="emp_count" label="人数" width="80" sortable />
@@ -510,6 +550,8 @@ import { createPieOptions, createBarOptions, createLineOptions, createHorizontal
 import { getYesterday } from '../utils/date'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import { useFieldAnnotations } from '../composables/useFieldAnnotations'
+import FieldFilterPanel from '../components/FieldFilterPanel.vue'
+import { useFieldFilter } from '../composables/useFieldFilter'
 
 const savedTab = sessionStorage.getItem('reports-active-tab')
 const activeTab = ref(savedTab || 'daily')
@@ -567,6 +609,84 @@ const currentChartType = ref('bar')
 const detailDialogVisible = ref(false)
 const detailTitle = ref('')
 const detailData = ref([])
+
+const dailyFilterFields = [
+  { key: 'scheduled_hours', label: '排班工时', unit: 'number', get: row => row.scheduled_hours ?? null },
+  { key: 'actual_hours', label: '实际工时', unit: 'number', get: row => row._displayActualHours ?? row.actual_hours ?? null },
+  { key: 'late_minutes', label: '迟到分钟', unit: 'number', get: row => row._displayLate ?? row.late_minutes ?? null },
+  { key: 'early_minutes', label: '早退分钟', unit: 'number', get: row => row._displayEarly ?? row.early_minutes ?? null },
+  { key: 'overtime_hours', label: '加班工时', unit: 'number', get: row => row.overtime_hours ?? null }
+]
+const dailyFilter = useFieldFilter(dailyFilterFields, { persistKey: 'reports-daily-filter' })
+const dailyDisplayData = computed(() => {
+  if (dailyFilter.activeCount === 0) return dailyData.value
+  const filtered = dailyFilter.filtered(dailyAllData.value)
+  const start = (dailyPagination.page - 1) * dailyPagination.limit
+  return filtered.slice(start, start + dailyPagination.limit)
+})
+const dailyDisplayTotal = computed(() =>
+  dailyFilter.activeCount === 0 ? dailyPagination.total : dailyFilter.filtered(dailyAllData.value).length
+)
+function handleDailyFilterChange() {
+  dailyPagination.page = 1
+}
+
+const monthlyFilterFields = [
+  { key: 'scheduled_hours', label: '计划工时', unit: 'number', get: row => row.scheduled_hours ?? null },
+  { key: 'actual_hours', label: '实际工时', unit: 'number', get: row => row.actual_hours ?? null },
+  { key: 'overtime_hours', label: '加班工时', unit: 'number', get: row => row.overtime_hours ?? null },
+  { key: 'owed_hours', label: '欠时工时', unit: 'number', get: row => row.owed_hours ?? null },
+  { key: 'late_days', label: '迟到天数', unit: 'number', get: row => row.late_days ?? null },
+  { key: 'early_days', label: '早退天数', unit: 'number', get: row => row.early_days ?? null },
+  { key: 'absent_days', label: '缺勤天数', unit: 'number', get: row => row.absent_days ?? null },
+  { key: 'leave_days', label: '请假天数', unit: 'number', get: row => row.leave_days ?? null },
+  { key: 'timeoff_days', label: '休息天数', unit: 'number', get: row => row.timeoff_days ?? null }
+]
+const monthlyFilter = useFieldFilter(monthlyFilterFields, { persistKey: 'reports-monthly-filter' })
+const monthlyDisplayData = computed(() => {
+  if (monthlyFilter.activeCount === 0) return monthlyData.value
+  const filtered = monthlyFilter.filtered(monthlyAllData.value)
+  const start = (monthlyPagination.page - 1) * monthlyPagination.limit
+  return filtered.slice(start, start + monthlyPagination.limit)
+})
+const monthlyDisplayTotal = computed(() =>
+  monthlyFilter.activeCount === 0 ? monthlyPagination.total : monthlyFilter.filtered(monthlyAllData.value).length
+)
+function handleMonthlyFilterChange() {
+  monthlyPagination.page = 1
+}
+
+const rangeFilterFields = [
+  ...monthlyFilterFields,
+  { key: 'work_days', label: '出勤天数', unit: 'number', get: row => row.work_days ?? null }
+]
+const rangeFilter = useFieldFilter(rangeFilterFields, { persistKey: 'reports-range-filter' })
+const rangeDisplayData = computed(() => {
+  if (rangeFilter.activeCount === 0) return rangeData.value
+  const filtered = rangeFilter.filtered(rangeAllData.value)
+  const start = (rangePagination.page - 1) * rangePagination.limit
+  return filtered.slice(start, start + rangePagination.limit)
+})
+const rangeDisplayTotal = computed(() =>
+  rangeFilter.activeCount === 0 ? rangePagination.total : rangeFilter.filtered(rangeAllData.value).length
+)
+function handleRangeFilterChange() {
+  rangePagination.page = 1
+}
+
+const rankingFilterFields = [
+  { key: 'emp_count', label: '人数', unit: 'number', get: row => row.emp_count ?? null },
+  { key: 'total_scheduled', label: '计划工时', unit: 'number', get: row => row.total_scheduled ?? null },
+  { key: 'total_actual', label: '实际工时', unit: 'number', get: row => row.total_actual ?? null },
+  { key: 'total_overtime', label: '加班工时', unit: 'number', get: row => row.total_overtime ?? null },
+  { key: 'avg_attendance', label: '平均出勤率(%)', unit: 'percent', get: row => row.avg_attendance === null || row.avg_attendance === undefined ? null : +(row.avg_attendance * 100).toFixed(2) },
+  { key: 'late_count', label: '迟到次数', unit: 'number', get: row => row.late_count ?? null },
+  { key: 'absent_count', label: '缺勤次数', unit: 'number', get: row => row.absent_count ?? null }
+]
+const rankingFilter = useFieldFilter(rankingFilterFields, { persistKey: 'reports-rank-filter' })
+const rankingDisplayData = computed(() => rankingFilter.filtered(rankingData.value))
+function handleRankingFilterChange() {
+}
 
 const dailyChartOptions = computed(() => {
   if (!dailyAllData.value.length) return {}
@@ -730,6 +850,21 @@ function expandItems(items) {
     }
   }
   return expanded
+}
+
+function handleDailyPageChange() {
+  if (dailyFilter.activeCount > 0) return
+  loadDaily()
+}
+
+function handleMonthlyPageChange() {
+  if (monthlyFilter.activeCount > 0) return
+  loadMonthly()
+}
+
+function handleRangePageChange() {
+  if (rangeFilter.activeCount > 0) return
+  loadRange()
 }
 
 async function loadDaily() {
