@@ -75,6 +75,41 @@ describe('useFieldFilter', () => {
   })
 })
 
+describe('useFieldFilter nested property binding (v-model regression)', () => {
+  const KEY = 'test-field-filter-nested'
+
+  const nested = () => mount(
+    defineComponent({
+      setup() {
+        return { fieldFilter: useFieldFilter(fields, { persistKey: KEY }) }
+      },
+      template: '<div></div>'
+    })
+  )
+
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('exposes conditions as an unwrapped array through a nested object property', () => {
+    const wrapper = nested()
+    expect(Array.isArray(wrapper.vm.fieldFilter.conditions)).toBe(true)
+  })
+
+  it('applies conditions assigned through the nested property (v-model update path)', () => {
+    const wrapper = nested()
+    const data = [
+      { name: 'a', ratio: 5, percent: 0.8 },
+      { name: 'b', ratio: 20, percent: 0.6 }
+    ]
+    // Mirrors the compiled template handler of `v-model="fieldFilter.conditions"`
+    wrapper.vm.fieldFilter.conditions = [{ fieldKey: 'ratio', operator: 'gt', value: 10 }]
+    expect(wrapper.vm.fieldFilter.filtered(data).map(r => r.name)).toEqual(['b'])
+    expect(wrapper.vm.fieldFilter.activeCount).toBe(1)
+    expect(typeof wrapper.vm.fieldFilter.activeCount).toBe('number')
+  })
+})
+
 describe('toComparableNumber', () => {
   it('converts values to numbers', () => {
     expect(toComparableNumber('5')).toBe(5)

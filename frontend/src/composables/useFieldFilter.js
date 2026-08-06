@@ -1,4 +1,4 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, reactive } from 'vue'
 
 export function toComparableNumber(value) {
   if (value === null || value === undefined) return null
@@ -78,7 +78,7 @@ export function useFieldFilter(fields, options = {}) {
     }, { deep: true })
   }
 
-  return {
+  return reactive({
     fields: fieldDefs,
     conditions,
     activeCount,
@@ -86,5 +86,5 @@ export function useFieldFilter(fields, options = {}) {
     removeCondition,
     clear,
     filtered
-  }
+  })
 }
