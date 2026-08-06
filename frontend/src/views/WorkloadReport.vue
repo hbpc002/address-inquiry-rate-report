@@ -293,6 +293,7 @@ import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
+import { getWorkloadDetailDateRange } from '../utils/workloadDetailRange'
 import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
 import { downloadBlob } from '../utils/download'
@@ -1389,34 +1390,13 @@ async function loadData() {
   }
 }
 
-function getDetailDateRange() {
-  let startDate, endDate
-  if (searchForm.type === 'day' && searchForm.date) {
-    startDate = searchForm.date
-    endDate = searchForm.date
-  } else if (searchForm.type === 'month' && searchForm.month) {
-    startDate = searchForm.month + '-01'
-    const [y, m] = searchForm.month.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate()
-    endDate = `${searchForm.month}-${String(lastDay).padStart(2, '0')}`
-  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
-    startDate = searchForm.start_date
-    endDate = searchForm.end_date
-  } else {
-    const now = new Date()
-    endDate = getYesterday()
-    startDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01'
-  }
-  return { startDate, endDate }
-}
-
 async function openDetail(row) {
   drawerTitle.value = `${row.name}（${row.account}）工作量明细`
   personalRecords.value = []
   drawerVisible.value = true
 
   try {
-    const { startDate, endDate } = getDetailDateRange()
+    const { startDate, endDate } = getWorkloadDetailDateRange(searchForm)
     const params = { limit: 100 }
     if (startDate && endDate) {
       params.start_date = startDate

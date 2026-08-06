@@ -60,6 +60,8 @@ def get_workloads(
     limit: int = Query(20, ge=1, le=100),
     import_batch: Optional[str] = None,
     workload_date: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     name: Optional[str] = None,
     account: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -70,6 +72,10 @@ def get_workloads(
         query = query.filter(Workload.import_batch == import_batch)
     if workload_date:
         query = query.filter(cast(Workload.date, Date) == workload_date)
+    if start_date:
+        query = query.filter(cast(Workload.date, Date) >= datetime.strptime(start_date, "%Y-%m-%d").date())
+    if end_date:
+        query = query.filter(cast(Workload.date, Date) <= datetime.strptime(end_date, "%Y-%m-%d").date())
     if name:
         emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(
             Employee.name.ilike(f'%{name}%')

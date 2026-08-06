@@ -234,6 +234,31 @@ class TestWorkloadList:
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
+    def test_list_filter_by_date_range_single_day(self):
+        resp = client.get("/api/workloads", params={"start_date": "2026-06-28", "end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
+
+    def test_list_filter_by_date_range(self):
+        resp = client.get("/api/workloads", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 3
+
+    def test_list_filter_by_date_range_lower_bound(self):
+        resp = client.get("/api/workloads", params={"start_date": "2026-06-29"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 1
+
+    def test_list_filter_by_date_range_upper_bound(self):
+        resp = client.get("/api/workloads", params={"end_date": "2026-06-28"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
+
+    def test_list_filter_by_date_range_no_match(self):
+        resp = client.get("/api/workloads", params={"start_date": "2026-07-01", "end_date": "2026-07-31"})
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+
     def test_list_filter_by_batch(self):
         resp = client.get("/api/workloads", params={"import_batch": "batch002"})
         assert resp.status_code == 200
