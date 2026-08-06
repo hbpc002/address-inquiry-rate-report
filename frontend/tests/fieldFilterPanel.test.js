@@ -17,6 +17,19 @@ const stubs = {
   'el-badge': { template: '<span><slot /></span>' }
 }
 
+// Captures the props passed to the stubbed el-popover so we can assert the
+// two-way `visible` binding (update:visible handler) is present.
+const popoverProps = []
+stubs['el-popover'] = {
+  props: ['modelValue', 'visible', 'onUpdate:visible'],
+  emits: ['update:visible'],
+  setup(props, { emit, expose }) {
+    expose({ emitVisible: (v) => emit('update:visible', v), props })
+    popoverProps.push(props)
+  },
+  template: '<div><slot name="reference" /><div v-if="true"><slot /></div></div>'
+}
+
 function mountPanel({ modelValue = [], persistKey = '' } = {}) {
   return mount(FieldFilterPanel, {
     props: { fields, modelValue, persistKey },
@@ -93,5 +106,17 @@ describe('FieldFilterPanel', () => {
     expect(wrapper.vm.activeCount).toBe(0)
     wrapper.vm.localConditions[0] = { ...wrapper.vm.localConditions[0], fieldKey: 'ratio', value: 10 }
     expect(wrapper.vm.activeCount).toBe(1)
+  })
+
+  it('binds visible with a two-way update handler (fix: popover click opens)', () => {
+    popoverProps.length = 0
+    const wrapper = mountPanel()
+    const props = popoverProps.at(-1)
+    expect(props).toBeTruthy()
+    expect(typeof props['onUpdate:visible']).toBe('function')
+    // Simulating the popover's open -> emit update:visible sets the panel's visible ref
+    expect(wrapper.vm.visible).toBe(false)
+    props['onUpdate:visible'](true)
+    expect(wrapper.vm.visible).toBe(true)
   })
 })

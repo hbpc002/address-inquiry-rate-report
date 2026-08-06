@@ -3,9 +3,7 @@
     <el-popover
       trigger="click"
       width="500"
-      :visible="visible"
-      @show="visible = true"
-      @hide="visible = false"
+      v-model:visible="visible"
     >
       <template #reference>
         <el-button size="small" :type="activeCount > 0 ? 'primary' : 'default'" :loading="loading">
