@@ -16,10 +16,10 @@
         <div v-if="!fields.length" class="filter-empty">暂无可用字段</div>
 
         <div v-for="(cond, index) in localConditions" :key="cond._id" class="filter-row">
-          <el-select v-model="cond.fieldKey" size="small" placeholder="选择字段" filterable style="width: 200px" @change="syncUnit(cond)">
+          <el-select v-model="cond.fieldKey" size="small" placeholder="选择字段" filterable style="width: 200px" :teleported="false" @change="syncUnit(cond)">
             <el-option v-for="f in fields" :key="f.key" :label="f.label" :value="f.key" />
           </el-select>
-          <el-select v-model="cond.operator" size="small" style="width: 100px">
+          <el-select v-model="cond.operator" size="small" style="width: 100px" :teleported="false">
             <el-option label="大于" value="gt" />
             <el-option label="大于等于" value="ge" />
             <el-option label="小于" value="lt" />

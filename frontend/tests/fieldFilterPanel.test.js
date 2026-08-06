@@ -17,6 +17,17 @@ const stubs = {
   'el-badge': { template: '<span><slot /></span>' }
 }
 
+// Records the props passed to each stubbed el-select so we can assert that the
+// dropdowns stay inline (teleported=false) and do not close the popover.
+const selectProps = []
+stubs['el-select'] = {
+  props: ['teleported', 'modelValue'],
+  setup(props) {
+    selectProps.push(props)
+  },
+  template: '<div><slot /></div>'
+}
+
 // Captures the props passed to the stubbed el-popover so we can assert the
 // two-way `visible` binding (update:visible handler) is present.
 const popoverProps = []
@@ -118,5 +129,14 @@ describe('FieldFilterPanel', () => {
     expect(wrapper.vm.visible).toBe(false)
     props['onUpdate:visible'](true)
     expect(wrapper.vm.visible).toBe(true)
+  })
+
+  it('renders selects with teleported=false so dropdown clicks keep the popover open (fix: dropdown click hides panel)', () => {
+    selectProps.length = 0
+    const wrapper = mountPanel({ modelValue: [{ fieldKey: 'ratio', operator: 'gt', value: 5 }] })
+    expect(selectProps.length).toBeGreaterThan(0)
+    selectProps.forEach(p => {
+      expect(p.teleported).toBe(false)
+    })
   })
 })
