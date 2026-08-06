@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, extract
+from sqlalchemy import func, and_, or_, extract
 from datetime import datetime, timedelta, date
 from calendar import monthrange
 from app.models.database import get_db
@@ -362,9 +362,16 @@ def get_team_hours(
         Employee.team.isnot(None),
     ).distinct().all()
 
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+
     result = []
     for (team_name,) in teams_data:
-        emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.team == team_name).all()]
+        emp_ids = [e.id for e in db.query(Employee.id).filter(
+            Employee.team == team_name,
+            or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
+            or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+        ).all()]
         if not emp_ids:
             continue
         reports = db.query(DailyReport).filter(

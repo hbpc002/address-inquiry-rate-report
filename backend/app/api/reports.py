@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, extract, func
+from sqlalchemy import and_, or_, extract, func
 from typing import Optional, List
 from datetime import datetime, date, timedelta
+from calendar import monthrange
 import io
 import csv
 from app.models.database import get_db
@@ -311,9 +312,16 @@ def get_team_ranking(
         Employee.team.isnot(None)
     ).group_by(Employee.team).all()
 
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+
     result = []
-    for team_name, emp_count in teams:
-        team_employees = db.query(Employee).filter(Employee.team == team_name).all()
+    for team_name, _ in teams:
+        team_employees = db.query(Employee).filter(
+            Employee.team == team_name,
+            or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
+            or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+        ).all()
         emp_ids = [e.id for e in team_employees]
         
         daily_reports = db.query(DailyReport).filter(
@@ -351,7 +359,7 @@ def get_team_ranking(
 
         result.append({
             "team": team_name,
-            "emp_count": emp_count,
+            "emp_count": len(emp_ids),
             "total_scheduled": round(total_scheduled, 1),
             "total_actual": round(total_actual, 1),
             "total_overtime": round(total_overtime, 1),
@@ -588,7 +596,9 @@ def export_dashboard(
     else:
         year, month = _get_ym()
 
-    from calendar import monthrange
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+
     import io, csv
     output = io.StringIO()
     writer = csv.writer(output)
@@ -675,7 +685,11 @@ def export_dashboard(
     ).distinct().all()
     writer.writerow(["班组", "人数", "计划工时", "实际工时", "正常天数", "迟到天数", "缺勤天数"])
     for (team_name,) in teams_data:
-        emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.team == team_name).all()]
+        emp_ids = [e.id for e in db.query(Employee.id).filter(
+            Employee.team == team_name,
+            or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
+            or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+        ).all()]
         if not emp_ids:
             continue
         reports = db.query(DailyReport).filter(
