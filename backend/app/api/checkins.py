@@ -533,6 +533,183 @@ def get_checkin_report(
     }
 
 
+@router.get("/time-analysis")
+def get_time_analysis(
+    date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    team: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """按时段规律分析：分时签入/签出分布、班次分布、分时工时利用率"""
+    from datetime import timedelta
+
+    if date:
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+        query_start = d
+        query_end = d
+    elif year_month:
+        query_start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
+        if year_month == datetime.now().strftime("%Y-%m"):
+            query_end = datetime.now().date()
+        else:
+            next_month = (query_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            query_end = next_month - timedelta(days=1)
+    elif start_date and end_date:
+        query_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        query_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        query_start = datetime.now().date()
+        query_end = query_start
+
+    base_filters = [
+        Employee.team != '',
+        Employee.dept.like(TARGET_DEPT + '%'),
+    ]
+    if team:
+        base_filters.append(Employee.team == team)
+    if name:
+        base_filters.append(Employee.name.ilike(f'%{name}%'))
+    if emp_no:
+        base_filters.append(Employee.emp_no.ilike(f'%{emp_no}%'))
+
+    # ---- 1) 分时签入/签出分布 (0-23) ----
+    checkin_rows = db.query(
+        func.extract('hour', Checkin.checkin_time).label('h'),
+        func.count(Checkin.id)
+    ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+        *base_filters,
+        func.date(Checkin.checkin_time) >= query_start,
+        func.date(Checkin.checkin_time) <= query_end
+    ).group_by('h').all()
+
+    checkout_rows = db.query(
+        func.extract('hour', Checkin.checkout_time).label('h'),
+        func.count(Checkin.id)
+    ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+        *base_filters,
+        Checkin.checkout_time.isnot(None),
+        func.date(Checkin.checkin_time) >= query_start,
+        func.date(Checkin.checkin_time) <= query_end
+    ).group_by('h').all()
+
+    checkin_hour_counts = {int(h): c for h, c in checkin_rows}
+    checkout_hour_counts = {int(h): c for h, c in checkout_rows}
+    hourly = [{
+        "hour": h,
+        "checkin_count": checkin_hour_counts.get(h, 0),
+        "checkout_count": checkout_hour_counts.get(h, 0)
+    } for h in range(24)]
+
+    # ---- 2. 班次分布（整体 + 按班组）----
+    def normalize_shift(raw):
+        if not raw:
+            return "其他"
+        if '晚' in raw:
+            return "晚班"
+        if '行政' in raw or '早' in raw:
+            return "早班"
+        if '中' in raw:
+            return "中班"
+        return raw
+
+    shift_rows = db.query(
+        Employee.team,
+        Schedule.shift_name,
+        func.count(Schedule.id)
+    ).join(Schedule, Schedule.emp_id == Employee.id).filter(
+        *base_filters,
+        Schedule.shift_name.isnot(None),
+        Schedule.schedule_date >= query_start,
+        Schedule.schedule_date <= query_end
+    ).group_by(Employee.team, Schedule.shift_name).all()
+
+    overall_counter = {}
+    by_team_counter = {}
+    for team_name, shift_name, cnt in shift_rows:
+        norm = normalize_shift(shift_name)
+        overall_counter[norm] = overall_counter.get(norm, 0) + cnt
+        by_team_counter.setdefault(team_name, {})
+        by_team_counter[team_name][norm] = by_team_counter[team_name].get(norm, 0) + cnt
+
+    overall_shifts = [{"shift_name": k, "count": v} for k, v in overall_counter.items()]
+    overall_shifts.sort(key=lambda x: -x["count"])
+    team_shifts = [
+        {"team": t, "shift_name": s, "count": c}
+        for t, counts in by_team_counter.items() for s, c in counts.items()
+    ]
+
+    # ---- 3. 分时工时利用率 (0-23) ----
+    def to_minutes(h, m):
+        return int(h) * 60 + int(m)
+
+    def overlaps(a0, a1, b0, b1):
+        return a0 < b1 and b0 < a1
+
+    def hour_covered(win_start, win_end, wrap, hour):
+        s = win_start
+        e = win_end + (1440 if wrap else 0)
+        return any(
+            overlaps(hb, hb + 60, s, e)
+            for hb in (hour * 60, hour * 60 + 1440)
+        )
+
+    reports = db.query(DailyReport).join(Employee, DailyReport.emp_id == Employee.id).filter(
+        *base_filters,
+        DailyReport.schedule_date >= query_start,
+        DailyReport.schedule_date <= query_end
+    ).all()
+
+    scheduled_count = [0] * 24
+    actual_count = [0] * 24
+    for r in reports:
+        sched_start = r.scheduled_start
+        sched_end = r.scheduled_end
+        actual_in = r.actual_checkin
+        actual_out = r.actual_checkout
+
+        if sched_start and sched_end:
+            ss = to_minutes(*map(int, str(sched_start).split(':')[:2]))
+            se = to_minutes(*map(int, str(sched_end).split(':')[:2]))
+            wrap = se < ss
+            for h in range(24):
+                if hour_covered(ss, se, wrap, h):
+                    scheduled_count[h] += 1
+
+        if actual_in and actual_out:
+            ai = to_minutes(actual_in.hour, actual_in.minute)
+            ao = to_minutes(actual_out.hour, actual_out.minute)
+            wrap = actual_out.date() > actual_in.date() or ao < ai
+            for h in range(24):
+                if hour_covered(ai, ao, wrap, h):
+                    actual_count[h] += 1
+
+    hourly_utilization = [{
+        "hour": h,
+        "scheduled_count": scheduled_count[h],
+        "actual_count": actual_count[h],
+        "utilization": round(actual_count[h] / scheduled_count[h] * 100, 1)
+        if scheduled_count[h] > 0 else 0
+    } for h in range(24)]
+
+    return {
+        "hourly": hourly,
+        "shifts": {
+            "overall": overall_shifts,
+            "by_team": team_shifts,
+        },
+        "hourly_utilization": hourly_utilization,
+        "period": {
+            "start": query_start.isoformat(),
+            "end": query_end.isoformat()
+        }
+    }
+
+
 @router.get("/team-report")
 def get_team_report(
     date: Optional[str] = None,

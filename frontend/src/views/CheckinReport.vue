@@ -97,6 +97,43 @@
             </template>
           </el-statistic>
         </el-col>
+        <el-col :span="4">
+          <el-statistic title="晚签人数" :value="lateEarlyStats.latePeople">
+            <template #suffix>
+              <el-tooltip v-if="lateEarlyStats.latePeople > 0" content="期间内至少晚签1次即算1人" placement="top">
+                <el-button type="warning" link @click="toggleFilter('late')">
+                  {{ filterType === 'late' ? '已筛选' : '点击筛选' }}
+                </el-button>
+              </el-tooltip>
+            </template>
+          </el-statistic>
+        </el-col>
+        <el-col :span="4">
+          <el-statistic title="早退人数" :value="lateEarlyStats.earlyPeople">
+            <template #suffix>
+              <el-tooltip v-if="lateEarlyStats.earlyPeople > 0" content="期间内至少早退1次即算1人" placement="top">
+                <el-button type="warning" link @click="toggleFilter('early')">
+                  {{ filterType === 'early' ? '已筛选' : '点击筛选' }}
+                </el-button>
+              </el-tooltip>
+            </template>
+          </el-statistic>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
+        <el-col :span="12">
+          <el-card shadow="hover">
+            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">签入次数区间分布（点击区间筛选）</div>
+            <Echart :options="checkinBucketOptions" height="280px" @click="handleCheckinRangeClick" />
+          </el-card>
+        </el-col>
+        <el-col :span="12">
+          <el-card shadow="hover">
+            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组晚签/早退人数（点击筛选）</div>
+            <Echart :options="lateEarlyByTeamOptions" height="280px" @click="handleLateEarlyClick" />
+          </el-card>
+        </el-col>
       </el-row>
 
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
@@ -183,6 +220,29 @@
             {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
+        <el-table-column prop="attend_days" label="出勤天数" width="90" sortable>
+          <template #default="{ row }">{{ row.attend_days || 0 }}</template>
+        </el-table-column>
+        <el-table-column prop="late_days" label="晚签天数" width="90" sortable>
+          <template #default="{ row }">
+            <span :class="{ 'text-danger': (row.late_days || 0) > 0 }">{{ row.late_days || 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="late_minutes" label="晚签总分钟" width="100" sortable>
+          <template #default="{ row }">
+            <span :class="{ 'text-danger': (row.late_minutes || 0) > 0 }">{{ row.late_minutes || 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="early_days" label="提前签出天数" width="110" sortable>
+          <template #default="{ row }">
+            <span :class="{ 'text-danger': (row.early_days || 0) > 0 }">{{ row.early_days || 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="early_minutes" label="提前签出总分钟" width="120" sortable>
+          <template #default="{ row }">
+            <span :class="{ 'text-danger': (row.early_minutes || 0) > 0 }">{{ row.early_minutes || 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="签入明细" min-width="280">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
@@ -222,66 +282,45 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :total="summaryFilter.filtered(tableData).length"
+        :total="summaryFilter.filtered(mergedData).length"
         layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 15px; justify-content: flex-end"
       />
         </el-tab-pane>
 
-        <el-tab-pane label="班组报表" name="team">
+        <el-tab-pane label="时段分析" name="time">
           <div style="margin-bottom: 12px; font-size: 13px; color: #909399">
-            统计每位员工的晚签（迟到）与提前签出情况，点击列头可排序，便于查看组内谁晚签多、谁提前签出多
+            高峰期/低谷期、班次结构与分时工时利用率分析（时段口径已按班次归属处理，晚班跨午夜照常计入）
           </div>
-          <div style="margin-bottom: 12px">
-            <FieldFilterPanel
-              :fields="teamFilterFields"
-              v-model="teamFilter.conditions"
-              persist-key="checkin-report-team-filter"
-              @change="handleTeamFilterChange"
-            />
-          </div>
-          <el-table :data="teamReportPaginated" border stripe max-height="calc(100vh - 350px)">
-            <el-table-column type="index" label="排名" width="60" />
-            <el-table-column prop="emp_no" label="账号" width="100" />
-            <el-table-column prop="name" label="用户名" width="100" />
-            <el-table-column prop="team" label="班组" width="110" />
-            <el-table-column prop="checkin_count" label="签到次数" width="90" sortable />
-            <el-table-column prop="attend_days" label="出勤天数" width="90" sortable />
-            <el-table-column prop="late_days" label="晚签天数" width="90" sortable>
-              <template #default="{ row }">
-                <span :class="{ 'text-danger': row.late_days > 0 }">{{ row.late_days }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="late_minutes" label="晚签总分钟" width="100" sortable>
-              <template #default="{ row }">
-                <span :class="{ 'text-danger': row.late_minutes > 0 }">{{ row.late_minutes }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="early_days" label="提前签出天数" width="110" sortable>
-              <template #default="{ row }">
-                <span :class="{ 'text-danger': row.early_days > 0 }">{{ row.early_days }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="early_minutes" label="提前签出总分钟" width="120" sortable>
-              <template #default="{ row }">
-                <span :class="{ 'text-danger': row.early_minutes > 0 }">{{ row.early_minutes }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="60" fixed="right">
-              <template #default="{ row }">
-                <el-button type="primary" link size="small" @click="openDetail(row)">详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-pagination
-            v-if="teamReportData.length > 0"
-            v-model:current-page="teamPage"
-            v-model:page-size="teamPageSize"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="teamFilter.filtered(teamReportData).length"
-            layout="total, sizes, prev, pager, next, jumper"
-            style="margin-top: 15px; justify-content: flex-end"
-          />
+          <el-row :gutter="16" style="margin-bottom: 16px">
+            <el-col :span="16">
+              <el-card shadow="hover">
+                <div style="margin-bottom: 8px; font-size: 14px; color: #606266">分时签入/签出分布（高峰期识别）</div>
+                <Echart :options="timeHourlyOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :span="8">
+              <el-card shadow="hover">
+                <div style="margin-bottom: 8px; font-size: 14px; color: #606266">班次占比</div>
+                <Echart :options="timeShiftOverallOptions" height="300px" />
+              </el-card>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <div style="margin-bottom: 8px; font-size: 14px; color: #606266">各班组班次结构（人次）</div>
+                <Echart :options="timeShiftTeamOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :span="12">
+              <el-card shadow="hover">
+                <div style="margin-bottom: 8px; font-size: 14px; color: #606266">分时工时利用率（应排班 vs 实际在岗）</div>
+                <Echart :options="timeUtilizationOptions" height="300px" />
+              </el-card>
+            </el-col>
+          </el-row>
+          <div v-if="!tableData.length" style="text-align: center; padding: 30px; color: #999">暂无数据，请选择日期后查询</div>
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -549,8 +588,6 @@ watch(activeTab, (val) => {
 })
 
 const teamReportData = ref([])
-const teamPage = ref(1)
-const teamPageSize = ref(20)
 const expandedCheckins = ref(new Set())
 
 function toggleCheckins(empNo) {
@@ -562,13 +599,6 @@ function toggleCheckins(empNo) {
   }
   expandedCheckins.value = next
 }
-
-const teamReportPaginated = computed(() => {
-  const filtered = teamFilter.filtered(teamReportData.value)
-  const start = (teamPage.value - 1) * teamPageSize.value
-  const end = start + teamPageSize.value
-  return filtered.slice(start, end)
-})
 
 const drawerVisible = ref(false)
 const personalDetail = ref(null)
@@ -601,7 +631,7 @@ const localLongHourDays = computed(() => {
 })
 
 const paginatedData = computed(() => {
-  let data = tableData.value
+  let data = mergedData.value
   if (filterType.value === 'overtime') {
     data = data.filter(d => d.hour_status === 'overtime')
   } else if (filterType.value === 'undertime') {
@@ -610,11 +640,49 @@ const paginatedData = computed(() => {
     data = data.filter(d => d.name === filterValue.value)
   } else if (filterType.value === 'team') {
     data = data.filter(d => d.team === filterValue.value)
+  } else if (filterType.value === 'late') {
+    data = data.filter(d => (d.late_days || 0) > 0)
+  } else if (filterType.value === 'early') {
+    data = data.filter(d => (d.early_days || 0) > 0)
+  } else if (filterType.value === 'checkin_range') {
+    data = data.filter(d => d.checkin_count >= filterValue.value.min && d.checkin_count <= filterValue.value.max)
+  } else if (filterType.value === 'late_team') {
+    data = data.filter(d => d.team === filterValue.value && (d.late_days || 0) > 0)
+  } else if (filterType.value === 'early_team') {
+    data = data.filter(d => d.team === filterValue.value && (d.early_days || 0) > 0)
   }
   data = summaryFilter.filtered(data)
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
   return data.slice(start, end)
+})
+
+const teamReportMap = computed(() => {
+  const m = {}
+  teamReportData.value.forEach(d => { m[d.emp_no] = d })
+  return m
+})
+
+const mergedData = computed(() => {
+  return tableData.value.map(row => {
+    const tr = teamReportMap.value[row.emp_no] || {}
+    return {
+      ...row,
+      attend_days: tr.attend_days || 0,
+      late_days: tr.late_days || 0,
+      late_minutes: tr.late_minutes || 0,
+      early_days: tr.early_days || 0,
+      early_minutes: tr.early_minutes || 0
+    }
+  })
+})
+
+const lateEarlyStats = computed(() => {
+  const data = mergedData.value
+  return {
+    latePeople: data.filter(d => (d.late_days || 0) > 0).length,
+    earlyPeople: data.filter(d => (d.early_days || 0) > 0).length
+  }
 })
 
 const { filters: searchForm, isRestored: searchFormRestored, resetFilters: resetSearchForm } = usePersistedFilters(
@@ -681,24 +749,15 @@ const summaryFilterFields = [
   { key: 'avg_attendance_rate', label: '班表出勤率(%)', unit: 'percent', get: row => row.avg_attendance_rate ?? null },
   { key: 'total_call_duration', label: '通话时长', unit: 'number', get: row => row.total_call_duration ?? null },
   { key: 'total_organize_duration', label: '整理时长', unit: 'number', get: row => row.total_organize_duration ?? null },
-  { key: 'training_minutes', label: '培训扣除(分)', unit: 'number', get: row => row.training_minutes ?? null }
-]
-const summaryFilter = useFieldFilter(summaryFilterFields, { persistKey: 'checkin-report-summary-filter' })
-function handleSummaryFilterChange() {
-  currentPage.value = 1
-}
-
-const teamFilterFields = [
-  { key: 'checkin_count', label: '签到次数', unit: 'number', get: row => row.checkin_count ?? null },
-  { key: 'attend_days', label: '出勤天数', unit: 'number', get: row => row.attend_days ?? null },
+  { key: 'training_minutes', label: '培训扣除(分)', unit: 'number', get: row => row.training_minutes ?? null },
   { key: 'late_days', label: '晚签天数', unit: 'number', get: row => row.late_days ?? null },
   { key: 'late_minutes', label: '晚签总分钟', unit: 'number', get: row => row.late_minutes ?? null },
   { key: 'early_days', label: '提前签出天数', unit: 'number', get: row => row.early_days ?? null },
   { key: 'early_minutes', label: '提前签出总分钟', unit: 'number', get: row => row.early_minutes ?? null }
 ]
-const teamFilter = useFieldFilter(teamFilterFields, { persistKey: 'checkin-report-team-filter' })
-function handleTeamFilterChange() {
-  teamPage.value = 1
+const summaryFilter = useFieldFilter(summaryFilterFields, { persistKey: 'checkin-report-summary-filter' })
+function handleSummaryFilterChange() {
+  currentPage.value = 1
 }
 
 const overtimeNames = computed(() => {
@@ -747,6 +806,115 @@ const deptHoursOptions = computed(() => {
   }))
     .sort((a, b) => b.value - a.value).slice(0, 8)
   return createPieOptions(data, '班组工时分布')
+})
+
+const checkinBuckets = computed(() => {
+  const data = mergedData.value
+  if (!data.length) return []
+  const max = Math.max(...data.map(d => d.checkin_count))
+  const width = Math.max(1, Math.ceil(max / 8))
+  const buckets = []
+  for (let i = 0; i < 8; i++) {
+    const start = i * width
+    const end = i === 7 ? max : start + width - 1
+    const count = data.filter(d => d.checkin_count >= start && d.checkin_count <= end).length
+    buckets.push({ name: `${start}~${end}次`, min: start, max: end, value: count })
+  }
+  return buckets
+})
+
+const checkinBucketOptions = computed(() => {
+  const buckets = checkinBuckets.value
+  if (!buckets.length) return {}
+  return createBarOptions(buckets.map(b => b.name), buckets.map(b => b.value), '签入次数区间分布', '区间', '人数')
+})
+
+const lateEarlyByTeamOptions = computed(() => {
+  const data = mergedData.value
+  if (!data.length) return {}
+  const teamMap = {}
+  data.forEach(d => {
+    const t = d.team || '未知班组'
+    if (!teamMap[t]) teamMap[t] = { late: 0, early: 0 }
+    if ((d.late_days || 0) > 0) teamMap[t].late += 1
+    if ((d.early_days || 0) > 0) teamMap[t].early += 1
+  })
+  const teams = Object.keys(teamMap)
+  return createMultiBarOptions(teams, [
+    { name: '晚签人数', data: teams.map(t => teamMap[t].late) },
+    { name: '早退人数', data: teams.map(t => teamMap[t].early) }
+  ], '班组晚签/早退人数')
+})
+
+const timeHourly = ref([])
+const timeShifts = ref({ overall: [], by_team: [] })
+const timeUtilization = ref([])
+
+const timeHourlyOptions = computed(() => {
+  if (!timeHourly.value.length) return {}
+  const hours = timeHourly.value.map(d => `${d.hour}点`)
+  return createMultiBarOptions(hours, [
+    { name: '签入人次', data: timeHourly.value.map(d => d.checkin_count) },
+    { name: '签出人次', data: timeHourly.value.map(d => d.checkout_count) }
+  ], '分时签入/签出分布')
+})
+
+const timeShiftOverallOptions = computed(() => {
+  const overall = timeShifts.value.overall || []
+  if (!overall.length) return {}
+  return createPieOptions(overall.map(s => ({ name: s.shift_name, value: s.count })), '班次占比', CHART_COLORS, '人次')
+})
+
+const timeShiftTeamOptions = computed(() => {
+  const byTeam = timeShifts.value.by_team || []
+  if (!byTeam.length) return {}
+  const shiftNames = [...new Set(byTeam.map(s => s.shift_name))]
+  const teamMap = {}
+  byTeam.forEach(s => {
+    if (!teamMap[s.team]) teamMap[s.team] = {}
+    teamMap[s.team][s.shift_name] = s.count
+  })
+  const teams = Object.keys(teamMap)
+  return createMultiBarOptions(teams, shiftNames.map(sn => ({
+    name: sn,
+    data: teams.map(t => teamMap[t][sn] || 0)
+  })), '各班组班次结构')
+})
+
+const timeUtilizationOptions = computed(() => {
+  const data = timeUtilization.value
+  if (!data.length) return {}
+  const hours = data.map(d => `${d.hour}点`)
+  return {
+    title: { text: '分时工时利用率', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const idx = params[0].dataIndex
+        const d = data[idx]
+        let html = `<strong>${d.hour}点</strong><br/>`
+        params.forEach(p => {
+          if (p.value !== null && p.value !== undefined) {
+            html += `${p.marker} ${p.seriesName}: ${typeof p.value === 'number' ? p.value.toFixed(1) : p.value}<br/>`
+          }
+        })
+        html += `<span style="color:#909399">应排班: ${d.scheduled_count} 人 · 实际: ${d.actual_count} 人</span>`
+        return html
+      }
+    },
+    legend: { data: ['利用率%', '应排班人数', '实际在岗人数'], bottom: 0 },
+    grid: { left: '3%', right: '15%', bottom: '15%', containLabel: true },
+    xAxis: { type: 'category', data: hours },
+    yAxis: [
+      { type: 'value', name: '利用率%', max: 100 },
+      { type: 'value', name: '人数' }
+    ],
+    series: [
+      { name: '利用率%', type: 'bar', data: data.map(d => d.utilization), itemStyle: { color: CHART_COLORS[0] } },
+      { name: '应排班人数', type: 'line', yAxisIndex: 1, data: data.map(d => d.scheduled_count), smooth: true, itemStyle: { color: CHART_COLORS[2] } },
+      { name: '实际在岗人数', type: 'line', yAxisIndex: 1, data: data.map(d => d.actual_count), smooth: true, itemStyle: { color: CHART_COLORS[1] } }
+    ]
+  }
 })
 
 const personalDailyChartOptions = computed(() => {
@@ -859,6 +1027,32 @@ function handleTeamChartClick(params) {
   }
 }
 
+function handleCheckinRangeClick(params) {
+  const bucket = checkinBuckets.value.find(b => b.name === params.name)
+  if (!bucket) return
+  const range = { min: bucket.min, max: bucket.max }
+  if (filterType.value === 'checkin_range' && filterValue.value && filterValue.value.min === range.min && filterValue.value.max === range.max) {
+    clearFilter()
+  } else {
+    filterType.value = 'checkin_range'
+    filterValue.value = range
+    currentPage.value = 1
+  }
+}
+
+function handleLateEarlyClick(params) {
+  const team = params.name
+  const isLate = params.seriesName === '晚签人数'
+  const type = isLate ? 'late_team' : 'early_team'
+  if (filterType.value === type && filterValue.value === team) {
+    clearFilter()
+  } else {
+    filterType.value = type
+    filterValue.value = team
+    currentPage.value = 1
+  }
+}
+
 function handleTypeChange() {
   const now = new Date()
   
@@ -889,22 +1083,25 @@ async function loadTeams() {
   }
 }
 
+function buildQueryParams() {
+  const params = {}
+  if (searchForm.type === 'day' && searchForm.date) {
+    params.date = searchForm.date
+  } else if (searchForm.type === 'month' && searchForm.month) {
+    params.year_month = searchForm.month
+  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
+    params.start_date = searchForm.start_date
+    params.end_date = searchForm.end_date
+  }
+  if (searchForm.name) params.name = searchForm.name
+  if (searchForm.emp_no) params.emp_no = searchForm.emp_no
+  if (searchForm.team) params.team = searchForm.team
+  return params
+}
+
 async function loadData() {
   try {
-    const params = {}
-    
-    if (searchForm.type === 'day' && searchForm.date) {
-      params.date = searchForm.date
-    } else if (searchForm.type === 'month' && searchForm.month) {
-      params.year_month = searchForm.month
-    } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
-      params.start_date = searchForm.start_date
-      params.end_date = searchForm.end_date
-    }
-    
-    if (searchForm.name) params.name = searchForm.name
-    if (searchForm.emp_no) params.emp_no = searchForm.emp_no
-    if (searchForm.team) params.team = searchForm.team
+    const params = buildQueryParams()
     
     const res = await api.get('/checkins/report', { params })
     
@@ -918,6 +1115,7 @@ async function loadData() {
     filterValue.value = ''
     tableData.value = res.data.items || []
     loadTeamReport()
+    loadTimeAnalysis()
   } catch (e) {
     ElMessage.error('加载失败: ' + (e.response?.data?.detail || e.message))
   }
@@ -925,20 +1123,7 @@ async function loadData() {
 
 async function loadTeamReport() {
   try {
-    const params = {}
-    
-    if (searchForm.type === 'day' && searchForm.date) {
-      params.date = searchForm.date
-    } else if (searchForm.type === 'month' && searchForm.month) {
-      params.year_month = searchForm.month
-    } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
-      params.start_date = searchForm.start_date
-      params.end_date = searchForm.end_date
-    }
-    
-    if (searchForm.name) params.name = searchForm.name
-    if (searchForm.emp_no) params.emp_no = searchForm.emp_no
-    if (searchForm.team) params.team = searchForm.team
+    const params = buildQueryParams()
     
     const res = await api.get('/checkins/team-report', { params })
     teamReportData.value = res.data.items || []
@@ -947,19 +1132,20 @@ async function loadTeamReport() {
   }
 }
 
-function handleExport() {
-  const params = {}
-  if (searchForm.type === 'day' && searchForm.date) {
-    params.date = searchForm.date
-  } else if (searchForm.type === 'month' && searchForm.month) {
-    params.year_month = searchForm.month
-  } else if (searchForm.type === 'range' && searchForm.start_date && searchForm.end_date) {
-    params.start_date = searchForm.start_date
-    params.end_date = searchForm.end_date
+async function loadTimeAnalysis() {
+  try {
+    const params = buildQueryParams()
+    const res = await api.get('/checkins/time-analysis', { params })
+    timeHourly.value = res.data.hourly || []
+    timeShifts.value = res.data.shifts || { overall: [], by_team: [] }
+    timeUtilization.value = res.data.hourly_utilization || []
+  } catch (e) {
+    ElMessage.error('加载时段分析失败: ' + (e.response?.data?.detail || e.message))
   }
-  if (searchForm.name) params.name = searchForm.name
-  if (searchForm.emp_no) params.emp_no = searchForm.emp_no
-  if (searchForm.team) params.team = searchForm.team
+}
+
+function handleExport() {
+  const params = buildQueryParams()
   downloadBlob('/checkins/report/export', params, `checkin_report.csv`)
 }
 
