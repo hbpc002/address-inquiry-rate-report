@@ -18,6 +18,7 @@ const emit = defineEmits(['click', 'dblclick'])
 
 const chartRef = ref(null)
 let chartInstance = null
+let resizeObserver = null
 
 function initChart() {
   if (!chartRef.value) return
@@ -31,7 +32,22 @@ function initChart() {
 }
 
 function resize() {
-  chartInstance?.resize()
+  if (chartInstance && chartRef.value) {
+    const w = chartRef.value.offsetWidth
+    if (w > 0) {
+      chartInstance.resize()
+    }
+  }
+}
+
+function startResizeObserver() {
+  if (typeof ResizeObserver === 'undefined' || !chartRef.value) return
+  resizeObserver = new ResizeObserver(() => {
+    if (chartRef.value && chartRef.value.offsetWidth > 0) {
+      resize()
+    }
+  })
+  resizeObserver.observe(chartRef.value)
 }
 
 onMounted(() => {
@@ -39,11 +55,16 @@ onMounted(() => {
     initChart()
     if (props.autoResize) {
       window.addEventListener('resize', resize)
+      startResizeObserver()
     }
   })
 })
 
 onUnmounted(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
   chartInstance?.dispose()
   window.removeEventListener('resize', resize)
 })
