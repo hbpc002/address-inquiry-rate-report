@@ -565,7 +565,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
-import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, CHART_COLORS } from '../utils/echarts'
+import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
 import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
