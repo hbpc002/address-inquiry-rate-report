@@ -389,8 +389,14 @@ def get_workload_report(
         for field in CORE_METRICS_FIELDS:
             agg_data = data["agg"].get(field)
             if agg_data and agg_data["count"] > 0:
-                is_rate_field = "率" in field or "均长" in field
-                if is_rate_field:
+                if field == "呼入人工服务-人工服务-通话均长(秒)":
+                    dur_data = data["agg"].get("呼入人工服务-人工服务-通话总时长(秒)")
+                    cnt_data = data["agg"].get("呼入人工服务-人工服务-通话次数")
+                    if dur_data and dur_data["count"] > 0 and cnt_data and cnt_data["sum"]:
+                        aggregated[field] = round(dur_data["sum"] / cnt_data["sum"], 2)
+                    else:
+                        aggregated[field] = round(agg_data["sum"] / agg_data["count"], 2)
+                elif "率" in field:
                     aggregated[field] = round(agg_data["sum"] / agg_data["count"], 2)
                 else:
                     aggregated[field] = round(agg_data["sum"], 1)

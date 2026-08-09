@@ -473,6 +473,63 @@ class TestWorkloadReport:
         assert "metrics_fields" in data
         assert len(data["metrics_fields"]) > 0
 
+    def test_report_avg_duration_weighted_by_call_count(self):
+        """通话均长(秒) 应按通话量加权(总时长/总次数)，而非每日均长的算术平均"""
+        db = SessionLocal()
+        try:
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-签入次数": 1, "呼入人工服务-人工服务-通话次数": 10,
+                         "呼入人工服务-人工服务-通话总时长(秒)": 6000,
+                         "呼入人工服务-人工服务-通话均长(秒)": 600}, import_batch="batch001"),
+            )
+            db.add(Workload(
+                date=date(2026, 6, 29), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-签入次数": 1, "呼入人工服务-人工服务-通话次数": 40,
+                         "呼入人工服务-人工服务-通话总时长(秒)": 4000,
+                         "呼入人工服务-人工服务-通话均长(秒)": 100}, import_batch="batch001"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zl = next(i for i in data["items"] if i["account"] == "STTR00004")
+        # 每日均长算术平均=350，按通话量加权=10000/50=200
+        assert zl["aggregated_metrics"]["呼入人工服务-人工服务-通话均长(秒)"] == 200.0
+
+    def test_report_avg_duration_fallback_to_daily_mean(self):
+        """缺少通话次数/总时长时，通话均长回退到每日均长的算术平均"""
+        db = SessionLocal()
+        try:
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-签入次数": 1,
+                         "呼入人工服务-人工服务-通话均长(秒)": 180}, import_batch="batch001"),
+            )
+            db.add(Workload(
+                date=date(2026, 6, 29), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-签入次数": 1,
+                         "呼入人工服务-人工服务-通话均长(秒)": 140}, import_batch="batch001"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zl = next(i for i in data["items"] if i["account"] == "STTR00004")
+        assert zl["aggregated_metrics"]["呼入人工服务-人工服务-通话均长(秒)"] == 160.0
+
     def test_report_filter_by_name(self):
         resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28", "name": "张三"})
         assert resp.status_code == 200
