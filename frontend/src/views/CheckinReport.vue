@@ -8,6 +8,16 @@
         </div>
       </template>
 
+      <div class="section-toolbar">
+        <el-button size="small" type="primary" plain @click="showSearch = !showSearch">
+          {{ showSearch ? '收起搜索' : '展开搜索' }}
+        </el-button>
+        <el-button v-if="activeTab === 'summary'" size="small" type="primary" plain @click="showCharts = !showCharts">
+          {{ showCharts ? '收起图表' : '展开图表' }}
+        </el-button>
+      </div>
+
+      <div v-show="showSearch" class="section-search-area">
       <el-form inline>
         <el-form-item label="查询方式">
           <el-radio-group v-model="searchForm.type" @change="handleTypeChange">
@@ -46,6 +56,7 @@
           <el-button type="primary" @click="loadData">查询</el-button>
         </el-form-item>
       </el-form>
+      </div>
 
       <div style="margin-bottom: 12px">
         <FieldFilterPanel
@@ -59,23 +70,23 @@
       <el-tabs v-model="activeTab">
         <el-tab-pane label="汇总" name="summary">
           <el-row :gutter="20" class="stats-row">
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="签入人次" :value="stats.total_checkins" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="总人数" :value="stats.emp_count" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="总时长" :value="stats.total_hours" :precision="1">
             <template #suffix>小时</template>
           </el-statistic>
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="平均时长" :value="stats.avg_hours" :precision="1">
             <template #suffix>小时</template>
           </el-statistic>
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="超时人数" :value="stats.overtime_count">
             <template #suffix>
               <el-tooltip v-if="stats.overtime_count > 0" :content="overtimeNames.join(', ')" placement="top">
@@ -86,7 +97,7 @@
             </template>
           </el-statistic>
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="过短人数" :value="stats.undertime_count">
             <template #suffix>
               <el-tooltip v-if="stats.undertime_count > 0" :content="undertimeNames.join(', ')" placement="top">
@@ -97,7 +108,7 @@
             </template>
           </el-statistic>
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="晚签人数" :value="lateEarlyStats.latePeople">
             <template #suffix>
               <el-tooltip v-if="lateEarlyStats.latePeople > 0" content="期间内至少晚签1次即算1人" placement="top">
@@ -108,7 +119,7 @@
             </template>
           </el-statistic>
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="早退人数" :value="lateEarlyStats.earlyPeople">
             <template #suffix>
               <el-tooltip v-if="lateEarlyStats.earlyPeople > 0" content="期间内至少早退1次即算1人" placement="top">
@@ -121,50 +132,52 @@
         </el-col>
       </el-row>
 
-      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
+      <div v-if="showCharts" class="summary-charts">
+      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 12px">
         <el-col :span="12">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">签入次数区间分布（点击区间筛选）</div>
-            <Echart :options="checkinBucketOptions" height="280px" @click="handleCheckinRangeClick" />
+            <div style="margin-bottom: 6px; font-size: 14px; color: #606266">签入次数区间分布（点击区间筛选）</div>
+            <Echart :options="checkinBucketOptions" height="180px" @click="handleCheckinRangeClick" />
           </el-card>
         </el-col>
         <el-col :span="12">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组晚签/早退人数（点击筛选）</div>
-            <Echart :options="lateEarlyByTeamOptions" height="280px" @click="handleLateEarlyClick" />
+            <div style="margin-bottom: 6px; font-size: 14px; color: #606266">班组晚签/早退人数（点击筛选）</div>
+            <Echart :options="lateEarlyByTeamOptions" height="180px" @click="handleLateEarlyClick" />
           </el-card>
         </el-col>
       </el-row>
 
-      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
+      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 12px">
         <el-col :span="12">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center">
+            <div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center">
               <span style="font-size: 14px; color: #606266">员工工时排名（点击员工筛选）</span>
               <el-radio-group v-model="chartType" size="small">
                 <el-radio-button value="bar">柱状图</el-radio-button>
                 <el-radio-button value="line">折线图</el-radio-button>
               </el-radio-group>
             </div>
-            <Echart :options="hoursChartOptions" height="280px" @click="handleHoursChartClick" />
+            <Echart :options="hoursChartOptions" height="200px" @click="handleHoursChartClick" />
           </el-card>
         </el-col>
         <el-col :span="12">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">员工签入次数排名（点击员工筛选）</div>
-            <Echart :options="checkinCountOptions" height="300px" @click="handleCheckinChartClick" />
+            <div style="margin-bottom: 6px; font-size: 14px; color: #606266">员工签入次数排名（点击员工筛选）</div>
+            <Echart :options="checkinCountOptions" height="200px" @click="handleCheckinChartClick" />
           </el-card>
         </el-col>
       </el-row>
 
-      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 20px">
+      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 12px">
         <el-col :span="24">
           <el-card shadow="hover">
-            <div style="margin-bottom: 10px; font-size: 14px; color: #606266">班组工时分布（点击班组筛选）</div>
-            <Echart :options="deptHoursOptions" height="300px" @click="handleTeamChartClick" />
+            <div style="margin-bottom: 6px; font-size: 14px; color: #606266">班组工时分布（点击班组筛选）</div>
+            <Echart :options="deptHoursOptions" height="200px" @click="handleTeamChartClick" />
           </el-card>
         </el-col>
       </el-row>
+      </div>
 
       <el-table :data="paginatedData" border stripe show-summary max-height="calc(100vh - 350px)">
         <ColumnWithTip prop="emp_no" label="账号" width="100" :annotation="checkinAnnMap['emp_no']" />
@@ -585,6 +598,15 @@ const savedTab = sessionStorage.getItem('checkin-report-active-tab')
 const activeTab = ref(savedTab || 'summary')
 watch(activeTab, (val) => {
   sessionStorage.setItem('checkin-report-active-tab', val)
+})
+
+const showCharts = ref(JSON.parse(sessionStorage.getItem('checkin-report-show-charts') ?? 'true'))
+const showSearch = ref(JSON.parse(sessionStorage.getItem('checkin-report-show-search') ?? 'false'))
+watch(showCharts, (val) => {
+  sessionStorage.setItem('checkin-report-show-charts', JSON.stringify(val))
+})
+watch(showSearch, (val) => {
+  sessionStorage.setItem('checkin-report-show-search', JSON.stringify(val))
 })
 
 const teamReportData = ref([])
@@ -1201,11 +1223,29 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.section-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
 .stats-row {
-  margin-bottom: 20px;
-  padding: 15px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+.stats-row :deep(.el-statistic__head) {
+  font-size: 12px;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+.stats-row :deep(.el-statistic__content) {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.checkin-report :deep(.echart-container) {
+  min-height: 0;
 }
 .card-header {
   display: flex;
