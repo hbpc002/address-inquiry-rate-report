@@ -245,3 +245,83 @@ describe('CheckinReport - 班组报表排序与分页测试', () => {
     expect(paginated[1].emp_no).toBe('E002')
   })
 })
+
+describe('CheckinReport - 汇总表排序与分页同步修复', () => {
+  // 模拟后端返回顺序：按 checkin_count 降序，最高工时的员工排在后面（不在首页）
+  const seedRows = [
+    { emp_no: 'E001', name: '张三', team: '班组A', checkin_count: 30, total_hours: 30.0, hour_status: 'normal', late_days: 0 },
+    { emp_no: 'E002', name: '李四', team: '班组A', checkin_count: 25, total_hours: 28.0, hour_status: 'normal', late_days: 1 },
+    { emp_no: 'E003', name: '王五', team: '班组B', checkin_count: 20, total_hours: 26.0, hour_status: 'normal', late_days: 0 },
+    { emp_no: 'E004', name: '赵六', team: '班组B', checkin_count: 10, total_hours: 99.0, hour_status: 'normal', late_days: 0 },
+    { emp_no: 'E005', name: '孙七', team: '班组C', checkin_count: 8, total_hours: 80.0, hour_status: 'normal', late_days: 1 },
+  ]
+
+  // 与组件一致的排序逻辑：全量筛选后按 sortBy/sortOrder 排序，再分页切片
+  function buildFilteredData(rows, { sortBy = '', sortOrder = '', filterType = '', filterValue = '', pageSize = 2, page = 1 } = {}) {
+    let data = rows.slice()
+    if (filterType === 'late') data = data.filter(d => (d.late_days || 0) > 0)
+    if (filterType === 'name') data = data.filter(d => d.name === filterValue)
+    if (sortBy && sortOrder) {
+      data = [...data].sort((a, b) => {
+        const aVal = a[sortBy] ?? -1
+        const bVal = b[sortBy] ?? -1
+        return sortOrder === 'ascending' ? aVal - bVal : bVal - aVal
+      })
+    }
+    return data
+  }
+
+  function pageSlice(rows, page = 1, pageSize = 2) {
+    const start = (page - 1) * pageSize
+    return rows.slice(start, start + pageSize)
+  }
+
+  it('工时降序排序应对全量数据生效，首页第一条与图表 Top1 一致', () => {
+    // 图表 Top1 是全量里 total_hours 最大的 赵六(99h)
+    const topHours = [...seedRows].sort((a, b) => b.total_hours - a.total_hours)[0]
+    expect(topHours.name).toBe('赵六')
+
+    const sorted = buildFilteredData(seedRows, { sortBy: 'total_hours', sortOrder: 'descending', pageSize: 2 })
+    const page1 = pageSlice(sorted, 1, 2)
+    expect(page1[0].name).toBe('赵六')
+    expect(page1[0].emp_no).toBe('E004')
+  })
+
+  it('老逻辑仅对当前页切片排序时，工时第一的员工不会出现在首页首位', () => {
+    // 未排序的后端原始顺序下，首页是 E001/E002，切片内降序排不出 赵六
+    const page1Old = pageSlice(seedRows, 1, 2)
+    const sortedSlice = [...page1Old].sort((a, b) => b.total_hours - a.total_hours)
+    expect(sortedSlice[0].name).not.toBe('赵六')
+  })
+
+  it('图表筛选后分页 Total 与当前页数据条数同步变化', () => {
+    const all = buildFilteredData(seedRows, {})
+    expect(all.length).toBe(5)
+
+    // 点击「晚签」筛选后，参与分页的总数与筛选前不同
+    const late = buildFilteredData(seedRows, { filterType: 'late' })
+    expect(late.length).toBe(2)
+    expect(late.length).not.toBe(all.length)
+
+    // 晚签筛选下升序排列，首页第一条是工时最少的 李四(28h)
+    const lateSorted = buildFilteredData(seedRows, { filterType: 'late', sortBy: 'total_hours', sortOrder: 'ascending' })
+    const page1 = pageSlice(lateSorted, 1, 2)
+    expect(page1[0].name).toBe('李四')
+    expect(page1[0].emp_no).toBe('E002')
+  })
+
+  it('handleSortChange 应记录排序状态并把当前页重置到第 1 页', () => {
+    let sortBy = ''
+    let sortOrder = ''
+    let currentPage = 3
+    const handleSortChange = ({ prop, order }) => {
+      sortBy = prop || ''
+      sortOrder = order || ''
+      currentPage = 1
+    }
+    handleSortChange({ prop: 'total_hours', order: 'descending' })
+    expect(sortBy).toBe('total_hours')
+    expect(sortOrder).toBe('descending')
+    expect(currentPage).toBe(1)
+  })
+})

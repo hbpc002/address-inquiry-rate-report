@@ -179,13 +179,13 @@
       </el-row>
       </div>
 
-      <el-table :data="paginatedData" border stripe show-summary max-height="calc(100vh - 350px)">
+      <el-table :data="paginatedData" border stripe show-summary max-height="calc(100vh - 350px)" @sort-change="handleSortChange">
         <ColumnWithTip prop="emp_no" label="账号" width="100" :annotation="checkinAnnMap['emp_no']" />
         <ColumnWithTip prop="name" label="用户名" width="100" :annotation="checkinAnnMap['name']" />
         <ColumnWithTip prop="dept" label="所属部门" min-width="150" :annotation="checkinAnnMap['dept']" />
         <ColumnWithTip prop="team" label="班组" width="100" :annotation="checkinAnnMap['team']" />
-        <ColumnWithTip prop="checkin_count" label="签入次数" width="80" sortable :annotation="checkinAnnMap['checkin_count']" />
-        <ColumnWithTip prop="total_hours" label="工作时长" width="80" sortable :annotation="checkinAnnMap['total_hours']">
+        <ColumnWithTip prop="checkin_count" label="签入次数" width="80" sortable="custom" :annotation="checkinAnnMap['checkin_count']" />
+        <ColumnWithTip prop="total_hours" label="工作时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_hours']">
           <template #default="{ row }">
             {{ row.total_hours.toFixed(1) }}
           </template>
@@ -198,60 +198,60 @@
             <span v-else>-</span>
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="avg_punctuality_rate" label="遵时率" width="80" sortable :annotation="checkinAnnMap['avg_punctuality_rate']">
+        <ColumnWithTip prop="avg_punctuality_rate" label="遵时率" width="80" sortable="custom" :annotation="checkinAnnMap['avg_punctuality_rate']">
           <template #default="{ row }">
             {{ row.avg_punctuality_rate != null ? row.avg_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="total_call_duration" label="通话时长" width="80" sortable :annotation="checkinAnnMap['total_call_duration']">
+        <ColumnWithTip prop="total_call_duration" label="通话时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_call_duration']">
           <template #default="{ row }">
             {{ row.total_call_duration != null ? row.total_call_duration.toFixed(1) + 'h' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="total_organize_duration" label="整理时长" width="80" sortable :annotation="checkinAnnMap['total_organize_duration']">
+        <ColumnWithTip prop="total_organize_duration" label="整理时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_organize_duration']">
           <template #default="{ row }">
             {{ row.total_organize_duration != null ? row.total_organize_duration.toFixed(1) + 'h' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="avg_utilization_rate" label="工时利用率" width="90" sortable :annotation="checkinAnnMap['avg_utilization_rate']">
+        <ColumnWithTip prop="avg_utilization_rate" label="工时利用率" width="90" sortable="custom" :annotation="checkinAnnMap['avg_utilization_rate']">
           <template #default="{ row }">
             {{ row.avg_utilization_rate != null ? row.avg_utilization_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="avg_attendance_rate" label="班表出勤率" width="90" sortable :annotation="checkinAnnMap['avg_attendance_rate']">
+        <ColumnWithTip prop="avg_attendance_rate" label="班表出勤率" width="90" sortable="custom" :annotation="checkinAnnMap['avg_attendance_rate']">
           <template #default="{ row }">
             {{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="training_minutes" label="培训扣除(分)" width="90" sortable :annotation="checkinAnnMap['training_minutes']">
+        <ColumnWithTip prop="training_minutes" label="培训扣除(分)" width="90" sortable="custom" :annotation="checkinAnnMap['training_minutes']">
           <template #default="{ row }">
             {{ row.training_minutes != null ? row.training_minutes : 0 }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="computed_punctuality_rate" label="系统遵时率" width="90" sortable :annotation="checkinAnnMap['computed_punctuality_rate']">
+        <ColumnWithTip prop="computed_punctuality_rate" label="系统遵时率" width="90" sortable="custom" :annotation="checkinAnnMap['computed_punctuality_rate']">
           <template #default="{ row }">
             {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <el-table-column prop="attend_days" label="出勤天数" width="90" sortable>
+        <el-table-column prop="attend_days" label="出勤天数" width="90" sortable="custom">
           <template #default="{ row }">{{ row.attend_days || 0 }}</template>
         </el-table-column>
-        <el-table-column prop="late_days" label="晚签天数" width="90" sortable>
+        <el-table-column prop="late_days" label="晚签天数" width="90" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.late_days || 0) > 0 }">{{ row.late_days || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="late_minutes" label="晚签总分钟" width="100" sortable>
+        <el-table-column prop="late_minutes" label="晚签总分钟" width="100" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.late_minutes || 0) > 0 }">{{ row.late_minutes || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="early_days" label="提前签出天数" width="110" sortable>
+        <el-table-column prop="early_days" label="提前签出天数" width="110" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.early_days || 0) > 0 }">{{ row.early_days || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="early_minutes" label="提前签出总分钟" width="120" sortable>
+        <el-table-column prop="early_minutes" label="提前签出总分钟" width="120" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.early_minutes || 0) > 0 }">{{ row.early_minutes || 0 }}</span>
           </template>
@@ -295,7 +295,7 @@
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
-        :total="summaryFilter.filtered(mergedData).length"
+        :total="filteredData.length"
         layout="total, sizes, prev, pager, next, jumper"
         style="margin-top: 15px; justify-content: flex-end"
       />
@@ -593,6 +593,8 @@ const tableData = ref([])
 const teams = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
+const sortBy = ref('')
+const sortOrder = ref('')
 
 const savedTab = sessionStorage.getItem('checkin-report-active-tab')
 const activeTab = ref(savedTab || 'summary')
@@ -652,7 +654,7 @@ const localLongHourDays = computed(() => {
   return localDailyStats.value.filter(d => d.is_long_hour).length
 })
 
-const paginatedData = computed(() => {
+const filteredData = computed(() => {
   let data = mergedData.value
   if (filterType.value === 'overtime') {
     data = data.filter(d => d.hour_status === 'overtime')
@@ -674,10 +676,28 @@ const paginatedData = computed(() => {
     data = data.filter(d => d.team === filterValue.value && (d.early_days || 0) > 0)
   }
   data = summaryFilter.filtered(data)
+  if (sortBy.value && sortOrder.value) {
+    data = [...data].sort((a, b) => {
+      const aVal = a[sortBy.value] ?? -1
+      const bVal = b[sortBy.value] ?? -1
+      return sortOrder.value === 'ascending' ? aVal - bVal : bVal - aVal
+    })
+  }
+  return data
+})
+
+const paginatedData = computed(() => {
+  const data = filteredData.value
   const start = (currentPage.value - 1) * pageSize.value
   const end = start + pageSize.value
   return data.slice(start, end)
 })
+
+function handleSortChange({ prop, order }) {
+  sortBy.value = prop || ''
+  sortOrder.value = order || ''
+  currentPage.value = 1
+}
 
 const teamReportMap = computed(() => {
   const m = {}
@@ -1135,6 +1155,7 @@ async function loadData() {
     stats.undertime_count = res.data.stats.undertime_count || 0
     filterType.value = ''
     filterValue.value = ''
+    currentPage.value = 1
     tableData.value = res.data.items || []
     loadTeamReport()
     loadTimeAnalysis()
