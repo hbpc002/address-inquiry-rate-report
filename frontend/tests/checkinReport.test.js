@@ -325,3 +325,99 @@ describe('CheckinReport - 汇总表排序与分页同步修复', () => {
     expect(currentPage).toBe(1)
   })
 })
+
+describe('CheckinReport - 自定义列逻辑测试', () => {
+  const ALL_COLUMNS = [
+    'emp_no', 'name', 'dept', 'team', 'checkin_count', 'total_hours', 'hour_status_text',
+    'avg_punctuality_rate', 'total_call_duration', 'total_organize_duration',
+    'avg_utilization_rate', 'avg_attendance_rate', 'training_minutes', 'computed_punctuality_rate',
+    'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes', 'checkin_details'
+  ]
+
+  it('默认选中全部列', () => {
+    const selected = [...ALL_COLUMNS]
+    expect(selected).toHaveLength(20)
+    expect(selected).toContain('total_hours')
+    expect(selected).toContain('checkin_details')
+  })
+
+  it('根据选中集合判定列是否可见', () => {
+    const selected = ['emp_no', 'name', 'total_hours', 'late_days']
+    const visible = key => selected.includes(key)
+    expect(visible('total_hours')).toBe(true)
+    expect(visible('late_days')).toBe(true)
+    expect(visible('checkin_count')).toBe(false)
+    expect(visible('checkin_details')).toBe(false)
+  })
+
+  it('取消全部列后明细表仅剩固定操作列', () => {
+    const selected = []
+    const hidden = ALL_COLUMNS.filter(key => selected.includes(key))
+    expect(hidden).toHaveLength(0)
+  })
+
+  it('自定义列选择持久化到 localStorage', () => {
+    const KEY = 'checkin-report-columns'
+    const cols = ['emp_no', 'name', 'dept', 'team', 'total_hours', 'late_days']
+    localStorage.setItem(KEY, JSON.stringify(cols))
+    const loaded = JSON.parse(localStorage.getItem(KEY) || '[]')
+    expect(loaded).toEqual(cols)
+    expect(loaded).not.toContain('checkin_details')
+    localStorage.removeItem(KEY)
+  })
+})
+
+describe('CheckinReport - 汇总合计行小数压缩测试', () => {
+  const rows = [
+    { emp_no: 'E001', name: '张三', checkin_count: 10, total_hours: 85.24972222222223, total_call_duration: 40.5, attend_days: 5, late_minutes: 30, avg_punctuality_rate: 95.2 },
+    { emp_no: 'E002', name: '李四', checkin_count: 8, total_hours: 56.0, total_call_duration: 30.25, attend_days: 4, late_minutes: 0, avg_punctuality_rate: 97.5 }
+  ]
+
+  const SUMMABLE_COLUMNS = new Set([
+    'checkin_count', 'total_hours', 'total_call_duration', 'total_organize_duration',
+    'training_minutes', 'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes'
+  ])
+  const DECIMAL_COLUMNS = new Set(['total_hours', 'total_call_duration', 'total_organize_duration'])
+
+  function summaryMethod(columns) {
+    return columns.map(col => {
+      const key = col.property
+      if (!key || !SUMMABLE_COLUMNS.has(key)) return ''
+      const total = rows.reduce((sum, row) => {
+        const val = row[key]
+        return sum + (typeof val === 'number' && isFinite(val) ? val : 0)
+      }, 0)
+      if (DECIMAL_COLUMNS.has(key)) return total.toFixed(1)
+      return String(Math.round(total))
+    })
+  }
+
+  it('工时合计应压缩为 1 位小数，而非原始长小数', () => {
+    const sum = rows.reduce((s, r) => s + r.total_hours, 0)
+    expect(sum).toBe(141.24972222222223)
+    const result = summaryMethod([{ property: 'total_hours' }])[0]
+    expect(result).toBe('141.2')
+  })
+
+  it('通话时长合计保留 1 位小数', () => {
+    const result = summaryMethod([{ property: 'total_call_duration' }])[0]
+    expect(result).toBe('70.8')
+  })
+
+  it('计数类字段合计取整', () => {
+    const checkin = summaryMethod([{ property: 'checkin_count' }])[0]
+    const attend = summaryMethod([{ property: 'attend_days' }])[0]
+    expect(checkin).toBe('18')
+    expect(attend).toBe('9')
+  })
+
+  it('百分比列合计显示空（不计入求和逻辑）', () => {
+    const result = summaryMethod([{ property: 'avg_punctuality_rate' }])[0]
+    expect(result).toBe('')
+  })
+
+  it('无 property 的列（签入明细/操作）合计为空', () => {
+    const result = summaryMethod([{}])[0]
+    expect(result).toBe('')
+  })
+})

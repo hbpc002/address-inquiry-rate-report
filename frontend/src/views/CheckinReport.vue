@@ -15,6 +15,7 @@
         <el-button v-if="activeTab === 'summary'" size="small" type="primary" plain @click="showCharts = !showCharts">
           {{ showCharts ? '收起图表' : '展开图表' }}
         </el-button>
+        <el-button v-if="activeTab === 'summary'" size="small" type="warning" plain @click="columnSelectorVisible = true">自定义列</el-button>
       </div>
 
       <div v-show="showSearch" class="section-search-area">
@@ -179,18 +180,18 @@
       </el-row>
       </div>
 
-      <el-table :data="paginatedData" border stripe show-summary max-height="calc(100vh - 350px)" @sort-change="handleSortChange">
-        <ColumnWithTip prop="emp_no" label="账号" width="100" :annotation="checkinAnnMap['emp_no']" />
-        <ColumnWithTip prop="name" label="用户名" width="100" :annotation="checkinAnnMap['name']" />
-        <ColumnWithTip prop="dept" label="所属部门" min-width="150" :annotation="checkinAnnMap['dept']" />
-        <ColumnWithTip prop="team" label="班组" width="100" :annotation="checkinAnnMap['team']" />
-        <ColumnWithTip prop="checkin_count" label="签入次数" width="80" sortable="custom" :annotation="checkinAnnMap['checkin_count']" />
-        <ColumnWithTip prop="total_hours" label="工作时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_hours']">
+      <el-table :data="paginatedData" border stripe show-summary :summary-method="summaryMethod" max-height="calc(100vh - 350px)" @sort-change="handleSortChange">
+        <ColumnWithTip v-if="columnVisible('emp_no')" prop="emp_no" label="账号" width="100" :annotation="checkinAnnMap['emp_no']" />
+        <ColumnWithTip v-if="columnVisible('name')" prop="name" label="用户名" width="100" :annotation="checkinAnnMap['name']" />
+        <ColumnWithTip v-if="columnVisible('dept')" prop="dept" label="所属部门" min-width="150" :annotation="checkinAnnMap['dept']" />
+        <ColumnWithTip v-if="columnVisible('team')" prop="team" label="班组" width="100" :annotation="checkinAnnMap['team']" />
+        <ColumnWithTip v-if="columnVisible('checkin_count')" prop="checkin_count" label="签入次数" width="80" sortable="custom" :annotation="checkinAnnMap['checkin_count']" />
+        <ColumnWithTip v-if="columnVisible('total_hours')" prop="total_hours" label="工作时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_hours']">
           <template #default="{ row }">
             {{ row.total_hours.toFixed(1) }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="hour_status_text" label="工时状态" width="120" :annotation="checkinAnnMap['hour_status_text']">
+        <ColumnWithTip v-if="columnVisible('hour_status_text')" prop="hour_status_text" label="工时状态" width="120" :annotation="checkinAnnMap['hour_status_text']">
           <template #default="{ row }">
             <el-tag v-if="row.hour_status === 'overtime'" type="danger" size="small">超时</el-tag>
             <el-tag v-else-if="row.hour_status === 'undertime'" type="warning" size="small">过短</el-tag>
@@ -198,65 +199,65 @@
             <span v-else>-</span>
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="avg_punctuality_rate" label="遵时率" width="80" sortable="custom" :annotation="checkinAnnMap['avg_punctuality_rate']">
+        <ColumnWithTip v-if="columnVisible('avg_punctuality_rate')" prop="avg_punctuality_rate" label="遵时率" width="80" sortable="custom" :annotation="checkinAnnMap['avg_punctuality_rate']">
           <template #default="{ row }">
             {{ row.avg_punctuality_rate != null ? row.avg_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="total_call_duration" label="通话时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_call_duration']">
+        <ColumnWithTip v-if="columnVisible('total_call_duration')" prop="total_call_duration" label="通话时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_call_duration']">
           <template #default="{ row }">
             {{ row.total_call_duration != null ? row.total_call_duration.toFixed(1) + 'h' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="total_organize_duration" label="整理时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_organize_duration']">
+        <ColumnWithTip v-if="columnVisible('total_organize_duration')" prop="total_organize_duration" label="整理时长" width="80" sortable="custom" :annotation="checkinAnnMap['total_organize_duration']">
           <template #default="{ row }">
             {{ row.total_organize_duration != null ? row.total_organize_duration.toFixed(1) + 'h' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="avg_utilization_rate" label="工时利用率" width="90" sortable="custom" :annotation="checkinAnnMap['avg_utilization_rate']">
+        <ColumnWithTip v-if="columnVisible('avg_utilization_rate')" prop="avg_utilization_rate" label="工时利用率" width="90" sortable="custom" :annotation="checkinAnnMap['avg_utilization_rate']">
           <template #default="{ row }">
             {{ row.avg_utilization_rate != null ? row.avg_utilization_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="avg_attendance_rate" label="班表出勤率" width="90" sortable="custom" :annotation="checkinAnnMap['avg_attendance_rate']">
+        <ColumnWithTip v-if="columnVisible('avg_attendance_rate')" prop="avg_attendance_rate" label="班表出勤率" width="90" sortable="custom" :annotation="checkinAnnMap['avg_attendance_rate']">
           <template #default="{ row }">
             {{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="training_minutes" label="培训扣除(分)" width="90" sortable="custom" :annotation="checkinAnnMap['training_minutes']">
+        <ColumnWithTip v-if="columnVisible('training_minutes')" prop="training_minutes" label="培训扣除(分)" width="90" sortable="custom" :annotation="checkinAnnMap['training_minutes']">
           <template #default="{ row }">
             {{ row.training_minutes != null ? row.training_minutes : 0 }}
           </template>
         </ColumnWithTip>
-        <ColumnWithTip prop="computed_punctuality_rate" label="系统遵时率" width="90" sortable="custom" :annotation="checkinAnnMap['computed_punctuality_rate']">
+        <ColumnWithTip v-if="columnVisible('computed_punctuality_rate')" prop="computed_punctuality_rate" label="系统遵时率" width="90" sortable="custom" :annotation="checkinAnnMap['computed_punctuality_rate']">
           <template #default="{ row }">
             {{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}
           </template>
         </ColumnWithTip>
-        <el-table-column prop="attend_days" label="出勤天数" width="90" sortable="custom">
+        <el-table-column v-if="columnVisible('attend_days')" prop="attend_days" label="出勤天数" width="90" sortable="custom">
           <template #default="{ row }">{{ row.attend_days || 0 }}</template>
         </el-table-column>
-        <el-table-column prop="late_days" label="晚签天数" width="90" sortable="custom">
+        <el-table-column v-if="columnVisible('late_days')" prop="late_days" label="晚签天数" width="90" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.late_days || 0) > 0 }">{{ row.late_days || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="late_minutes" label="晚签总分钟" width="100" sortable="custom">
+        <el-table-column v-if="columnVisible('late_minutes')" prop="late_minutes" label="晚签总分钟" width="100" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.late_minutes || 0) > 0 }">{{ row.late_minutes || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="early_days" label="提前签出天数" width="110" sortable="custom">
+        <el-table-column v-if="columnVisible('early_days')" prop="early_days" label="提前签出天数" width="110" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.early_days || 0) > 0 }">{{ row.early_days || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="early_minutes" label="提前签出总分钟" width="120" sortable="custom">
+        <el-table-column v-if="columnVisible('early_minutes')" prop="early_minutes" label="提前签出总分钟" width="120" sortable="custom">
           <template #default="{ row }">
             <span :class="{ 'text-danger': (row.early_minutes || 0) > 0 }">{{ row.early_minutes || 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="签入明细" min-width="280">
+        <el-table-column v-if="columnVisible('checkin_details')" label="签入明细" min-width="280">
           <template #default="{ row }">
             <template v-if="row.checkins && row.checkins.length">
               <div class="checkin-list">
@@ -337,6 +338,17 @@
         </el-tab-pane>
       </el-tabs>
     </el-card>
+
+    <el-dialog v-model="columnSelectorVisible" title="自定义显示列" width="620px">
+      <el-checkbox-group v-model="selectedColumns">
+        <el-checkbox v-for="col in ALL_COLUMNS" :key="col.key" :label="col.key" style="margin: 4px 12px; width: 200px">
+          {{ col.label }}
+        </el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="columnSelectorVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <el-drawer v-model="drawerVisible" :title="drawerTitle" size="70%" direction="rtl">
       <template v-if="personalDetail">
@@ -595,6 +607,71 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const sortBy = ref('')
 const sortOrder = ref('')
+
+const ALL_COLUMNS = [
+  { key: 'emp_no', label: '账号' },
+  { key: 'name', label: '用户名' },
+  { key: 'dept', label: '所属部门' },
+  { key: 'team', label: '班组' },
+  { key: 'checkin_count', label: '签入次数' },
+  { key: 'total_hours', label: '工作时长' },
+  { key: 'hour_status_text', label: '工时状态' },
+  { key: 'avg_punctuality_rate', label: '遵时率' },
+  { key: 'total_call_duration', label: '通话时长' },
+  { key: 'total_organize_duration', label: '整理时长' },
+  { key: 'avg_utilization_rate', label: '工时利用率' },
+  { key: 'avg_attendance_rate', label: '班表出勤率' },
+  { key: 'training_minutes', label: '培训扣除(分)' },
+  { key: 'computed_punctuality_rate', label: '系统遵时率' },
+  { key: 'attend_days', label: '出勤天数' },
+  { key: 'late_days', label: '晚签天数' },
+  { key: 'late_minutes', label: '晚签总分钟' },
+  { key: 'early_days', label: '提前签出天数' },
+  { key: 'early_minutes', label: '提前签出总分钟' },
+  { key: 'checkin_details', label: '签入明细' }
+]
+const COLUMNS_KEY = 'checkin-report-columns'
+const DEFAULT_COLUMNS = ALL_COLUMNS.map(c => c.key)
+
+function loadSelectedColumns() {
+  try {
+    const saved = localStorage.getItem(COLUMNS_KEY)
+    return saved ? JSON.parse(saved) : [...DEFAULT_COLUMNS]
+  } catch { return [...DEFAULT_COLUMNS] }
+}
+
+const columnSelectorVisible = ref(false)
+const selectedColumns = ref(loadSelectedColumns())
+
+watch(selectedColumns, (val) => {
+  localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))
+}, { deep: true })
+
+function columnVisible(key) {
+  return selectedColumns.value.includes(key)
+}
+
+const SUMMABLE_COLUMNS = new Set([
+  'checkin_count', 'total_hours', 'total_call_duration', 'total_organize_duration',
+  'training_minutes', 'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes'
+])
+const DECIMAL_COLUMNS = new Set([
+  'total_hours', 'total_call_duration', 'total_organize_duration'
+])
+
+function summaryMethod({ columns, data }) {
+  const source = filteredData.value && filteredData.value.length ? filteredData.value : data
+  return columns.map(col => {
+    const key = col.property
+    if (!key || !SUMMABLE_COLUMNS.has(key)) return ''
+    const total = source.reduce((sum, row) => {
+      const val = row[key]
+      return sum + (typeof val === 'number' && isFinite(val) ? val : 0)
+    }, 0)
+    if (DECIMAL_COLUMNS.has(key)) return total.toFixed(1)
+    return String(Math.round(total))
+  })
+}
 
 const savedTab = sessionStorage.getItem('checkin-report-active-tab')
 const activeTab = ref(savedTab || 'summary')
