@@ -13,6 +13,8 @@ from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
 from datetime import datetime, date, timedelta
+import io
+import csv
 
 _admin_user = {
     "id": 1,
@@ -34,6 +36,15 @@ client = TestClient(app)
 def setup_module():
     Base.metadata.drop_all(bind=engine)
     init_db()
+    db = SessionLocal()
+    try:
+        from app.models.user import User
+        from app.core.security import get_password_hash
+        if not db.query(User).filter(User.id == 1).first():
+            db.add(User(id=1, username="admin", password_hash=get_password_hash("admin"), display_name="Admin", role="admin", is_active=True))
+            db.commit()
+    finally:
+        db.close()
 
 
 def teardown_module():
@@ -181,6 +192,29 @@ class TestExportEndpoints:
             assert "张三" in body
             assert "E002" not in body
             assert "李四" not in body
+        finally:
+            db.close()
+
+    def test_export_checkin_report_includes_scheduled_hours(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            emp_map = _create_test_employees(db)
+            _create_test_daily_reports(db, emp_map)
+            _create_test_checkins(db, emp_map)
+
+            today = date.today()
+            resp = client.get(f"/api/checkins/report/export?date={today.isoformat()}")
+            assert resp.status_code == 200
+            rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
+            header = rows[0]
+            assert "排班工时(h)" in header
+            sched_idx = header.index("排班工时(h)")
+
+            data_rows = [r for r in rows[1:] if r and r[0]]
+            assert len(data_rows) == 3
+            for r in data_rows:
+                assert r[sched_idx] == "8.0"
         finally:
             db.close()
 

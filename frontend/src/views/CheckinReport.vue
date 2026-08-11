@@ -191,6 +191,11 @@
             {{ row.total_hours.toFixed(1) }}
           </template>
         </ColumnWithTip>
+        <ColumnWithTip v-if="columnVisible('scheduled_hours')" prop="scheduled_hours" label="排班工时" width="80" sortable="custom" :annotation="checkinAnnMap['scheduled_hours']">
+          <template #default="{ row }">
+            {{ row.scheduled_hours != null ? row.scheduled_hours.toFixed(1) : '-' }}
+          </template>
+        </ColumnWithTip>
         <ColumnWithTip v-if="columnVisible('hour_status_text')" prop="hour_status_text" label="工时状态" width="120" :annotation="checkinAnnMap['hour_status_text']">
           <template #default="{ row }">
             <el-tag v-if="row.hour_status === 'overtime'" type="danger" size="small">超时</el-tag>
@@ -615,6 +620,7 @@ const ALL_COLUMNS = [
   { key: 'team', label: '班组' },
   { key: 'checkin_count', label: '签入次数' },
   { key: 'total_hours', label: '工作时长' },
+  { key: 'scheduled_hours', label: '排班工时' },
   { key: 'hour_status_text', label: '工时状态' },
   { key: 'avg_punctuality_rate', label: '遵时率' },
   { key: 'total_call_duration', label: '通话时长' },
@@ -652,11 +658,11 @@ function columnVisible(key) {
 }
 
 const SUMMABLE_COLUMNS = new Set([
-  'checkin_count', 'total_hours', 'total_call_duration', 'total_organize_duration',
+  'checkin_count', 'total_hours', 'scheduled_hours', 'total_call_duration', 'total_organize_duration',
   'training_minutes', 'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes'
 ])
 const DECIMAL_COLUMNS = new Set([
-  'total_hours', 'total_call_duration', 'total_organize_duration'
+  'total_hours', 'scheduled_hours', 'total_call_duration', 'total_organize_duration'
 ])
 
 function summaryMethod({ columns, data }) {
@@ -861,6 +867,7 @@ const filterValue = ref('')
 
 const summaryFilterFields = [
   { key: 'total_hours', label: '工作时长', unit: 'number', get: row => row.total_hours ?? null },
+  { key: 'scheduled_hours', label: '排班工时', unit: 'number', get: row => row.scheduled_hours ?? null },
   { key: 'checkin_count', label: '签入次数', unit: 'number', get: row => row.checkin_count ?? null },
   { key: 'avg_punctuality_rate', label: '遵时率(%)', unit: 'percent', get: row => row.avg_punctuality_rate ?? null },
   { key: 'computed_punctuality_rate', label: '系统遵时率(%)', unit: 'percent', get: row => row.computed_punctuality_rate ?? null },

@@ -167,6 +167,7 @@ def test_checkin_annotations_seeded():
         assert "emp_no" in paths
         assert "checkin_count" in paths
         assert "total_hours" in paths
+        assert "scheduled_hours" in paths
         assert "avg_punctuality_rate" in paths
     finally:
         db.close()

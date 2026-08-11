@@ -51,18 +51,18 @@ const mockReport = {
   items: [
     {
       emp_no: 'E001', name: '张三', dept: '测试部门', team: '班组A',
-      checkin_count: 10, total_hours: 85.5, hour_status: 'overtime',
+      checkin_count: 10, total_hours: 85.5, scheduled_hours: 80.0, hour_status: 'overtime',
       hour_status_text: '超时 (130%)',
       checkins: [{ checkin_time: '2024-01-01 09:00', checkout_time: '2024-01-01 18:00', duration: 9.0 }]
     },
     {
       emp_no: 'E002', name: '李四', dept: '测试部门', team: '班组A',
-      checkin_count: 8, total_hours: 64.0, hour_status: 'undertime',
+      checkin_count: 8, total_hours: 64.0, scheduled_hours: 72.0, hour_status: 'undertime',
       hour_status_text: '过短 (77%)', checkins: []
     },
     {
       emp_no: 'E003', name: '王五', dept: '测试部门', team: '班组B',
-      checkin_count: 12, total_hours: 80.0, hour_status: 'normal',
+      checkin_count: 12, total_hours: 80.0, scheduled_hours: 80.0, hour_status: 'normal',
       hour_status_text: '正常 (100%)', checkins: []
     }
   ]

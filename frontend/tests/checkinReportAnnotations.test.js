@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 describe('CheckinReport - annotation field paths', () => {
   const checkinFields = [
-    'emp_no', 'name', 'dept', 'team', 'checkin_count', 'total_hours',
+    'emp_no', 'name', 'dept', 'team', 'checkin_count', 'total_hours', 'scheduled_hours',
     'hour_status_text', 'avg_punctuality_rate', 'total_call_duration',
     'total_organize_duration', 'avg_utilization_rate', 'avg_attendance_rate',
     'training_minutes', 'computed_punctuality_rate',
@@ -70,6 +70,7 @@ describe('CheckinReport - ColumnWithTip field path mapping', () => {
     name: { path: 'name', label: '用户名' },
     checkin_count: { path: 'checkin_count', label: '签入次数' },
     total_hours: { path: 'total_hours', label: '工作时长' },
+    scheduled_hours: { path: 'scheduled_hours', label: '排班工时' },
     avg_punctuality_rate: { path: 'avg_punctuality_rate', label: '遵时率' },
   }
 
@@ -83,6 +84,7 @@ describe('CheckinReport - ColumnWithTip field path mapping', () => {
   it('should have correct label for checkin fields', () => {
     expect(checkinMapping.emp_no.label).toBe('账号')
     expect(checkinMapping.total_hours.label).toBe('工作时长')
+    expect(checkinMapping.scheduled_hours.label).toBe('排班工时')
   })
 
   it('should have correct prop path for checkin fields', () => {

@@ -21,6 +21,8 @@ from app.core.security import get_password_hash
 
 
 def clear_tables(db):
+    from app.models.operation_log import OperationLog
+    db.query(OperationLog).delete()
     db.query(WorkHourThreshold).delete()
     db.query(DailyReport).delete()
     db.query(Checkin).delete()

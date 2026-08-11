@@ -1051,16 +1051,31 @@ def export_checkin_report(
     import io, csv
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["账号", "姓名", "部门", "签入时间", "签出时间", "工作时长(h)", "日期"])
+
+    scheduled_by_emp_date = {}
+    scheduled_rows = db.query(
+        Employee.emp_no,
+        DailyReport.schedule_date,
+        DailyReport.scheduled_hours
+    ).join(Employee, DailyReport.emp_id == Employee.id).filter(
+        DailyReport.schedule_date >= query_start,
+        DailyReport.schedule_date <= query_end
+    ).all()
+    for emp_no, sched_date, sched_hours in scheduled_rows:
+        scheduled_by_emp_date[(emp_no, sched_date.isoformat())] = float(sched_hours) if sched_hours else 0.0
+
+    writer.writerow(["账号", "姓名", "部门", "签入时间", "签出时间", "工作时长(h)", "排班工时(h)", "日期"])
     for c in checkins:
         duration = 0.0
         if c.checkout_time and c.checkin_time:
             duration = round((c.checkout_time - c.checkin_time).total_seconds() / 3600, 1)
+        sched_hours = scheduled_by_emp_date.get((c.emp_no, c.checkin_time.date().isoformat() if c.checkin_time else ''), '')
         writer.writerow([
             c.emp_no, c.name, c.dept or "",
             c.checkin_time.strftime('%Y-%m-%d %H:%M') if c.checkin_time else "",
             c.checkout_time.strftime('%Y-%m-%d %H:%M') if c.checkout_time else "",
             duration,
+            sched_hours,
             c.checkin_time.strftime('%Y-%m-%d') if c.checkin_time else "",
         ])
 

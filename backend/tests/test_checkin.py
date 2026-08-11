@@ -307,6 +307,38 @@ class TestCheckinReport:
         assert "E001" in emp_nos
         assert "E002" not in emp_nos
 
+    def test_report_includes_scheduled_hours(self):
+        today = date.today()
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
+            report = DailyReport(
+                emp_id=emp.id,
+                schedule_date=today,
+                scheduled_hours=8.0,
+                schedule_type="正常",
+            )
+            db.add(report)
+            db.commit()
+            report_id = report.id
+        finally:
+            db.close()
+
+        try:
+            resp = client.get(f"/api/checkins/report?date={today.isoformat()}")
+            assert resp.status_code == 200
+            items = {item["emp_no"]: item for item in resp.json()["items"]}
+            assert "scheduled_hours" in items["E001"]
+            assert items["E001"]["scheduled_hours"] == 8.0
+            assert items["E002"]["scheduled_hours"] == 0
+        finally:
+            db = SessionLocal()
+            try:
+                db.query(DailyReport).filter(DailyReport.id == report_id).delete()
+                db.commit()
+            finally:
+                db.close()
+
     def test_report_no_checkin_data(self):
         resp = client.get("/api/checkins/report?date=2020-01-01")
         assert resp.status_code == 200

@@ -328,7 +328,7 @@ describe('CheckinReport - 汇总表排序与分页同步修复', () => {
 
 describe('CheckinReport - 自定义列逻辑测试', () => {
   const ALL_COLUMNS = [
-    'emp_no', 'name', 'dept', 'team', 'checkin_count', 'total_hours', 'hour_status_text',
+    'emp_no', 'name', 'dept', 'team', 'checkin_count', 'total_hours', 'scheduled_hours', 'hour_status_text',
     'avg_punctuality_rate', 'total_call_duration', 'total_organize_duration',
     'avg_utilization_rate', 'avg_attendance_rate', 'training_minutes', 'computed_punctuality_rate',
     'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes', 'checkin_details'
@@ -336,8 +336,9 @@ describe('CheckinReport - 自定义列逻辑测试', () => {
 
   it('默认选中全部列', () => {
     const selected = [...ALL_COLUMNS]
-    expect(selected).toHaveLength(20)
+    expect(selected).toHaveLength(21)
     expect(selected).toContain('total_hours')
+    expect(selected).toContain('scheduled_hours')
     expect(selected).toContain('checkin_details')
   })
 
@@ -369,15 +370,15 @@ describe('CheckinReport - 自定义列逻辑测试', () => {
 
 describe('CheckinReport - 汇总合计行小数压缩测试', () => {
   const rows = [
-    { emp_no: 'E001', name: '张三', checkin_count: 10, total_hours: 85.24972222222223, total_call_duration: 40.5, attend_days: 5, late_minutes: 30, avg_punctuality_rate: 95.2 },
-    { emp_no: 'E002', name: '李四', checkin_count: 8, total_hours: 56.0, total_call_duration: 30.25, attend_days: 4, late_minutes: 0, avg_punctuality_rate: 97.5 }
+    { emp_no: 'E001', name: '张三', checkin_count: 10, total_hours: 85.24972222222223, scheduled_hours: 80.0, total_call_duration: 40.5, attend_days: 5, late_minutes: 30, avg_punctuality_rate: 95.2 },
+    { emp_no: 'E002', name: '李四', checkin_count: 8, total_hours: 56.0, scheduled_hours: 72.5, total_call_duration: 30.25, attend_days: 4, late_minutes: 0, avg_punctuality_rate: 97.5 }
   ]
 
   const SUMMABLE_COLUMNS = new Set([
-    'checkin_count', 'total_hours', 'total_call_duration', 'total_organize_duration',
+    'checkin_count', 'total_hours', 'scheduled_hours', 'total_call_duration', 'total_organize_duration',
     'training_minutes', 'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes'
   ])
-  const DECIMAL_COLUMNS = new Set(['total_hours', 'total_call_duration', 'total_organize_duration'])
+  const DECIMAL_COLUMNS = new Set(['total_hours', 'scheduled_hours', 'total_call_duration', 'total_organize_duration'])
 
   function summaryMethod(columns) {
     return columns.map(col => {
@@ -402,6 +403,11 @@ describe('CheckinReport - 汇总合计行小数压缩测试', () => {
   it('通话时长合计保留 1 位小数', () => {
     const result = summaryMethod([{ property: 'total_call_duration' }])[0]
     expect(result).toBe('70.8')
+  })
+
+  it('排班工时合计保留 1 位小数', () => {
+    const result = summaryMethod([{ property: 'scheduled_hours' }])[0]
+    expect(result).toBe('152.5')
   })
 
   it('计数类字段合计取整', () => {
