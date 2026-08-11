@@ -1116,10 +1116,19 @@ onMounted(() => {
 }
 
 .stats-row {
-  margin-bottom: 20px;
-  padding: 15px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+.stats-row :deep(.el-statistic__head) {
+  font-size: 12px;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+.stats-row :deep(.el-statistic__content) {
+  font-size: 18px;
+  line-height: 1.4;
 }
 
 .text-success { color: #67c23a; font-weight: bold; }

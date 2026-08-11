@@ -85,10 +85,10 @@
         <el-col :span="3">
           <el-statistic title="记录条数" :value="stats.total_records" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="呼入通话量" :value="stats.total_call_count" :precision="0" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="平均通话均长" :value="averageCallDuration" :precision="1" />
         </el-col>
         <el-col :span="3">
@@ -97,10 +97,10 @@
         <el-col :span="3">
           <el-statistic title="呼出量" :value="stats.total_outbound" :precision="0" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="提单率(%)" :value="totalTiDanLv" :precision="2" :value-style="getMetricStyle('_ti_dan_lv', totalTiDanLv)" />
         </el-col>
-        <el-col :span="4">
+        <el-col :span="3">
           <el-statistic title="满意率(%)" :value="totalSatisfactionRate" :precision="2" />
         </el-col>
       </el-row>
@@ -1430,9 +1430,18 @@ onMounted(async () => {
   align-items: center;
 }
 .stats-row {
-  margin-bottom: 20px;
-  padding: 15px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+.stats-row :deep(.el-statistic__head) {
+  font-size: 12px;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+.stats-row :deep(.el-statistic__content) {
+  font-size: 18px;
+  line-height: 1.4;
 }
 </style>
