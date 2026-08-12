@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { mount } from '@vue/test-utils'
 import FieldFilterPanel from '../src/components/FieldFilterPanel.vue'
 
@@ -138,5 +140,14 @@ describe('FieldFilterPanel', () => {
     selectProps.forEach(p => {
       expect(p.teleported).toBe(false)
     })
+  })
+
+  it('does not make .filter-body a scroll container (fix: select dropdown clipped by panel)', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/components/FieldFilterPanel.vue'), 'utf-8')
+    const style = (src.match(/<style([^>]*)>([\s\S]*?)<\/style>/) || [])[2] || ''
+    expect(style).toBeTruthy()
+    const filterBodyRule = (style.match(/\.filter-body\s*\{([\s\S]*?)\}/) || [])[1] || ''
+    expect(filterBodyRule).toMatch(/overflow\s*:\s*visible/)
+    expect(filterBodyRule).not.toMatch(/overflow-y\s*:\s*auto/)
   })
 })

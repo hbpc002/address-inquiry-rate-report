@@ -138,8 +138,7 @@ function confirm() {
   vertical-align: middle;
 }
 .filter-body {
-  max-height: 320px;
-  overflow-y: auto;
+  overflow: visible;
 }
 .filter-row {
   display: flex;
