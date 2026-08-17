@@ -203,41 +203,39 @@ def test_personal_report_schedule_fields_vary_per_employee():
 
 
 def test_report_aggregation_schedule_fields():
-    """验证签入签出报表聚合查询正确计算Schedule字段的AVG/SUM"""
+    """验证签入签出报表汇总的遵时率/工时利用率/班表出勤率由系统重算（不再用导入 AVG）"""
+    from app.api.checkins import get_checkin_report
     db = SessionLocal()
     try:
         clear_tables(db)
         setup_employees_and_schedules(db)
 
-        start = (datetime.now().date() - timedelta(days=2))
-        end = datetime.now().date()
+        start = (datetime.now().date() - timedelta(days=2)).isoformat()
+        end = datetime.now().date().isoformat()
 
-        schedule_stats = db.query(
-            Employee.emp_no,
-            func.avg(Schedule.punctuality_rate),
-            func.sum(Schedule.call_duration),
-            func.sum(Schedule.organize_duration),
-            func.avg(Schedule.utilization_rate),
-            func.avg(Schedule.attendance_rate)
-        ).join(Employee, Schedule.emp_id == Employee.id).filter(
-            Schedule.schedule_date >= start,
-            Schedule.schedule_date <= end
-        ).group_by(Employee.emp_no).order_by(Employee.emp_no).all()
+        result = get_checkin_report(db=db, start_date=start, end_date=end)
+        items = {item["emp_no"]: item for item in result["items"]}
 
-        assert len(schedule_stats) == 2
+        assert "E001" in items
+        assert "E002" in items
 
-        e001_row = schedule_stats[0]
-        assert e001_row[0] == 'E001'
-        assert float(e001_row[1]) == 98.50  # avg punctuality
-        assert float(e001_row[2]) == 5.0 * (sum(1 for _ in range(3)))   # sum call_duration
-        assert float(e001_row[3]) == 1.5 * (sum(1 for _ in range(3)))   # sum organize_duration
-        assert float(e001_row[4]) == 81.25  # avg utilization
-        assert float(e001_row[5]) == 100.00  # avg attendance
+        e001 = items["E001"]
+        # 遵时率 = Σactual_hours / Σscheduled_hours × 100 = (3×7.9)/(3×8.0)×100
+        assert round(e001["avg_punctuality_rate"], 2) == 98.75
+        # 工时利用率 = (Σcall+Σorganize)/Σactual×100 = (15+4.5)/23.7×100
+        assert round(e001["avg_utilization_rate"], 2) == 82.28
+        # 班表出勤率 = 出勤天数(3)/排班天数(3)×100
+        assert e001["avg_attendance_rate"] == 100.0
+        # 通话/整理时长仍为导入值求和
+        assert e001["total_call_duration"] == 15.0
+        assert e001["total_organize_duration"] == 4.5
 
-        e002_row = schedule_stats[1]
-        assert e002_row[0] == 'E002'
-        assert float(e002_row[1]) == 95.00
-        assert float(e002_row[4]) == 75.00
+        e002 = items["E002"]
+        assert round(e002["avg_punctuality_rate"], 2) == 98.75
+        assert round(e002["avg_utilization_rate"], 2) == 75.95
+        assert e002["avg_attendance_rate"] == 100.0
+        assert e002["total_call_duration"] == 12.0
+        assert e002["total_organize_duration"] == 6.0
     finally:
         db.close()
 

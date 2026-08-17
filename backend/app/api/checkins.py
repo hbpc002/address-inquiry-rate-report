@@ -354,24 +354,34 @@ def get_checkin_report(
     if emp_no:
         checkins = [c for c in checkins if emp_no.lower() in c.emp_no.lower()]
 
-    # Step 3: Get scheduled_hours from DailyReport for the same date range
+    # Step 3: Get scheduled_hours / actual_hours from DailyReport for the same date range
     scheduled_data = db.query(
         Employee.emp_no,
-        func.sum(DailyReport.scheduled_hours)
+        func.sum(DailyReport.scheduled_hours),
+        func.sum(DailyReport.actual_hours)
     ).join(Employee, DailyReport.emp_id == Employee.id).filter(
         DailyReport.schedule_date >= query_start,
         DailyReport.schedule_date <= query_end
     ).group_by(Employee.emp_no).all()
-    scheduled_map = {emp_no: float(total or 0) for emp_no, total in scheduled_data}
+    scheduled_map = {emp_no: float(total or 0) for emp_no, total, _ in scheduled_data}
+    actual_hours_map = {emp_no: float(actual or 0) for emp_no, _, actual in scheduled_data}
 
-    # Get aggregated Schedule metrics for the same date range
+    # 各员工排班天数（scheduled_hours > 0 的 distinct 日期）
+    scheduled_days_data = db.query(
+        Employee.emp_no,
+        func.count(func.distinct(DailyReport.schedule_date))
+    ).join(Employee, DailyReport.emp_id == Employee.id).filter(
+        DailyReport.schedule_date >= query_start,
+        DailyReport.schedule_date <= query_end,
+        DailyReport.scheduled_hours > 0
+    ).group_by(Employee.emp_no).all()
+    scheduled_days_map = {emp_no: int(days) for emp_no, days in scheduled_days_data}
+
+    # Get aggregated Schedule metrics for the same date range（只保留通话/整理时长求和）
     schedule_stats = db.query(
         Employee.emp_no,
-        func.avg(Schedule.punctuality_rate),
         func.sum(Schedule.call_duration),
-        func.sum(Schedule.organize_duration),
-        func.avg(Schedule.utilization_rate),
-        func.avg(Schedule.attendance_rate)
+        func.sum(Schedule.organize_duration)
     ).join(Employee, Schedule.emp_id == Employee.id).filter(
         Schedule.schedule_date >= query_start,
         Schedule.schedule_date <= query_end
@@ -379,11 +389,8 @@ def get_checkin_report(
     schedule_agg_map = {}
     for row in schedule_stats:
         schedule_agg_map[row[0]] = {
-            "avg_punctuality_rate": float(row[1]) if row[1] is not None else None,
-            "total_call_duration": float(row[2]) if row[2] is not None else None,
-            "total_organize_duration": float(row[3]) if row[3] is not None else None,
-            "avg_utilization_rate": float(row[4]) if row[4] is not None else None,
-            "avg_attendance_rate": float(row[5]) if row[5] is not None else None,
+            "total_call_duration": float(row[1]) if row[1] is not None else None,
+            "total_organize_duration": float(row[2]) if row[2] is not None else None,
         }
 
     training_stats = db.query(
@@ -396,8 +403,13 @@ def get_checkin_report(
     training_map = {emp_no: int(total) for emp_no, total in training_stats}
 
     emp_stats = {}
+    attendance_days = {}
     for c in checkins:
         key = c.emp_no
+        if key not in attendance_days:
+            attendance_days[key] = set()
+        if c.checkin_time:
+            attendance_days[key].add(c.checkin_time.date())
         if key not in emp_stats:
             emp = db.query(Employee).filter(Employee.emp_no == key).first()
             sched_agg = schedule_agg_map.get(key, {})
@@ -409,11 +421,11 @@ def get_checkin_report(
                 "checkin_count": 0,
                 "total_hours": 0.0,
                 "scheduled_hours": scheduled_map.get(key, 0),
-                "avg_punctuality_rate": sched_agg.get("avg_punctuality_rate"),
+                "avg_punctuality_rate": None,
                 "total_call_duration": sched_agg.get("total_call_duration"),
                 "total_organize_duration": sched_agg.get("total_organize_duration"),
-                "avg_utilization_rate": sched_agg.get("avg_utilization_rate"),
-                "avg_attendance_rate": sched_agg.get("avg_attendance_rate"),
+                "avg_utilization_rate": None,
+                "avg_attendance_rate": None,
                 "training_minutes": training_map.get(key, 0),
                 "computed_punctuality_rate": None,
                 "checkins": []
@@ -512,7 +524,29 @@ def get_checkin_report(
                 item["computed_punctuality_rate"] = None
         else:
             item["computed_punctuality_rate"] = None
-    
+
+        # 三个比率系统重算（实际工时取考勤日报 actual_hours，与全系统口径一致）
+        actual_total = actual_hours_map.get(item["emp_no"], 0)
+        sched_total = item.get("scheduled_hours", 0)
+        if sched_total > 0:
+            item["avg_punctuality_rate"] = round(actual_total / sched_total * 100, 2)
+        else:
+            item["avg_punctuality_rate"] = None
+
+        call_total = item.get("total_call_duration") or 0
+        organize_total = item.get("total_organize_duration") or 0
+        if actual_total > 0:
+            item["avg_utilization_rate"] = round((call_total + organize_total) / actual_total * 100, 2)
+        else:
+            item["avg_utilization_rate"] = None
+
+        sched_day_cnt = scheduled_days_map.get(item["emp_no"], 0)
+        if sched_day_cnt > 0:
+            attend_cnt = len(attendance_days.get(item["emp_no"], set()))
+            item["avg_attendance_rate"] = round(attend_cnt / sched_day_cnt * 100, 2)
+        else:
+            item["avg_attendance_rate"] = None
+
     items = list(emp_stats.values())
     items.sort(key=lambda x: x["checkin_count"], reverse=True)
     
@@ -908,6 +942,19 @@ def get_personal_report(
         else:
             computed_punctuality = None
 
+        # 三个比率逐日系统重算（实际工时取考勤日报 actual_hours，与全系统口径一致）
+        call_duration = float(sched.call_duration) if sched and sched.call_duration is not None else None
+        organize_duration = float(sched.organize_duration) if sched and sched.organize_duration is not None else None
+        if scheduled_hours > 0:
+            punctuality = round(actual_hours / scheduled_hours * 100, 2)
+        else:
+            punctuality = None
+        if actual_hours > 0:
+            utilization = round(((call_duration or 0) + (organize_duration or 0)) / actual_hours * 100, 2)
+        else:
+            utilization = None
+        attendance = 100.0 if scheduled_hours > 0 else None
+
         daily_stats.append({
             "date": entry["date"],
             "checkin_time": entry["checkins"][0]["checkin_time"] if entry["checkins"] else None,
@@ -920,11 +967,11 @@ def get_personal_report(
             "actual_hours": actual_hours,
             "late_minutes": report.late_minutes if report else 0,
             "early_minutes": report.early_minutes if report else 0,
-            "punctuality_rate": float(sched.punctuality_rate) if sched and sched.punctuality_rate is not None else None,
-            "call_duration": float(sched.call_duration) if sched and sched.call_duration is not None else None,
-            "organize_duration": float(sched.organize_duration) if sched and sched.organize_duration is not None else None,
-            "utilization_rate": float(sched.utilization_rate) if sched and sched.utilization_rate is not None else None,
-            "attendance_rate": float(sched.attendance_rate) if sched and sched.attendance_rate is not None else None,
+            "punctuality_rate": punctuality,
+            "call_duration": call_duration,
+            "organize_duration": organize_duration,
+            "utilization_rate": utilization,
+            "attendance_rate": attendance,
             "training_minutes": training_minutes,
             "computed_punctuality_rate": computed_punctuality
         })

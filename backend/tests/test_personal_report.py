@@ -334,3 +334,90 @@ def test_attendance_config_update_long_hour():
 
     response = client.put("/api/attendance-config", json={"long_hour_threshold": 9.5})
     assert response.status_code == 200
+
+
+def test_personal_report_daily_recomputed_ratios():
+    """验证个人多维统计明细的遵时率/工时利用率/班表出勤率逐日系统重算（非导入值）"""
+    from app.models.schedule import Schedule
+    db = SessionLocal()
+    try:
+        emp = Employee(
+            emp_no="E010",
+            name="比率重算",
+            team="测试班组",
+            dept="测试部门",
+            role="组员"
+        )
+        db.add(emp)
+        db.flush()
+
+        shift_type = ShiftType(
+            shift_name="重算班",
+            time_segments=[{"start": "08:00", "end": "17:00"}],
+            work_hours=8.0,
+            color="#409EFF",
+            is_night=False
+        )
+        db.add(shift_type)
+        db.flush()
+
+        checkin = Checkin(
+            emp_no="E010", name="比率重算",
+            checkin_time=datetime(2026, 5, 6, 8, 30, 0),
+            checkout_time=datetime(2026, 5, 6, 17, 30, 0),
+            dept="测试部门", import_batch="test-ratio"
+        )
+        db.add(checkin)
+
+        daily_report = DailyReport(
+            emp_id=emp.id,
+            schedule_date=date(2026, 5, 6),
+            shift_type_id=shift_type.id,
+            schedule_type="正常",
+            scheduled_start="08:00",
+            scheduled_end="17:00",
+            scheduled_hours=8.0,
+            actual_hours=8.0,
+            status="正常",
+            late_minutes=0,
+            early_minutes=0
+        )
+        db.add(daily_report)
+
+        schedule = Schedule(
+            emp_id=emp.id,
+            schedule_date=date(2026, 5, 6),
+            shift_type_id=shift_type.id,
+            schedule_type="正常",
+            work_hours=8.0,
+            punctuality_rate=95.0,
+            call_duration=6.0,
+            organize_duration=1.0,
+            utilization_rate=70.0,
+            attendance_rate=88.0
+        )
+        db.add(schedule)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/checkins/personal-report", params={
+        "emp_no": "E010",
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31"
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    daily = data["daily_stats"]
+    assert len(daily) == 1
+    row = daily[0]
+    # 遵时率 = 当日实际工时/当日排班工时×100 = 8.0/8.0×100（导入值 95.0 应被重算覆盖）
+    assert row["punctuality_rate"] == 100.0
+    # 工时利用率 = (通话+整理)/实际×100 = (6+1)/8×100 = 87.5（导入值 70.0 应被重算覆盖）
+    assert row["utilization_rate"] == 87.5
+    # 班表出勤率 = 当日有签到且排班 → 100（导入值 88.0 应被重算覆盖）
+    assert row["attendance_rate"] == 100.0
+    # 通话/整理时长仍为导入值
+    assert row["call_duration"] == 6.0
+    assert row["organize_duration"] == 1.0
