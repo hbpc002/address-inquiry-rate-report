@@ -171,13 +171,63 @@
       </el-row>
 
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 12px">
-        <el-col :span="24">
+        <el-col :span="8">
           <el-card shadow="hover">
             <div style="margin-bottom: 6px; font-size: 14px; color: #606266">班组工时分布（点击班组筛选）</div>
-            <Echart :options="deptHoursOptions" height="200px" @click="handleTeamChartClick" />
+            <Echart :options="deptHoursOptions" height="280px" @click="handleTeamChartClick" />
           </el-card>
         </el-col>
-      </el-row>
+        <el-col :span="16">
+          <el-card shadow="hover">
+            <div style="margin-bottom: 6px; font-size: 14px; color: #606266">班组工时明细</div>
+            <div style="overflow-x: auto;">
+              <el-table :data="teamMetricsRanking" size="small" border stripe max-height="280" @row-click="handleTeamTableRowClick">
+                <el-table-column label="排名" width="55" type="index" />
+                <el-table-column label="班组" prop="team" min-width="100" />
+                <el-table-column label="组长" prop="leader" min-width="70" />
+                <el-table-column label="人数" width="55" prop="count" sortable />
+                <el-table-column label="总工作时长" width="95" sortable prop="total_hours">
+                  <template #default="{ row }">{{ row.total_hours.toFixed(1) }}</template>
+                </el-table-column>
+                <el-table-column label="总排班工时" width="95" sortable prop="scheduled_hours">
+                  <template #default="{ row }">{{ row.scheduled_hours.toFixed(1) }}</template>
+                </el-table-column>
+                <el-table-column label="人均工作时长" width="95" sortable prop="avg_hours">
+                  <template #default="{ row }">{{ row.avg_hours.toFixed(1) }}</template>
+                </el-table-column>
+                <el-table-column label="系统遵时率" width="90" sortable prop="computed_punctuality_rate">
+                  <template #default="{ row }">{{ row.computed_punctuality_rate != null ? row.computed_punctuality_rate.toFixed(2) + '%' : '-' }}</template>
+                </el-table-column>
+                <el-table-column label="遵时率" width="85" sortable prop="avg_punctuality_rate">
+                  <template #default="{ row }">{{ row.avg_punctuality_rate != null ? row.avg_punctuality_rate.toFixed(2) + '%' : '-' }}</template>
+                </el-table-column>
+                <el-table-column label="工时利用率" width="90" sortable prop="avg_utilization_rate">
+                  <template #default="{ row }">{{ row.avg_utilization_rate != null ? row.avg_utilization_rate.toFixed(2) + '%' : '-' }}</template>
+                </el-table-column>
+                <el-table-column label="班表出勤率" width="90" sortable prop="avg_attendance_rate">
+                  <template #default="{ row }">{{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}</template>
+                </el-table-column>
+                <el-table-column label="通话时长" width="85" sortable prop="total_call_duration">
+                  <template #default="{ row }">{{ row.total_call_duration != null ? row.total_call_duration.toFixed(1) + 'h' : '-' }}</template>
+                </el-table-column>
+                <el-table-column label="整理时长" width="85" sortable prop="total_organize_duration">
+                  <template #default="{ row }">{{ row.total_organize_duration != null ? row.total_organize_duration.toFixed(1) + 'h' : '-' }}</template>
+                </el-table-column>
+                <el-table-column label="培训扣除(分)" width="95" sortable prop="training_minutes">
+                  <template #default="{ row }">{{ row.training_minutes != null ? row.training_minutes : 0 }}</template>
+                </el-table-column>
+                <el-table-column label="晚签人数" width="80" sortable prop="late_people" />
+                <el-table-column label="晚签天数" width="80" sortable prop="late_days" />
+                <el-table-column label="早退人数" width="80" sortable prop="early_people" />
+                <el-table-column label="早退天数" width="80" sortable prop="early_days" />
+                <el-table-column label="占比" width="75" sortable prop="total_hours">
+                  <template #default="{ row }">{{ (row.total_hours / teamTotalHours * 100).toFixed(1) + '%' }}</template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-card>
+        </el-col>
+        </el-row>
       </div>
 
       <el-table :data="paginatedData" border stripe show-summary :summary-method="summaryMethod" max-height="calc(100vh - 350px)" @sort-change="handleSortChange">
@@ -608,6 +658,7 @@ import { useFieldFilter } from '../composables/useFieldFilter'
 
 const tableData = ref([])
 const teams = ref([])
+const teamLeaders = ref({})
 const currentPage = ref(1)
 const pageSize = ref(20)
 const sortBy = ref('')
@@ -911,26 +962,103 @@ const checkinCountOptions = computed(() => {
   return createHorizontalBarOptions(data.map(d => d.name), data.map(d => d.checkin_count), '员工签入次数排名', '姓名', '签入次数')
 })
 
-const deptHoursOptions = computed(() => {
-  if (!tableData.value.length) return {}
+const teamMetricsRanking = computed(() => {
+  const data = mergedData.value
+  if (!data.length) return []
   const teamMap = {}
-  const peopleMap = {}
-  tableData.value.forEach(d => {
+  data.forEach(d => {
     const team = d.team || '未知班组'
     if (!teamMap[team]) {
-      teamMap[team] = 0
-      peopleMap[team] = new Set()
+      teamMap[team] = {
+        count: 0,
+        total_hours: 0,
+        scheduled_hours: 0,
+        avg_punctuality_rate_sum: 0,
+        avg_punctuality_rate_n: 0,
+        computed_punctuality_rate_sum: 0,
+        computed_punctuality_rate_n: 0,
+        avg_utilization_rate_sum: 0,
+        avg_utilization_rate_n: 0,
+        avg_attendance_rate_sum: 0,
+        avg_attendance_rate_n: 0,
+        total_call_duration: 0,
+        total_organize_duration: 0,
+        training_minutes: 0,
+        late_people: 0,
+        late_days: 0,
+        early_people: 0,
+        early_days: 0
+      }
     }
-    teamMap[team] += d.total_hours
-    peopleMap[team].add(d.name)
+    const t = teamMap[team]
+    t.count++
+    t.total_hours += d.total_hours || 0
+    t.scheduled_hours += d.scheduled_hours != null ? d.scheduled_hours : 0
+    if (d.avg_punctuality_rate != null) {
+      t.avg_punctuality_rate_sum += d.avg_punctuality_rate
+      t.avg_punctuality_rate_n++
+    }
+    if (d.computed_punctuality_rate != null) {
+      t.computed_punctuality_rate_sum += d.computed_punctuality_rate
+      t.computed_punctuality_rate_n++
+    }
+    if (d.avg_utilization_rate != null) {
+      t.avg_utilization_rate_sum += d.avg_utilization_rate
+      t.avg_utilization_rate_n++
+    }
+    if (d.avg_attendance_rate != null) {
+      t.avg_attendance_rate_sum += d.avg_attendance_rate
+      t.avg_attendance_rate_n++
+    }
+    t.total_call_duration += d.total_call_duration || 0
+    t.total_organize_duration += d.total_organize_duration || 0
+    t.training_minutes += d.training_minutes || 0
+    if ((d.late_days || 0) > 0) {
+      t.late_people++
+      t.late_days += d.late_days
+    }
+    if ((d.early_days || 0) > 0) {
+      t.early_people++
+      t.early_days += d.early_days
+    }
   })
-  const data = Object.entries(teamMap).map(([name, value]) => ({
-    name,
-    value: Math.round(value),
-    peopleCount: peopleMap[name].size,
-    avgHours: (value / peopleMap[name].size).toFixed(1)
+  return Object.entries(teamMap)
+    .map(([team, t]) => ({
+      team,
+      leader: teamLeaders.value[team] || '',
+      count: t.count,
+      total_hours: t.total_hours,
+      scheduled_hours: t.scheduled_hours,
+      avg_hours: t.count > 0 ? t.total_hours / t.count : 0,
+      avg_punctuality_rate: t.avg_punctuality_rate_n > 0 ? t.avg_punctuality_rate_sum / t.avg_punctuality_rate_n : null,
+      computed_punctuality_rate: t.computed_punctuality_rate_n > 0 ? t.computed_punctuality_rate_sum / t.computed_punctuality_rate_n : null,
+      avg_utilization_rate: t.avg_utilization_rate_n > 0 ? t.avg_utilization_rate_sum / t.avg_utilization_rate_n : null,
+      avg_attendance_rate: t.avg_attendance_rate_n > 0 ? t.avg_attendance_rate_sum / t.avg_attendance_rate_n : null,
+      total_call_duration: t.total_call_duration,
+      total_organize_duration: t.total_organize_duration,
+      training_minutes: t.training_minutes,
+      late_people: t.late_people,
+      late_days: t.late_days,
+      early_people: t.early_people,
+      early_days: t.early_days
+    }))
+    .sort((a, b) => b.total_hours - a.total_hours)
+    .slice(0, 8)
+})
+
+const teamTotalHours = computed(() => {
+  return teamMetricsRanking.value.reduce((s, t) => s + t.total_hours, 0)
+})
+
+const deptHoursOptions = computed(() => {
+  const ranking = teamMetricsRanking.value
+  if (!ranking.length) return {}
+  const data = ranking.map(t => ({
+    name: t.team,
+    value: Math.round(t.total_hours),
+    peopleCount: t.count,
+    avgHours: t.avg_hours.toFixed(1)
   }))
-    .sort((a, b) => b.value - a.value).slice(0, 8)
   return createPieOptions(data, '班组工时分布')
 })
 
@@ -952,24 +1080,77 @@ const checkinBuckets = computed(() => {
 const checkinBucketOptions = computed(() => {
   const buckets = checkinBuckets.value
   if (!buckets.length) return {}
-  return createBarOptions(buckets.map(b => b.name), buckets.map(b => b.value), '签入次数区间分布', '区间', '人数')
+  const data = mergedData.value
+  return createBarOptions(
+    buckets.map(b => b.name),
+    buckets.map(b => b.value),
+    '签入次数区间分布',
+    '区间',
+    '人数',
+    (params) => {
+      const bucket = buckets[params[0].dataIndex]
+      const people = data
+        .filter(d => d.checkin_count >= bucket.min && d.checkin_count <= bucket.max)
+        .sort((a, b) => b.total_hours - a.total_hours)
+        .slice(0, 5)
+      let html = `<strong>${bucket.name}</strong>: ${bucket.value} 人<br/>`
+      if (people.length) {
+        html += people.map(p => `${p.name}: ${p.checkin_count}次 / ${p.total_hours.toFixed(1)}h`).join('<br/>')
+        const totalInBucket = data.filter(d => d.checkin_count >= bucket.min && d.checkin_count <= bucket.max).length
+        if (totalInBucket > people.length) {
+          html += `<br/><span style="color:#909399">... 等 ${totalInBucket} 人</span>`
+        }
+      }
+      return html
+    }
+  )
 })
 
 const lateEarlyByTeamOptions = computed(() => {
   const data = mergedData.value
   if (!data.length) return {}
   const teamMap = {}
+  const latePeopleMap = {}
+  const earlyPeopleMap = {}
   data.forEach(d => {
     const t = d.team || '未知班组'
     if (!teamMap[t]) teamMap[t] = { late: 0, early: 0 }
-    if ((d.late_days || 0) > 0) teamMap[t].late += 1
-    if ((d.early_days || 0) > 0) teamMap[t].early += 1
+    if ((d.late_days || 0) > 0) {
+      teamMap[t].late += 1
+      if (!latePeopleMap[t]) latePeopleMap[t] = []
+      latePeopleMap[t].push({ name: d.name, minutes: d.late_minutes || 0 })
+    }
+    if ((d.early_days || 0) > 0) {
+      teamMap[t].early += 1
+      if (!earlyPeopleMap[t]) earlyPeopleMap[t] = []
+      earlyPeopleMap[t].push({ name: d.name, minutes: d.early_minutes || 0 })
+    }
   })
+  Object.keys(latePeopleMap).forEach(k => latePeopleMap[k].sort((a, b) => b.minutes - a.minutes))
+  Object.keys(earlyPeopleMap).forEach(k => earlyPeopleMap[k].sort((a, b) => b.minutes - a.minutes))
   const teams = Object.keys(teamMap)
-  return createMultiBarOptions(teams, [
-    { name: '晚签人数', data: teams.map(t => teamMap[t].late) },
-    { name: '早退人数', data: teams.map(t => teamMap[t].early) }
-  ], '班组晚签/早退人数')
+  return createMultiBarOptions(
+    teams,
+    [
+      { name: '晚签人数', data: teams.map(t => teamMap[t].late) },
+      { name: '早退人数', data: teams.map(t => teamMap[t].early) }
+    ],
+    '班组晚签/早退人数',
+    (params) => {
+      const team = params[0].name
+      const isLate = params[0].seriesName === '晚签人数'
+      const list = isLate ? (latePeopleMap[team] || []) : (earlyPeopleMap[team] || [])
+      const label = isLate ? '晚签' : '早退'
+      let html = `<strong>${team} - ${label}人数: ${list.length}</strong><br/>`
+      list.slice(0, 8).forEach(p => {
+        html += `${p.name} ${label} ${p.minutes}分<br/>`
+      })
+      if (list.length > 8) {
+        html += `<span style="color:#909399">... 等 ${list.length} 人</span>`
+      }
+      return html
+    }
+  )
 })
 
 const timeHourly = ref([])
@@ -1153,6 +1334,10 @@ function handleTeamChartClick(params) {
   }
 }
 
+function handleTeamTableRowClick(row) {
+  handleTeamChartClick({ name: row.team })
+}
+
 function handleCheckinRangeClick(params) {
   const bucket = checkinBuckets.value.find(b => b.name === params.name)
   if (!bucket) return
@@ -1204,6 +1389,19 @@ async function loadTeams() {
   try {
     const res = await api.get('/employees/teams')
     teams.value = res.data || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function loadTeamLeaders() {
+  try {
+    const res = await api.get('/employees/leaders')
+    const map = {}
+    ;(res.data || []).forEach(item => {
+      if (item.team) map[item.team] = item.leader
+    })
+    teamLeaders.value = map
   } catch (e) {
     console.error(e)
   }
@@ -1321,6 +1519,7 @@ onMounted(() => {
     handleTypeChange()
   }
   loadTeams()
+  loadTeamLeaders()
   loadData()
   checkinAnnotator.loadAnnotations().then(m => { checkinAnnMap.value = m })
   checkinDetailAnnotator.loadAnnotations().then(m => { checkinDetailAnnMap.value = m })

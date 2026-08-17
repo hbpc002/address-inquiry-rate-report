@@ -62,8 +62,15 @@ export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工
   }
 }
 
-export function createBarOptions(xData, yData, title, xName = '', yName = '') {
-  return {
+function applyTooltipFormatter(tooltip, formatter) {
+  if (!formatter) return
+  tooltip.confine = true
+  tooltip.extraCssText = 'white-space: pre-line; max-width: 520px; z-index: 9999;'
+  tooltip.formatter = formatter
+}
+
+export function createBarOptions(xData, yData, title, xName = '', yName = '', tooltipFormatter = null) {
+  const options = {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'axis' },
     legend: { data: [yName], bottom: 0 },
@@ -72,6 +79,8 @@ export function createBarOptions(xData, yData, title, xName = '', yName = '') {
     yAxis: { type: 'value', name: yName },
     series: [{ name: yName, type: 'bar', data: yData, itemStyle: { color: CHART_COLORS[0] } }]
   }
+  applyTooltipFormatter(options.tooltip, tooltipFormatter)
+  return options
 }
 
 export function createLineOptions(xData, yData, title, xName = '', yName = '') {
@@ -97,8 +106,8 @@ export function createHorizontalBarOptions(yData, xData, title, yName = '', xNam
   }
 }
 
-export function createMultiBarOptions(categories, series, title) {
-  return {
+export function createMultiBarOptions(categories, series, title, tooltipFormatter = null) {
+  const options = {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'axis' },
     legend: { data: series.map(s => s.name), bottom: 0 },
@@ -107,4 +116,6 @@ export function createMultiBarOptions(categories, series, title) {
     yAxis: { type: 'value' },
     series: series.map((s, i) => ({ ...s, type: 'bar', itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] } }))
   }
+  applyTooltipFormatter(options.tooltip, tooltipFormatter)
+  return options
 }

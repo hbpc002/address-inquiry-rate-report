@@ -121,6 +121,7 @@ describe('CheckinReport 汇总页 - 搜索栏折叠', () => {
     sessionStorage.clear()
     api.get.mockImplementation((url) => {
       if (url === '/employees/teams') return Promise.resolve({ data: [{ team: '班组A' }] })
+      if (url === '/employees/leaders') return Promise.resolve({ data: [] })
       if (url === '/checkins/team-report') return Promise.resolve({ data: { items: [] } })
       if (url === '/checkins/time-analysis') return Promise.resolve({ data: {} })
       return Promise.resolve({ data: mockReport })
@@ -162,6 +163,7 @@ describe('CheckinReport 汇总页 - 图表区折叠与压缩', () => {
     sessionStorage.clear()
     api.get.mockImplementation((url) => {
       if (url === '/employees/teams') return Promise.resolve({ data: [] })
+      if (url === '/employees/leaders') return Promise.resolve({ data: [] })
       if (url === '/checkins/team-report') return Promise.resolve({ data: { items: [] } })
       if (url === '/checkins/time-analysis') return Promise.resolve({ data: {} })
       return Promise.resolve({ data: mockReport })
@@ -193,10 +195,10 @@ describe('CheckinReport 汇总页 - 图表区折叠与压缩', () => {
     expect(wrapper.find('.el-table-stub').exists()).toBe(true)
   })
 
-  it('图表高度压缩为 180px/200px', async () => {
+  it('图表高度压缩为 180px/200px/280px', async () => {
     const wrapper = await mountPage()
     const heights = wrapper.findAll('.summary-charts .echart-stub').map(e => e.attributes('data-height'))
-    expect(heights).toEqual(['180px', '180px', '200px', '200px', '200px'])
+    expect(heights).toEqual(['180px', '180px', '200px', '200px', '280px'])
   })
 
   it('切换会话期间记忆收起状态', async () => {

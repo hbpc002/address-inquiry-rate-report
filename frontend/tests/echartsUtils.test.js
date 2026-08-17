@@ -35,6 +35,33 @@ describe('echarts 图表工具函数', () => {
     expect(options.series[0].itemStyle.color).not.toBe(options.series[1].itemStyle.color)
   })
 
+  it('传入 tooltipFormatter 时 createBarOptions 启用自定义 tooltip', () => {
+    const formatter = () => '<b>自定义</b>'
+    const options = createBarOptions(['A'], [1], '标题', 'x', 'y', formatter)
+    expect(options.tooltip.formatter).toBe(formatter)
+    expect(options.tooltip.confine).toBe(true)
+    expect(options.tooltip.extraCssText).toContain('max-width: 520px')
+  })
+
+  it('不传 tooltipFormatter 时 createBarOptions 保持默认 axis 触发', () => {
+    const options = createBarOptions(['A'], [1], '标题')
+    expect(options.tooltip.trigger).toBe('axis')
+    expect(options.tooltip.formatter).toBeUndefined()
+  })
+
+  it('传入 tooltipFormatter 时 createMultiBarOptions 启用自定义 tooltip', () => {
+    const formatter = (p) => p[0].name
+    const options = createMultiBarOptions(['A'], [{ name: '晚签人数', data: [1] }], '标题', formatter)
+    expect(options.tooltip.formatter).toBe(formatter)
+    expect(options.tooltip.confine).toBe(true)
+  })
+
+  it('不传 tooltipFormatter 时 createMultiBarOptions 保持默认 axis 触发', () => {
+    const options = createMultiBarOptions(['A'], [{ name: '晚签人数', data: [1] }], '标题')
+    expect(options.tooltip.trigger).toBe('axis')
+    expect(options.tooltip.formatter).toBeUndefined()
+  })
+
   it('CheckinReport.vue 应导入所有用到的 echarts 工具函数（防止 create* 漏导导致图表空白）', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
     const importLine = source.match(/import\s*\{([^}]*)\}\s*from\s*['"]\.\.\/utils\/echarts['"]/)?.[1] || ''
