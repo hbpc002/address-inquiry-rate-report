@@ -307,3 +307,88 @@ describe('CheckinReport - 签入次数区间 tooltip 显示 top5 员工', () => 
     }
   })
 })
+
+describe('CheckinReport - 分时签入/签出 tooltip 显示各班组人数', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
+  const hourlyBlock = source.slice(source.indexOf('const timeHourlyOptions'), source.indexOf('const timeShiftOverallOptions'))
+
+  function buildHourlyTooltip(d) {
+    let html = `<strong>${d.hour}点</strong><br/>`
+    const ci = d.checkin_teams || []
+    const co = d.checkout_teams || []
+    html += `签入 ${d.checkin_count} 人次<br/>`
+    if (ci.length) {
+      ci.forEach(t => { html += `　${t.team}: ${t.count} 人<br/>` })
+    }
+    html += `签出 ${d.checkout_count} 人次<br/>`
+    if (co.length) {
+      co.forEach(t => { html += `　${t.team}: ${t.count} 人<br/>` })
+    }
+    return html
+  }
+
+  it('tooltip 使用 checkin_teams/checkout_teams 展示各班组人数', () => {
+    expect(hourlyBlock).toContain('checkin_teams')
+    expect(hourlyBlock).toContain('checkout_teams')
+    const d = {
+      hour: 8, checkin_count: 3, checkout_count: 0,
+      checkin_teams: [{ team: '班组一', count: 2 }, { team: '班组二', count: 1 }],
+      checkout_teams: []
+    }
+    const html = buildHourlyTooltip(d)
+    expect(html).toContain('签入 3 人次')
+    expect(html).toContain('班组一: 2 人')
+    expect(html).toContain('班组二: 1 人')
+    expect(html).toContain('签出 0 人次')
+  })
+
+  it('分时图列表通过 persons 端点按签入/签出分组加载', () => {
+    expect(source).toContain('time-analysis/persons')
+    expect(source).toContain('type: \'checkin\'')
+    expect(source).toContain('type: \'checkout\'')
+    expect(source).toContain('handleTimeHourlyClick')
+    expect(source.includes('timeHourPersons')).toBe(true)
+  })
+})
+
+describe('CheckinReport - 班次占比 tooltip 显示各班组人次并点击出人员', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
+  const shiftBlock = source.slice(source.indexOf('const timeShiftOverallOptions'), source.indexOf('const timeShiftTeamOptions'))
+
+  function buildShiftTooltip(params, byTeam) {
+    const shiftTeamMap = {}
+    byTeam.forEach(s => {
+      if (!shiftTeamMap[s.shift_name]) shiftTeamMap[s.shift_name] = []
+      shiftTeamMap[s.shift_name].push({ team: s.team, count: s.count })
+    })
+    let html = `<strong>${params.name}</strong><br/>人次: ${params.value} (${params.percent}%)<br/>各班组:<br/>`
+    const teams = (shiftTeamMap[params.name] || []).slice().sort((a, b) => b.count - a.count)
+    if (teams.length) {
+      teams.forEach(t => { html += `　${t.team}: ${t.count} 人次<br/>` })
+    } else {
+      html += `<span style="color:#909399">　无</span>`
+    }
+    return html
+  }
+
+  it('tooltip 聚合 by_team 按班次展示各班组人次', () => {
+    expect(shiftBlock).toContain('by_team')
+    const byTeam = [
+      { team: '班组一', shift_name: '早班', count: 3 },
+      { team: '班组二', shift_name: '早班', count: 1 },
+      { team: '班组二', shift_name: '晚班', count: 2 }
+    ]
+    const html = buildShiftTooltip({ name: '早班', value: 4, percent: 66 }, byTeam)
+    expect(html).toContain('人次: 4 (66%)')
+    expect(html).toContain('班组一: 3 人次')
+    expect(html).toContain('班组二: 1 人次')
+    expect(html.indexOf('班组一')).toBeLessThan(html.indexOf('班组二'))
+  })
+
+  it('班次饼图点击调用 shift 人员端点并展示排班天数', () => {
+    expect(source).toContain('handleTimeShiftOverallClick')
+    expect(source).toContain('shift: shiftName')
+    expect(source).toContain('timeShiftPersons')
+    expect(source).toContain('prop="days"')
+  })
+})

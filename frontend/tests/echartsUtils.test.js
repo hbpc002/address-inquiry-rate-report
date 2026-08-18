@@ -65,6 +65,23 @@ describe('echarts 图表工具函数', () => {
     expect(options.tooltip.formatter).toBeUndefined()
   })
 
+  it('传入 tooltipFormatter 时 createPieOptions 启用自定义 tooltip（confine:false 挂载 body）', () => {
+    const formatter = (p) => `<strong>${p.name}</strong>`
+    const options = createPieOptions([{ name: '早班', value: 5 }], '班次占比', CHART_COLORS, '人次', formatter)
+    expect(options.tooltip.formatter).toBe(formatter)
+    expect(options.tooltip.confine).toBe(false)
+    expect(options.tooltip.appendToBody).toBe(true)
+    expect(options.tooltip.extraCssText).toContain('z-index: 99999')
+    expect(options.series[0].data[0].value).toBe(5)
+  })
+
+  it('不传 tooltipFormatter 时 createPieOptions 保持默认 item 触发（confine:true 兼容旧图）', () => {
+    const options = createPieOptions([{ name: '早班', value: 5 }], '班次占比')
+    expect(options.tooltip.trigger).toBe('item')
+    expect(options.tooltip.confine).toBe(true)
+    expect(options.tooltip.formatter).toBeDefined()
+  })
+
   it('CheckinReport.vue 应导入所有用到的 echarts 工具函数（防止 create* 漏导导致图表空白）', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
     const importLine = source.match(/import\s*\{([^}]*)\}\s*from\s*['"]\.\.\/utils\/echarts['"]/)?.[1] || ''

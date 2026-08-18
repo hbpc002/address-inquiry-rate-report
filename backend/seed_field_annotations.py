@@ -312,6 +312,13 @@ SEED_DATA = [
      "source": "系统自动计算",
      "formula": "出勤天数 / 排班天数 × 100%",
      "description": "出勤天数=有签到记录的日期数，排班天数=scheduled_hours>0 的日期数"},
+    {"report_type": "checkin", "field_path": "training_minutes", "field_label": "培训扣除(分)",
+     "source": "培训记录表(training_records)统计",
+     "formula": "∑(培训/请假记录的分钟数)", "description": "统计周期内培训/请假总分钟数"},
+    {"report_type": "checkin", "field_path": "computed_punctuality_rate", "field_label": "系统遵时率",
+     "source": "系统自动计算",
+     "formula": "(实际工时 - 培训工时) / (排班工时 - 培训工时) × 100%",
+     "description": "将培训时间从实际工时和排班工时中同时扣除后的遵时率，保留原导入遵时率作对比"},
 
     # ============================================================
     # 效能报表 (efficiency)

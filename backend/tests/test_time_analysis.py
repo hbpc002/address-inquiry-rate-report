@@ -88,6 +88,75 @@ class TestTimeAnalysis:
         assert by_hour[0]["checkin_count"] == 0
         assert sum(h["checkin_count"] for h in data["hourly"]) == 2
 
+    def test_hourly_includes_team_breakdown(self):
+        resp = client.get("/api/checkins/time-analysis", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        by_hour = {h["hour"]: h for h in resp.json()["hourly"]}
+        ci8 = by_hour[8]["checkin_teams"]
+        assert ci8 == [{"team": "班组一", "count": 1}]
+        ci12 = by_hour[12]["checkin_teams"]
+        assert ci12 == [{"team": "班组二", "count": 1}]
+        co16 = by_hour[16]["checkout_teams"]
+        assert co16 == [{"team": "班组一", "count": 1}]
+        assert by_hour[9]["checkin_teams"] == []
+        assert by_hour[9]["checkout_teams"] == []
+
+    def test_persons_by_hour_checkin_and_checkout(self):
+        resp = client.get("/api/checkins/time-analysis/persons",
+                          params={"year_month": "2026-06", "hour": 8, "type": "checkin"})
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["emp_no"] == "T001"
+        assert items[0]["name"] == "甲"
+        assert items[0]["team"] == "班组一"
+        assert items[0]["time"] == "08:30"
+
+        resp = client.get("/api/checkins/time-analysis/persons",
+                          params={"year_month": "2026-06", "hour": 20, "type": "checkout"})
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["emp_no"] == "T002"
+        assert items[0]["time"] == "20:05"
+
+        # 无记录的小时返回空
+        resp = client.get("/api/checkins/time-analysis/persons",
+                          params={"year_month": "2026-06", "hour": 3, "type": "checkin"})
+        assert resp.json()["items"] == []
+
+    def test_persons_by_shift_with_days(self):
+        db = SessionLocal()
+        try:
+            # 甲早班排 2 天
+            db.add(Schedule(emp_id=self.emp1, schedule_date=date(2026, 6, 11), shift_name="早班", schedule_type="正常", work_hours=8))
+            db.add(Schedule(emp_id=self.emp1, schedule_date=date(2026, 6, 12), shift_name="早班", schedule_type="正常", work_hours=8))
+            # 乙晚班排 1 天(6-10 已有)，再补 1 天
+            db.add(Schedule(emp_id=self.emp2, schedule_date=date(2026, 6, 12), shift_name="晚班", schedule_type="正常", work_hours=8, is_night=True))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/checkins/time-analysis/persons",
+                          params={"year_month": "2026-06", "shift": "早班"})
+        assert resp.status_code == 200
+        items = {i["emp_no"]: i for i in resp.json()["items"]}
+        assert items["T001"]["name"] == "甲"
+        assert items["T001"]["team"] == "班组一"
+        assert items["T001"]["days"] == 3
+        assert "T002" not in items
+
+        resp = client.get("/api/checkins/time-analysis/persons",
+                          params={"year_month": "2026-06", "shift": "晚班"})
+        items = {i["emp_no"]: i for i in resp.json()["items"]}
+        assert items["T002"]["days"] == 2
+
+        # 不存在的班次返回空
+        resp = client.get("/api/checkins/time-analysis/persons",
+                          params={"year_month": "2026-06", "shift": "不存在"})
+        assert resp.json()["items"] == []
+
+
     def test_shift_distribution_overall_and_by_team(self):
         resp = client.get("/api/checkins/time-analysis", params={"year_month": "2026-06"})
         assert resp.status_code == 200

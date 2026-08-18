@@ -34,8 +34,8 @@ export const CHART_COLORS = [
   '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#ff5722'
 ]
 
-export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工时') {
-  return {
+export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工时', tooltipFormatter = null) {
+  const options = {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: {
       trigger: 'item',
@@ -60,6 +60,8 @@ export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工
       label: { formatter: '{b}: {c}' }
     }]
   }
+  applyTooltipFormatter(options.tooltip, tooltipFormatter)
+  return options
 }
 
 function applyTooltipFormatter(tooltip, formatter) {

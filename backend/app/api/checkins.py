@@ -19,6 +19,18 @@ from app.models.training_record import TrainingRecord
 from app.utils.logger import log_operation
 
 
+def normalize_shift(raw):
+    if not raw:
+        return "其他"
+    if '晚' in raw:
+        return "晚班"
+    if '行政' in raw or '早' in raw:
+        return "早班"
+    if '中' in raw:
+        return "中班"
+    return raw
+
+
 def determine_shift_name(sched, first_checkin_time_str, checkout_time_str=None):
     """根据排班班次名称确定班次，若无排班则按签出/签入时间兜底。
 
@@ -614,43 +626,54 @@ def get_time_analysis(
     # ---- 1) 分时签入/签出分布 (0-23) ----
     checkin_rows = db.query(
         func.extract('hour', Checkin.checkin_time).label('h'),
+        Employee.team,
         func.count(Checkin.id)
     ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
         *base_filters,
         func.date(Checkin.checkin_time) >= query_start,
         func.date(Checkin.checkin_time) <= query_end
-    ).group_by('h').all()
+    ).group_by('h', Employee.team).all()
 
     checkout_rows = db.query(
         func.extract('hour', Checkin.checkout_time).label('h'),
+        Employee.team,
         func.count(Checkin.id)
     ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
         *base_filters,
         Checkin.checkout_time.isnot(None),
         func.date(Checkin.checkin_time) >= query_start,
         func.date(Checkin.checkin_time) <= query_end
-    ).group_by('h').all()
+    ).group_by('h', Employee.team).all()
 
-    checkin_hour_counts = {int(h): c for h, c in checkin_rows}
-    checkout_hour_counts = {int(h): c for h, c in checkout_rows}
+    checkin_hour_counts = {}
+    checkin_team_counts = {}
+    for h, team, c in checkin_rows:
+        hour = int(h)
+        checkin_hour_counts[hour] = checkin_hour_counts.get(hour, 0) + c
+        teams = checkin_team_counts.setdefault(hour, {})
+        teams[team] = teams.get(team, 0) + c
+
+    checkout_hour_counts = {}
+    checkout_team_counts = {}
+    for h, team, c in checkout_rows:
+        hour = int(h)
+        checkout_hour_counts[hour] = checkout_hour_counts.get(hour, 0) + c
+        teams = checkout_team_counts.setdefault(hour, {})
+        teams[team] = teams.get(team, 0) + c
+
     hourly = [{
         "hour": h,
         "checkin_count": checkin_hour_counts.get(h, 0),
-        "checkout_count": checkout_hour_counts.get(h, 0)
+        "checkout_count": checkout_hour_counts.get(h, 0),
+        "checkin_teams": [
+            {"team": t, "count": n} for t, n in sorted(checkin_team_counts.get(h, {}).items(), key=lambda x: -x[1])
+        ],
+        "checkout_teams": [
+            {"team": t, "count": n} for t, n in sorted(checkout_team_counts.get(h, {}).items(), key=lambda x: -x[1])
+        ]
     } for h in range(24)]
 
     # ---- 2. 班次分布（整体 + 按班组）----
-    def normalize_shift(raw):
-        if not raw:
-            return "其他"
-        if '晚' in raw:
-            return "晚班"
-        if '行政' in raw or '早' in raw:
-            return "早班"
-        if '中' in raw:
-            return "中班"
-        return raw
-
     shift_rows = db.query(
         Employee.team,
         Schedule.shift_name,
@@ -742,6 +765,115 @@ def get_time_analysis(
             "end": query_end.isoformat()
         }
     }
+
+
+@router.get("/time-analysis/persons")
+def get_time_analysis_persons(
+    date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    team: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    hour: Optional[int] = Query(None, description="小时(0-23)，与 type 搭配查询分时人员"),
+    type: Optional[str] = Query(None, description="checkin|checkout，与 hour 搭配"),
+    shift: Optional[str] = Query(None, description="班次名称(早班/中班/晚班/其他)，查询该班次人员"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """时段分析人员明细：按小时(签入/签出)或按班次返回人员列表"""
+    from datetime import timedelta
+
+    if date:
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+        query_start = d
+        query_end = d
+    elif year_month:
+        query_start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
+        if year_month == datetime.now().strftime("%Y-%m"):
+            query_end = datetime.now().date()
+        else:
+            next_month = (query_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            query_end = next_month - timedelta(days=1)
+    elif start_date and end_date:
+        query_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        query_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        query_start = datetime.now().date()
+        query_end = query_start
+
+    base_filters = [
+        Employee.team != '',
+        Employee.dept.like(TARGET_DEPT + '%'),
+    ]
+    if team:
+        base_filters.append(Employee.team == team)
+    if name:
+        base_filters.append(Employee.name.ilike(f'%{name}%'))
+    if emp_no:
+        base_filters.append(Employee.emp_no.ilike(f'%{emp_no}%'))
+
+    if hour is not None and type in ("checkin", "checkout"):
+        if type == "checkin":
+            rows = db.query(Checkin, Employee).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+                *base_filters,
+                func.extract('hour', Checkin.checkin_time) == hour,
+                func.date(Checkin.checkin_time) >= query_start,
+                func.date(Checkin.checkin_time) <= query_end
+            ).all()
+            items = [{
+                "emp_no": c.emp_no,
+                "name": c.name,
+                "team": e.team,
+                "time": c.checkin_time.strftime('%H:%M')
+            } for c, e in rows]
+        else:
+            rows = db.query(Checkin, Employee).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+                *base_filters,
+                Checkin.checkout_time.isnot(None),
+                func.extract('hour', Checkin.checkout_time) == hour,
+                func.date(Checkin.checkin_time) >= query_start,
+                func.date(Checkin.checkin_time) <= query_end
+            ).all()
+            items = [{
+                "emp_no": c.emp_no,
+                "name": c.name,
+                "team": e.team,
+                "time": c.checkout_time.strftime('%H:%M')
+            } for c, e in rows]
+        items.sort(key=lambda x: x["time"])
+        return {"items": items, "hour": hour, "type": type}
+
+    if shift:
+        rows = db.query(Employee, Schedule.shift_name, func.count(Schedule.id)).join(
+            Schedule, Schedule.emp_id == Employee.id
+        ).filter(
+            *base_filters,
+            Schedule.shift_name.isnot(None),
+            Schedule.schedule_date >= query_start,
+            Schedule.schedule_date <= query_end
+        ).group_by(Employee, Schedule.shift_name).all()
+
+        counter = {}
+        for emp, shift_name, cnt in rows:
+            if normalize_shift(shift_name) != shift:
+                continue
+            key = emp.emp_no
+            if key not in counter:
+                counter[key] = {
+                    "emp_no": emp.emp_no,
+                    "name": emp.name,
+                    "team": emp.team,
+                    "days": 0
+                }
+            counter[key]["days"] += cnt
+
+        items = list(counter.values())
+        items.sort(key=lambda x: -x["days"])
+        return {"items": items, "shift": shift}
+
+    return {"items": []}
 
 
 @router.get("/team-report")

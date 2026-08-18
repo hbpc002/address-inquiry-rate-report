@@ -331,13 +331,13 @@
             <el-col :span="16">
               <el-card shadow="hover">
                 <div style="margin-bottom: 8px; font-size: 14px; color: #606266">分时签入/签出分布（高峰期识别）</div>
-                <Echart :options="timeHourlyOptions" height="300px" />
+                <Echart :options="timeHourlyOptions" height="300px" @click="handleTimeHourlyClick" />
               </el-card>
             </el-col>
             <el-col :span="8">
               <el-card shadow="hover">
-                <div style="margin-bottom: 8px; font-size: 14px; color: #606266">班次占比</div>
-                <Echart :options="timeShiftOverallOptions" height="300px" />
+                <div style="margin-bottom: 8px; font-size: 14px; color: #606266">班次占比（点击查看班次人员）</div>
+                <Echart :options="timeShiftOverallOptions" height="300px" @click="handleTimeShiftOverallClick" />
               </el-card>
             </el-col>
           </el-row>
@@ -368,6 +368,37 @@
       </el-checkbox-group>
       <template #footer>
         <el-button @click="columnSelectorVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="timeDetailVisible" :title="timeDetailTitle" width="720px">
+      <template v-if="timeDetailMode === 'hour'">
+        <div style="margin-bottom: 8px; font-weight: 600">签入人员（{{ timeHourPersons.checkin.length }}）</div>
+        <el-table :data="timeHourPersons.checkin" size="small" max-height="260" border>
+          <el-table-column prop="emp_no" label="工号" width="110" />
+          <el-table-column prop="name" label="姓名" width="120" />
+          <el-table-column prop="team" label="班组" />
+          <el-table-column prop="time" label="签入时间" width="100" />
+        </el-table>
+        <div style="margin: 12px 0 8px; font-weight: 600">签出人员（{{ timeHourPersons.checkout.length }}）</div>
+        <el-table :data="timeHourPersons.checkout" size="small" max-height="260" border>
+          <el-table-column prop="emp_no" label="工号" width="110" />
+          <el-table-column prop="name" label="姓名" width="120" />
+          <el-table-column prop="team" label="班组" />
+          <el-table-column prop="time" label="签出时间" width="100" />
+        </el-table>
+      </template>
+      <template v-else>
+        <div style="margin-bottom: 8px; font-weight: 600">该班次人员（共 {{ timeShiftPersons.length }} 人）</div>
+        <el-table :data="timeShiftPersons" size="small" max-height="420" border>
+          <el-table-column prop="emp_no" label="工号" width="110" />
+          <el-table-column prop="name" label="姓名" width="120" />
+          <el-table-column prop="team" label="班组" />
+          <el-table-column prop="days" label="排班天数" width="100" sortable />
+        </el-table>
+      </template>
+      <template #footer>
+        <el-button @click="timeDetailVisible = false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -1122,6 +1153,11 @@ const lateEarlyByTeamOptions = computed(() => {
 const timeHourly = ref([])
 const timeShifts = ref({ overall: [], by_team: [] })
 const timeUtilization = ref([])
+const timeDetailVisible = ref(false)
+const timeDetailTitle = ref('')
+const timeDetailMode = ref('hour')
+const timeHourPersons = ref({ checkin: [], checkout: [] })
+const timeShiftPersons = ref([])
 
 const timeHourlyOptions = computed(() => {
   if (!timeHourly.value.length) return {}
@@ -1129,13 +1165,43 @@ const timeHourlyOptions = computed(() => {
   return createMultiBarOptions(hours, [
     { name: '签入人次', data: timeHourly.value.map(d => d.checkin_count) },
     { name: '签出人次', data: timeHourly.value.map(d => d.checkout_count) }
-  ], '分时签入/签出分布')
+  ], '分时签入/签出分布', (params) => {
+    const d = timeHourly.value[params[0].dataIndex]
+    if (!d) return ''
+    let html = `<strong>${d.hour}点</strong><br/>`
+    const ci = d.checkin_teams || []
+    const co = d.checkout_teams || []
+    html += `签入 ${d.checkin_count} 人次<br/>`
+    if (ci.length) {
+      ci.forEach(t => { html += `　${t.team}: ${t.count} 人<br/>` })
+    }
+    html += `签出 ${d.checkout_count} 人次<br/>`
+    if (co.length) {
+      co.forEach(t => { html += `　${t.team}: ${t.count} 人<br/>` })
+    }
+    return html
+  })
 })
 
 const timeShiftOverallOptions = computed(() => {
   const overall = timeShifts.value.overall || []
+  const byTeam = timeShifts.value.by_team || []
   if (!overall.length) return {}
-  return createPieOptions(overall.map(s => ({ name: s.shift_name, value: s.count })), '班次占比', CHART_COLORS, '人次')
+  const shiftTeamMap = {}
+  byTeam.forEach(s => {
+    if (!shiftTeamMap[s.shift_name]) shiftTeamMap[s.shift_name] = []
+    shiftTeamMap[s.shift_name].push({ team: s.team, count: s.count })
+  })
+  return createPieOptions(overall.map(s => ({ name: s.shift_name, value: s.count })), '班次占比', CHART_COLORS, '人次', (params) => {
+    let html = `<strong>${params.name}</strong><br/>人次: ${params.value} (${params.percent}%)<br/>各班组:<br/>`
+    const teams = (shiftTeamMap[params.name] || []).slice().sort((a, b) => b.count - a.count)
+    if (teams.length) {
+      teams.forEach(t => { html += `　${t.team}: ${t.count} 人次<br/>` })
+    } else {
+      html += `<span style="color:#909399">　无</span>`
+    }
+    return html
+  })
 })
 
 const timeShiftTeamOptions = computed(() => {
@@ -1410,6 +1476,42 @@ async function loadTimeAnalysis() {
     timeUtilization.value = res.data.hourly_utilization || []
   } catch (e) {
     ElMessage.error('加载时段分析失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function handleTimeHourlyClick(params) {
+  if (params.componentType !== 'series') return
+  const d = timeHourly.value[params.dataIndex]
+  if (!d) return
+  timeDetailMode.value = 'hour'
+  timeDetailTitle.value = `${d.hour}点 签入/签出人员明细`
+  timeHourPersons.value = { checkin: [], checkout: [] }
+  timeDetailVisible.value = true
+  const q = buildQueryParams()
+  try {
+    const [ci, co] = await Promise.all([
+      api.get('/checkins/time-analysis/persons', { params: { ...q, hour: d.hour, type: 'checkin' } }),
+      api.get('/checkins/time-analysis/persons', { params: { ...q, hour: d.hour, type: 'checkout' } })
+    ])
+    timeHourPersons.value = { checkin: ci.data.items || [], checkout: co.data.items || [] }
+  } catch (e) {
+    ElMessage.error('加载人员明细失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function handleTimeShiftOverallClick(params) {
+  if (params.componentType !== 'series') return
+  const shiftName = params.name
+  timeDetailMode.value = 'shift'
+  timeDetailTitle.value = `${shiftName} 班次人员明细`
+  timeShiftPersons.value = []
+  timeDetailVisible.value = true
+  const q = buildQueryParams()
+  try {
+    const res = await api.get('/checkins/time-analysis/persons', { params: { ...q, shift: shiftName } })
+    timeShiftPersons.value = res.data.items || []
+  } catch (e) {
+    ElMessage.error('加载班次人员失败: ' + (e.response?.data?.detail || e.message))
   }
 }
 
