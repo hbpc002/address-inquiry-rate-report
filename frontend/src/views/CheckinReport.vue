@@ -150,27 +150,6 @@
       </el-row>
 
       <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 12px">
-        <el-col :span="12">
-          <el-card shadow="hover">
-            <div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center">
-              <span style="font-size: 14px; color: #606266">员工工时排名（点击员工筛选）</span>
-              <el-radio-group v-model="chartType" size="small">
-                <el-radio-button value="bar">柱状图</el-radio-button>
-                <el-radio-button value="line">折线图</el-radio-button>
-              </el-radio-group>
-            </div>
-            <Echart :options="hoursChartOptions" height="200px" @click="handleHoursChartClick" />
-          </el-card>
-        </el-col>
-        <el-col :span="12">
-          <el-card shadow="hover">
-            <div style="margin-bottom: 6px; font-size: 14px; color: #606266">员工签入次数排名（点击员工筛选）</div>
-            <Echart :options="checkinCountOptions" height="200px" @click="handleCheckinChartClick" />
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 12px">
         <el-col :span="8">
           <el-card shadow="hover">
             <div style="margin-bottom: 6px; font-size: 14px; color: #606266">班组工时分布（点击班组筛选）</div>
@@ -207,19 +186,6 @@
                 <el-table-column label="班表出勤率" width="90" sortable prop="avg_attendance_rate">
                   <template #default="{ row }">{{ row.avg_attendance_rate != null ? row.avg_attendance_rate.toFixed(2) + '%' : '-' }}</template>
                 </el-table-column>
-                <el-table-column label="通话时长" width="85" sortable prop="total_call_duration">
-                  <template #default="{ row }">{{ row.total_call_duration != null ? row.total_call_duration.toFixed(1) + 'h' : '-' }}</template>
-                </el-table-column>
-                <el-table-column label="整理时长" width="85" sortable prop="total_organize_duration">
-                  <template #default="{ row }">{{ row.total_organize_duration != null ? row.total_organize_duration.toFixed(1) + 'h' : '-' }}</template>
-                </el-table-column>
-                <el-table-column label="培训扣除(分)" width="95" sortable prop="training_minutes">
-                  <template #default="{ row }">{{ row.training_minutes != null ? row.training_minutes : 0 }}</template>
-                </el-table-column>
-                <el-table-column label="晚签人数" width="80" sortable prop="late_people" />
-                <el-table-column label="晚签天数" width="80" sortable prop="late_days" />
-                <el-table-column label="早退人数" width="80" sortable prop="early_people" />
-                <el-table-column label="早退天数" width="80" sortable prop="early_days" />
                 <el-table-column label="占比" width="75" sortable prop="total_hours">
                   <template #default="{ row }">{{ (row.total_hours / teamTotalHours * 100).toFixed(1) + '%' }}</template>
                 </el-table-column>
@@ -645,7 +611,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
-import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions, CHART_COLORS } from '../utils/echarts'
+import { createPieOptions, createBarOptions, createMultiBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
 import { useUserStore } from '../stores/user'
 const userStore = useUserStore()
@@ -945,23 +911,6 @@ const undertimeNames = computed(() => {
   return tableData.value.filter(d => d.hour_status === 'undertime').map(d => d.name).slice(0, 5)
 })
 
-const chartType = ref('bar')
-
-const hoursChartOptions = computed(() => {
-  if (!tableData.value.length) return {}
-  const data = [...tableData.value].sort((a, b) => b.total_hours - a.total_hours).slice(0, 10)
-  if (chartType.value === 'line') {
-    return createLineOptions(data.map(d => d.name), data.map(d => d.total_hours.toFixed(1)), '员工工时排名', '姓名', '工时(h)')
-  }
-  return createBarOptions(data.map(d => d.name), data.map(d => d.total_hours.toFixed(1)), '员工工时排名', '姓名', '工时(h)')
-})
-
-const checkinCountOptions = computed(() => {
-  if (!tableData.value.length) return {}
-  const data = [...tableData.value].sort((a, b) => a.checkin_count - b.checkin_count).slice(-10)
-  return createHorizontalBarOptions(data.map(d => d.name), data.map(d => d.checkin_count), '员工签入次数排名', '姓名', '签入次数')
-})
-
 const teamMetricsRanking = computed(() => {
   const data = mergedData.value
   if (!data.length) return []
@@ -1138,15 +1087,32 @@ const lateEarlyByTeamOptions = computed(() => {
     '班组晚签/早退人数',
     (params) => {
       const team = params[0].name
-      const isLate = params[0].seriesName === '晚签人数'
-      const list = isLate ? (latePeopleMap[team] || []) : (earlyPeopleMap[team] || [])
-      const label = isLate ? '晚签' : '早退'
-      let html = `<strong>${team} - ${label}人数: ${list.length}</strong><br/>`
-      list.slice(0, 8).forEach(p => {
-        html += `${p.name} ${label} ${p.minutes}分<br/>`
-      })
-      if (list.length > 8) {
-        html += `<span style="color:#909399">... 等 ${list.length} 人</span>`
+      const lateList = latePeopleMap[team] || []
+      const earlyList = earlyPeopleMap[team] || []
+      const lateLabel = '晚签'
+      const earlyLabel = '早退'
+      let html = `<strong>${team} - ${lateLabel}: ${lateList.length}人 / ${earlyLabel}: ${earlyList.length}人</strong><br/>`
+      if (!lateList.length && !earlyList.length) {
+        html += `<span style="color:#909399">无晚签/早退记录</span>`
+        return html
+      }
+      if (lateList.length) {
+        html += `<span style="color:#c45656;font-weight:bold">${lateLabel}明细:</span><br/>`
+        lateList.slice(0, 8).forEach(p => {
+          html += `${p.name} ${lateLabel} ${p.minutes}分<br/>`
+        })
+        if (lateList.length > 8) {
+          html += `<span style="color:#909399">... 等 ${lateList.length} 人</span><br/>`
+        }
+      }
+      if (earlyList.length) {
+        html += `<span style="color:#c45656;font-weight:bold">${earlyLabel}明细:</span><br/>`
+        earlyList.slice(0, 8).forEach(p => {
+          html += `${p.name} ${earlyLabel} ${p.minutes}分<br/>`
+        })
+        if (earlyList.length > 8) {
+          html += `<span style="color:#909399">... 等 ${earlyList.length} 人</span><br/>`
+        }
       }
       return html
     }
@@ -1299,28 +1265,6 @@ function clearFilter() {
   filterType.value = ''
   filterValue.value = ''
   currentPage.value = 1
-}
-
-function handleHoursChartClick(params) {
-  const name = params.name
-  if (filterType.value === 'name' && filterValue.value === name) {
-    clearFilter()
-  } else {
-    filterType.value = 'name'
-    filterValue.value = name
-    currentPage.value = 1
-  }
-}
-
-function handleCheckinChartClick(params) {
-  const name = params.name
-  if (filterType.value === 'name' && filterValue.value === name) {
-    clearFilter()
-  } else {
-    filterType.value = 'name'
-    filterValue.value = name
-    currentPage.value = 1
-  }
 }
 
 function handleTeamChartClick(params) {

@@ -1,4 +1,44 @@
 import { describe, it, expect } from 'vitest'
+import fs from 'fs'
+import path from 'path'
+
+describe('CheckinReport - 班组工时明细表列配置', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
+  const teamTableStart = source.indexOf('<el-table :data="teamMetricsRanking"')
+  const teamTableEnd = source.indexOf('</el-table>', teamTableStart)
+  const teamTableBlock = teamTableStart >= 0 && teamTableEnd > teamTableStart
+    ? source.slice(teamTableStart, teamTableEnd)
+    : ''
+
+  it('班组工时明细表应删除通话时长/整理时长/培训扣除/晚签早退等 7 列', () => {
+    expect(teamTableBlock).toBeTruthy()
+    const removed = ['通话时长', '整理时长', '培训扣除(分)', '晚签人数', '晚签天数', '早退人数', '早退天数']
+    removed.forEach(label => {
+      expect(teamTableBlock.includes(label), `班组明细表不应再包含列: ${label}`).toBe(false)
+    })
+  })
+
+  it('班组工时明细表应保留排名/班组/组长/人数/工时/遵时率/利用率/出勤率/占比列', () => {
+    const kept = ['排名', '组长', '人数', '总工作时长', '总排班工时', '人均工作时长', '系统遵时率', '遵时率', '工时利用率', '班表出勤率', '占比']
+    kept.forEach(label => {
+      expect(teamTableBlock.includes(label), `班组明细表应保留列: ${label}`).toBe(true)
+    })
+  })
+})
+
+describe('CheckinReport - 已移除的员工排名图表', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
+
+  it('不再引用员工工时排名/员工签入次数排名图表及其点击处理器', () => {
+    expect(source.includes('员工工时排名')).toBe(false)
+    expect(source.includes('员工签入次数排名')).toBe(false)
+    expect(source.includes('hoursChartOptions')).toBe(false)
+    expect(source.includes('checkinCountOptions')).toBe(false)
+    expect(source.includes('handleHoursChartClick')).toBe(false)
+    expect(source.includes('handleCheckinChartClick')).toBe(false)
+    expect(source.includes('chartType')).toBe(false)
+  })
+})
 
 describe('CheckinReport - 班组工时明细表 (teamMetricsRanking)', () => {
   const mergedData = [
@@ -125,7 +165,7 @@ describe('CheckinReport - 班组工时明细表 (teamMetricsRanking)', () => {
   })
 })
 
-describe('CheckinReport - 班组晚签/早退 tooltip 人名+累计分钟', () => {
+describe('CheckinReport - 班组晚签/早退 tooltip 人名+累计分钟（两列同时显示）', () => {
   const mergedData = [
     { emp_no: 'E001', name: '张三', team: '班组A', late_days: 1, late_minutes: 20, early_days: 0, early_minutes: 0 },
     { emp_no: 'E002', name: '李四', team: '班组A', late_days: 2, late_minutes: 45, early_days: 1, early_minutes: 10 },
@@ -157,39 +197,69 @@ describe('CheckinReport - 班组晚签/早退 tooltip 人名+累计分钟', () =
 
   function formatTooltip(params, maps) {
     const team = params[0].name
-    const isLate = params[0].seriesName === '晚签人数'
-    const list = isLate ? (maps.latePeopleMap[team] || []) : (maps.earlyPeopleMap[team] || [])
-    const label = isLate ? '晚签' : '早退'
-    let html = `${team} - ${label}人数: ${list.length}\n`
-    list.slice(0, 8).forEach(p => {
-      html += `${p.name} ${label} ${p.minutes}分\n`
-    })
+    const lateList = maps.latePeopleMap[team] || []
+    const earlyList = maps.earlyPeopleMap[team] || []
+    const lateLabel = '晚签'
+    const earlyLabel = '早退'
+    let html = `${team} - ${lateLabel}: ${lateList.length}人 / ${earlyLabel}: ${earlyList.length}人\n`
+    if (!lateList.length && !earlyList.length) {
+      html += '无晚签/早退记录'
+      return html
+    }
+    if (lateList.length) {
+      html += `${lateLabel}明细:\n`
+      lateList.slice(0, 8).forEach(p => {
+        html += `${p.name} ${lateLabel} ${p.minutes}分\n`
+      })
+      if (lateList.length > 8) html += `... 等 ${lateList.length} 人\n`
+    }
+    if (earlyList.length) {
+      html += `${earlyLabel}明细:\n`
+      earlyList.slice(0, 8).forEach(p => {
+        html += `${p.name} ${earlyLabel} ${p.minutes}分\n`
+      })
+      if (earlyList.length > 8) html += `... 等 ${earlyList.length} 人\n`
+    }
     return html
   }
 
-  it('晚签 tooltip 显示人名与累计分钟（按分钟降序）', () => {
+  it('tooltip 同时显示晚签与早退两列及人数', () => {
     const maps = buildLateEarlyMaps(mergedData)
-    const html = formatTooltip([{ name: '班组A', seriesName: '晚签人数' }], maps)
-    expect(html).toContain('班组A - 晚签人数: 2')
-    expect(html.indexOf('李四').toString()).not.toBe(-1)
+    const html = formatTooltip([{ name: '班组A' }], maps)
+    expect(html).toContain('班组A - 晚签: 2人 / 早退: 1人')
+    expect(html).toContain('晚签明细:')
+    expect(html).toContain('早退明细:')
+  })
+
+  it('晚签列按累计分钟降序显示人名', () => {
+    const maps = buildLateEarlyMaps(mergedData)
+    const html = formatTooltip([{ name: '班组A' }], maps)
     expect(html).toContain('李四 晚签 45分')
     expect(html).toContain('张三 晚签 20分')
-    // 李四 45分 应排在 张三 20分 之前
-    expect(html.indexOf('李四')).toBeLessThan(html.indexOf('张三'))
+    expect(html.indexOf('李四 晚签')).toBeLessThan(html.indexOf('张三 晚签'))
   })
 
-  it('早退 tooltip 显示早退人员与累计分钟', () => {
+  it('早退列显示早退人员与累计分钟', () => {
     const maps = buildLateEarlyMaps(mergedData)
-    const html = formatTooltip([{ name: '班组B', seriesName: '早退人数' }], maps)
-    expect(html).toContain('班组B - 早退人数: 1')
+    const html = formatTooltip([{ name: '班组A' }], maps)
+    expect(html).toContain('李四 早退 10分')
+  })
+
+  it('仅早退无晚签的班组：早退列正常、无晚签明细行', () => {
+    const maps = buildLateEarlyMaps(mergedData)
+    const html = formatTooltip([{ name: '班组B' }], maps)
+    expect(html).toContain('班组B - 晚签: 0人 / 早退: 1人')
     expect(html).toContain('王五 早退 35分')
+    expect(html).not.toContain('晚签明细:')
   })
 
-  it('无晚签人员的班组不显示员工行', () => {
-    const maps = buildLateEarlyMaps(mergedData)
-    const html = formatTooltip([{ name: '班组B', seriesName: '晚签人数' }], maps)
-    expect(html).toContain('班组B - 晚签人数: 0')
-    expect(html.split('\n').filter(l => l.includes('晚签 0分')).length).toBe(0)
+  it('无晚签/早退记录的班组显示提示', () => {
+    const maps = buildLateEarlyMaps([
+      { emp_no: 'E001', name: '张三', team: '班组A', late_days: 0, late_minutes: 0, early_days: 0, early_minutes: 0 }
+    ])
+    const html = formatTooltip([{ name: '班组A' }], maps)
+    expect(html).toContain('班组A - 晚签: 0人 / 早退: 0人')
+    expect(html).toContain('无晚签/早退记录')
   })
 })
 

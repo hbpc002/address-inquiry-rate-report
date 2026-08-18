@@ -64,8 +64,9 @@ export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工
 
 function applyTooltipFormatter(tooltip, formatter) {
   if (!formatter) return
-  tooltip.confine = true
-  tooltip.extraCssText = 'white-space: pre-line; max-width: 520px; z-index: 9999;'
+  tooltip.confine = false
+  tooltip.appendToBody = true
+  tooltip.extraCssText = 'white-space: pre-line; max-width: 520px; z-index: 99999;'
   tooltip.formatter = formatter
 }
 

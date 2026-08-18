@@ -170,10 +170,10 @@ describe('CheckinReport 汇总页 - 图表区折叠与压缩', () => {
     })
   })
 
-  it('默认展开图表（showCharts=true），汇总区渲染全部5个图表', async () => {
+  it('默认展开图表（showCharts=true），汇总区渲染全部3个图表', async () => {
     const wrapper = await mountPage()
     expect(wrapper.find('.summary-charts').exists()).toBe(true)
-    expect(wrapper.findAll('.summary-charts .echart-stub')).toHaveLength(5)
+    expect(wrapper.findAll('.summary-charts .echart-stub')).toHaveLength(3)
   })
 
   it('点击“收起图表”后图表区整体移除，再次点击恢复', async () => {
@@ -185,7 +185,7 @@ describe('CheckinReport 汇总页 - 图表区折叠与压缩', () => {
 
     await findButton(wrapper, '展开图表').trigger('click')
     expect(wrapper.find('.summary-charts').exists()).toBe(true)
-    expect(wrapper.findAll('.summary-charts .echart-stub')).toHaveLength(5)
+    expect(wrapper.findAll('.summary-charts .echart-stub')).toHaveLength(3)
     expect(sessionStorage.getItem('checkin-report-show-charts')).toBe('true')
   })
 
@@ -195,10 +195,10 @@ describe('CheckinReport 汇总页 - 图表区折叠与压缩', () => {
     expect(wrapper.find('.el-table-stub').exists()).toBe(true)
   })
 
-  it('图表高度压缩为 180px/200px/280px', async () => {
+  it('图表高度压缩为 180px/280px', async () => {
     const wrapper = await mountPage()
     const heights = wrapper.findAll('.summary-charts .echart-stub').map(e => e.attributes('data-height'))
-    expect(heights).toEqual(['180px', '180px', '200px', '200px', '280px'])
+    expect(heights).toEqual(['180px', '180px', '280px'])
   })
 
   it('切换会话期间记忆收起状态', async () => {
