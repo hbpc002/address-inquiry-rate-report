@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+import os
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy.orm import Session
@@ -20,7 +23,16 @@ DEFAULT_LAUNCHER = {
     "icon_value": "🤖",
     "position": "bottom-right",
     "color": "#409EFF",
+    "draggable": True,
+    "pos_x": None,
+    "pos_y": None,
 }
+
+UPLOAD_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "uploads",
+)
+ALLOWED_ICON_EXT = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
 
 
 class ProviderIn(BaseModel):
@@ -54,6 +66,9 @@ class LauncherConfig(BaseModel):
     icon_value: Optional[str] = None
     position: Optional[str] = None
     color: Optional[str] = None
+    draggable: Optional[bool] = None
+    pos_x: Optional[int] = None
+    pos_y: Optional[int] = None
 
 
 def _to_out(p: LLMProvider) -> ProviderOut:
@@ -128,6 +143,25 @@ def put_launcher(
     rec.value = json.dumps(merged, ensure_ascii=False)
     db.commit()
     return merged
+
+
+@router.post("/launcher/icon")
+async def upload_launcher_icon(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "agent.config")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_ICON_EXT:
+        raise HTTPException(status_code=400, detail="仅支持图片文件 (png/jpg/jpeg/gif/svg/webp)")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="图标图片不能超过 2MB")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    fname = f"agent-icon-{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(UPLOAD_DIR, fname), "wb") as f:
+        f.write(content)
+    return {"url": f"/static/{fname}"}
 
 
 @router.put("/{provider_id}", response_model=ProviderOut)

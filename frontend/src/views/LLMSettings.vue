@@ -48,6 +48,12 @@
             :placeholder="launcher.icon_type === 'emoji' ? '🤖' : launcher.icon_type === 'url' ? 'https://.../icon.png' : '<svg>...</svg>'"
           />
         </el-form-item>
+        <el-form-item label="上传图标">
+          <el-button size="small" @click="pickIcon">选择图片</el-button>
+          <input ref="iconInput" type="file" accept="image/*" style="display:none" @change="onIconPicked" />
+          <img v-if="launcher.icon_type === 'url' && launcher.icon_value" :src="launcher.icon_value" class="icon-preview" alt="" />
+          <span class="tip" style="margin-left:8px">支持 png/jpg/gif/svg/webp，≤2MB；上传后自动填入上方图标内容</span>
+        </el-form-item>
         <el-form-item label="位置">
           <el-radio-group v-model="launcher.position">
             <el-radio value="bottom-right">右下角</el-radio>
@@ -98,8 +104,9 @@ import { api } from '@/stores/user'
 const providers = ref([])
 const dialogVisible = ref(false)
 const editing = ref(false)
+const iconInput = ref(null)
 const form = ref({ id: null, name: '', base_url: '', model: '', api_key: '', is_default: false })
-const launcher = ref({ enabled: true, label: '智能助手', icon_type: 'emoji', icon_value: '🤖', position: 'bottom-right', color: '#409EFF' })
+const launcher = ref({ enabled: true, label: '智能助手', icon_type: 'emoji', icon_value: '🤖', position: 'bottom-right', color: '#409EFF', draggable: true, pos_x: null, pos_y: null })
 
 async function loadProviders() {
   const r = await api.get('/llm-providers')
@@ -172,6 +179,26 @@ async function saveLauncher() {
   ElMessage.success('已保存入口配置')
 }
 
+function pickIcon() {
+  iconInput.value?.click()
+}
+async function onIconPicked(e) {
+  const file = e.target.files && e.target.files[0]
+  if (!file) return
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const r = await api.post('/llm-providers/launcher/icon', fd)
+    launcher.value.icon_type = 'url'
+    launcher.value.icon_value = r.data.url
+    ElMessage.success('图标已上传，记得保存入口配置')
+  } catch (err) {
+    ElMessage.error(err.response?.data?.detail || '上传失败')
+  } finally {
+    e.target.value = ''
+  }
+}
+
 onMounted(() => { loadProviders(); loadLauncher() })
 </script>
 
@@ -180,4 +207,5 @@ onMounted(() => { loadProviders(); loadLauncher() })
 .section { margin-bottom: 16px; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .tip { color: #909399; font-size: 13px; }
+.icon-preview { width: 32px; height: 32px; object-fit: contain; margin-left: 8px; vertical-align: middle; border-radius: 6px; border: 1px solid #ebeef5; }
 </style>

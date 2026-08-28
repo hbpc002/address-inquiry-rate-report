@@ -129,6 +129,13 @@ export const PERMISSION_REGISTRY = {
       delete: '删除',
     },
   },
+  agent: {
+    label: '智能体',
+    permissions: {
+      use: '使用对话',
+      config: '模型与界面配置',
+    },
+  },
 }
 
 export function getAllPermissionKeys() {

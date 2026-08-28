@@ -1,6 +1,9 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from app.models.database import init_db
 from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads, salary_config, field_annotations, training_records
 from app.api import llm_providers, agent
@@ -72,6 +75,12 @@ app.include_router(field_annotations.router)
 app.include_router(training_records.router)
 app.include_router(llm_providers.router)
 app.include_router(agent.router)
+
+UPLOAD_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads"
+)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=UPLOAD_DIR), name="static")
 
 
 @app.on_event("startup")

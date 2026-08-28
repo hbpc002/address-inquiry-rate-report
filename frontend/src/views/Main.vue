@@ -77,10 +77,6 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>智能体</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.hasPermission('agent.config')" index="/llm-settings">
-          <el-icon><Tools /></el-icon>
-          <span>模型配置</span>
-        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>

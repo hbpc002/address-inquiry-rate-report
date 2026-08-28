@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import base64
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@127.0.0.1:5432/schedule_test')
@@ -78,3 +79,57 @@ def test_agent_chat_no_provider_errors():
     r = client.post("/api/agent/chat", json={"message": "你好"})
     assert r.status_code == 200
     assert '"type": "error"' in r.text
+
+
+_PNG = base64.b64decode(
+    b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
+
+def test_launcher_icon_upload():
+    r = client.post(
+        "/api/llm-providers/launcher/icon",
+        files={"file": ("a.png", _PNG, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    url = r.json()["url"]
+    assert url.startswith("/static/agent-icon-")
+    # 上传的文件可被静态服务访问
+    got = client.get(url)
+    assert got.status_code == 200
+    assert got.content == _PNG
+
+
+def test_launcher_icon_rejects_bad_type():
+    r = client.post(
+        "/api/llm-providers/launcher/icon",
+        files={"file": ("a.txt", b"hello", "text/plain")},
+    )
+    assert r.status_code == 400
+
+
+def test_launcher_icon_rejects_oversize():
+    big = b"\x00" * (2 * 1024 * 1024 + 100)
+    r = client.post(
+        "/api/llm-providers/launcher/icon",
+        files={"file": ("big.png", big, "image/png")},
+    )
+    assert r.status_code == 400
+
+
+def test_launcher_pos_and_draggable():
+    upd = {
+        "enabled": True, "label": "小助手", "icon_type": "emoji", "icon_value": "🚀",
+        "position": "bottom-left", "color": "#67C23A", "draggable": True,
+        "pos_x": 120, "pos_y": 240,
+    }
+    r = client.put("/api/llm-providers/launcher", json=upd)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["pos_x"] == 120
+    assert data["pos_y"] == 240
+    assert data["draggable"] is True
+
+    again = client.get("/api/llm-providers/launcher").json()
+    assert again["pos_x"] == 120
+    assert again["pos_y"] == 240

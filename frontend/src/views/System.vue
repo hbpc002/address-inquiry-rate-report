@@ -100,6 +100,10 @@
           </el-table>
         </el-card>
       </el-tab-pane>
+
+      <el-tab-pane v-if="userStore.hasPermission('agent.config')" label="模型配置" name="llm">
+        <LLMSettings />
+      </el-tab-pane>
     </el-tabs>
 
     <el-dialog v-model="changelogDialogVisible" :title="changelogDialogTitle" width="600px">
@@ -124,6 +128,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import LLMSettings from './LLMSettings.vue'
 
 const userStore = useUserStore()
 

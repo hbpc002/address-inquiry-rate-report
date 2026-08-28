@@ -31,6 +31,13 @@ def test_registry_contains_workload_report():
     assert "view_sat_diff" in PERMISSION_REGISTRY["workload_report"]["permissions"]
 
 
+def test_registry_contains_agent():
+    assert "agent" in PERMISSION_REGISTRY
+    assert PERMISSION_REGISTRY["agent"]["label"] == "智能体"
+    assert "use" in PERMISSION_REGISTRY["agent"]["permissions"]
+    assert "config" in PERMISSION_REGISTRY["agent"]["permissions"]
+
+
 def test_all_keys_contains_salary_config():
     keys = get_all_permission_keys()
     assert "salary_config.view" in keys
@@ -58,6 +65,8 @@ def test_all_keys_contains_new_permissions():
     assert "workload_report.view_total_salary" in keys
     assert "workload_report.view_gap" in keys
     assert "workload_report.view_sat_diff" in keys
+    assert "agent.use" in keys
+    assert "agent.config" in keys
 
 
 def test_all_keys_count():
@@ -120,6 +129,8 @@ def test_default_permissions_new_keys_manager():
     assert perms["workload_report.view_total_salary"] is True
     assert perms["workload_report.view_gap"] is True
     assert perms["workload_report.view_sat_diff"] is True
+    assert perms["agent.use"] is True
+    assert perms["agent.config"] is True
 
 
 def test_default_permissions_new_keys_user():
@@ -136,3 +147,5 @@ def test_default_permissions_new_keys_user():
     assert perms["workload_report.view_total_salary"] is False
     assert perms["workload_report.view_gap"] is False
     assert perms["workload_report.view_sat_diff"] is False
+    assert perms["agent.use"] is False
+    assert perms["agent.config"] is False
