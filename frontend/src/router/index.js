@@ -100,6 +100,18 @@ const routes = [
         name: 'TrainingRecords',
         component: () => import('../views/TrainingRecords.vue'),
         meta: { permission: 'training_records.view' }
+      },
+      {
+        path: 'agent',
+        name: 'Agent',
+        component: () => import('../views/AgentChat.vue'),
+        meta: { permission: 'agent.use' }
+      },
+      {
+        path: 'llm-settings',
+        name: 'LLMSettings',
+        component: () => import('../views/LLMSettings.vue'),
+        meta: { permission: 'agent.config' }
       }
     ]
   }

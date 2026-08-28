@@ -73,6 +73,14 @@
           <el-icon><Edit /></el-icon>
           <span>字段批注</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.hasPermission('agent.use')" index="/agent">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>智能体</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.hasPermission('agent.config')" index="/llm-settings">
+          <el-icon><Tools /></el-icon>
+          <span>模型配置</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -108,14 +116,17 @@
       <el-button type="primary" :loading="changing" @click="handleChangePwd">确定</el-button>
     </template>
   </el-dialog>
+
+  <AgentLauncher />
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin, Edit } from '@element-plus/icons-vue'
+import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin, Edit, ChatDotRound, Tools } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import AgentLauncher from '@/components/AgentLauncher.vue'
 
 const route = useRoute()
 const router = useRouter()
