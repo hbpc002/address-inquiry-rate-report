@@ -24,17 +24,17 @@
 import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 import { api } from '@/stores/user'
 import { useUserStore } from '@/stores/user'
+import { useLauncherStore } from '@/stores/launcher'
 
 const AgentChat = defineAsyncComponent(() => import('@/views/AgentChat.vue'))
 
 const userStore = useUserStore()
+const launcher = useLauncherStore()
 const open = ref(false)
 const fabEl = ref(null)
-const config = ref({
-  enabled: true, label: '智能助手', icon_type: 'emoji', icon_value: '🤖',
-  position: 'bottom-right', color: '#409EFF', draggable: true, pos_x: null, pos_y: null,
-})
-const pos = ref({ left: null, top: null })
+
+const config = computed(() => launcher.config)
+const pos = computed(() => launcher.pos)
 
 const visible = computed(() => config.value.enabled && userStore.hasPermission('agent.use'))
 
@@ -79,7 +79,7 @@ function onPointerMove(e) {
   let top = origTop + dy
   left = Math.max(0, Math.min(left, window.innerWidth - 56))
   top = Math.max(0, Math.min(top, window.innerHeight - 56))
-  pos.value = { left, top }
+  launcher.setPos(left, top)
 }
 
 async function onPointerUp(e) {
@@ -99,19 +99,7 @@ async function persistPos() {
   } catch (_) { /* 忽略保存失败 */ }
 }
 
-async function loadConfig() {
-  try {
-    const r = await api.get('/llm-providers/launcher')
-    if (r.data) {
-      config.value = { ...config.value, ...r.data }
-      if (r.data.pos_x != null && r.data.pos_y != null) {
-        pos.value = { left: r.data.pos_x, top: r.data.pos_y }
-      }
-    }
-  } catch (e) { /* 使用默认配置 */ }
-}
-
-onMounted(loadConfig)
+onMounted(() => launcher.load())
 </script>
 
 <style scoped>

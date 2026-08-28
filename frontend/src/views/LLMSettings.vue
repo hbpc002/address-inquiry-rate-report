@@ -100,6 +100,9 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/stores/user'
+import { useLauncherStore } from '@/stores/launcher'
+
+const launcherStore = useLauncherStore()
 
 const providers = ref([])
 const dialogVisible = ref(false)
@@ -176,6 +179,7 @@ async function testForm() {
 }
 async function saveLauncher() {
   await api.put('/llm-providers/launcher', launcher.value)
+  launcherStore.setConfig(launcher.value)
   ElMessage.success('已保存入口配置')
 }
 
@@ -191,6 +195,7 @@ async function onIconPicked(e) {
     const r = await api.post('/llm-providers/launcher/icon', fd)
     launcher.value.icon_type = 'url'
     launcher.value.icon_value = r.data.url
+    launcherStore.setConfig({ icon_type: 'url', icon_value: r.data.url })
     ElMessage.success('图标已上传，记得保存入口配置')
   } catch (err) {
     ElMessage.error(err.response?.data?.detail || '上传失败')
