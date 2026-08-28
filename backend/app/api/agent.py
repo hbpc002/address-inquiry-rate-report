@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/agent", tags=["智能体对话"])
 class AgentChatRequest(BaseModel):
     message: str
     provider: str = None
+    model: str = None
 
 
 @router.post("/chat")
@@ -34,7 +35,7 @@ async def agent_chat(
     except NoProviderError as e:
         return StreamingResponse(iter([__sse({"type": "error", "message": str(e)})]), media_type="text/event-stream")
 
-    llm = build_chat_model(provider)
+    llm = build_chat_model(provider, model=body.model)
     tools = make_tools(db)
     graph = build_graph(llm, tools)
     messages = initial_messages(body.message)

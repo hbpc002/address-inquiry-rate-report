@@ -133,3 +133,55 @@ def test_launcher_pos_and_draggable():
     again = client.get("/api/llm-providers/launcher").json()
     assert again["pos_x"] == 120
     assert again["pos_y"] == 240
+
+
+def test_provider_multi_model_crud():
+    body = {
+        "name": "deepseek",
+        "base_url": "https://api.deepseek.com/v1",
+        "api_key": "sk-x",
+        "models": [
+            {"model": "deepseek-chat", "is_default": True},
+            {"model": "deepseek-reasoner", "is_default": False},
+        ],
+        "is_default": True,
+    }
+    r = client.post("/api/llm-providers", json=body)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert len(data["models"]) == 2
+    assert data["model"] == "deepseek-chat"
+    # 列表接口返回模型列表
+    lst = client.get("/api/llm-providers").json()
+    prov = next(p for p in lst if p["name"] == "deepseek")
+    assert {m["model"] for m in prov["models"]} == {"deepseek-chat", "deepseek-reasoner"}
+    assert prov["models"][0]["model"] == "deepseek-chat"  # 默认排在前
+
+    # 更新：把默认切到 reasoner，并增删模型
+    upd = {
+        "name": "deepseek",
+        "base_url": "https://api.deepseek.com/v1",
+        "models": [
+            {"model": "deepseek-chat", "is_default": False},
+            {"model": "deepseek-reasoner", "is_default": True},
+            {"model": "deepseek-lite", "is_default": False},
+        ],
+    }
+    r2 = client.put(f"/api/llm-providers/{data['id']}", json=upd)
+    assert r2.status_code == 200, r2.text
+    d2 = r2.json()
+    assert d2["model"] == "deepseek-reasoner"
+    assert {m["model"] for m in d2["models"]} == {"deepseek-chat", "deepseek-reasoner", "deepseek-lite"}
+    assert next(m for m in d2["models"] if m["is_default"])["model"] == "deepseek-reasoner"
+
+    # 删除后子表也清理
+    client.delete(f"/api/llm-providers/{data['id']}")
+
+
+def test_build_chat_model_selection():
+    from app.core.llm import build_chat_model
+    from app.models.llm_provider import LLMProvider
+
+    p = LLMProvider(name="t", base_url="http://x/v1", model="default-model")
+    assert build_chat_model(p).model == "default-model"
+    assert build_chat_model(p, model="other-model").model == "other-model"

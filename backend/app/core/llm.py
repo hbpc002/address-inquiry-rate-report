@@ -27,13 +27,16 @@ def list_providers(db: Session) -> list:
     return db.query(LLMProvider).order_by(LLMProvider.is_default.desc(), LLMProvider.id).all()
 
 
-def build_chat_model(provider: LLMProvider, temperature: float = 0.2, **kwargs):
-    """根据提供商配置构建 LangChain ChatOpenAI（兼容任意 OpenAI 接口）。"""
+def build_chat_model(provider: LLMProvider, model: str = None, temperature: float = 0.2, **kwargs):
+    """根据提供商配置构建 LangChain ChatOpenAI（兼容任意 OpenAI 接口）。
+
+    model 可覆盖 provider 的默认模型（用于同一提供商下多模型选择）。
+    """
     from langchain_openai import ChatOpenAI
 
     api_key = decrypt_secret(provider.api_key_encrypted) or "EMPTY"
     return ChatOpenAI(
-        model=provider.model,
+        model=model or provider.model,
         openai_api_base=provider.base_url,
         openai_api_key=api_key,
         temperature=temperature,

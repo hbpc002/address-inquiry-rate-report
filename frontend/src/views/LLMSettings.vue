@@ -9,7 +9,15 @@
       <el-table :data="providers" border size="small">
         <el-table-column prop="name" label="名称" />
         <el-table-column prop="base_url" label="Base URL" />
-        <el-table-column prop="model" label="模型" />
+        <el-table-column label="模型">
+          <template #default="{ row }">
+            <span v-if="row.models && row.models.length">
+              {{ (row.models.find(m => m.is_default) || row.models[0]).model }}
+              <el-tag v-if="row.models.length > 1" size="small" type="info">+{{ row.models.length - 1 }}</el-tag>
+            </span>
+            <span v-else>{{ row.model }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="默认">
           <template #default="{ row }">
             <el-tag v-if="row.is_default" type="success">默认</el-tag>
@@ -77,8 +85,15 @@
         <el-form-item label="Base URL" required>
           <el-input v-model="form.base_url" placeholder="https://api.openai.com/v1 或 http://host:11434/v1" />
         </el-form-item>
-        <el-form-item label="模型" required>
-          <el-input v-model="form.model" placeholder="如 qwen2.5:72b / deepseek-chat" />
+        <el-form-item label="模型列表" required>
+          <div class="model-list">
+            <div v-for="(m, i) in form.models" :key="i" class="model-row">
+              <el-radio v-model="defaultModelIndex" :label="i">默认</el-radio>
+              <el-input v-model="m.model" placeholder="如 qwen2.5:72b / deepseek-chat" style="flex:1" />
+              <el-button link type="danger" :disabled="form.models.length <= 1" @click="removeModel(i)">删除</el-button>
+            </div>
+            <el-button size="small" @click="addModel">+ 添加模型</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="API Key">
           <el-input v-model="form.api_key" type="password" show-password :placeholder="editing ? '留空则不修改' : '可选，本地模型可空'" />
@@ -108,7 +123,8 @@ const providers = ref([])
 const dialogVisible = ref(false)
 const editing = ref(false)
 const iconInput = ref(null)
-const form = ref({ id: null, name: '', base_url: '', model: '', api_key: '', is_default: false })
+const defaultModelIndex = ref(0)
+const form = ref({ id: null, name: '', base_url: '', model: '', api_key: '', is_default: false, models: [{ model: '' }] })
 const launcher = ref({ enabled: true, label: '智能助手', icon_type: 'emoji', icon_value: '🤖', position: 'bottom-right', color: '#409EFF', draggable: true, pos_x: null, pos_y: null })
 
 async function loadProviders() {
@@ -124,23 +140,44 @@ async function loadLauncher() {
 
 function openCreate() {
   editing.value = false
-  form.value = { id: null, name: '', base_url: '', model: '', api_key: '', is_default: false }
+  form.value = { id: null, name: '', base_url: '', model: '', api_key: '', is_default: false, models: [{ model: '' }] }
+  defaultModelIndex.value = 0
   dialogVisible.value = true
 }
 function openEdit(row) {
   editing.value = true
-  form.value = { id: row.id, name: row.name, base_url: row.base_url, model: row.model, api_key: '', is_default: row.is_default }
+  const models = row.models && row.models.length
+    ? row.models.map((m) => ({ model: m.model }))
+    : row.model ? [{ model: row.model }] : [{ model: '' }]
+  const di = row.models && row.models.length ? row.models.findIndex((m) => m.is_default) : 0
+  form.value = { id: row.id, name: row.name, base_url: row.base_url, model: row.model, api_key: '', is_default: row.is_default, models }
+  defaultModelIndex.value = di < 0 ? 0 : di
   dialogVisible.value = true
 }
 
+function addModel() {
+  form.value.models.push({ model: '' })
+}
+function removeModel(i) {
+  form.value.models.splice(i, 1)
+  if (defaultModelIndex.value === i) defaultModelIndex.value = 0
+  else if (defaultModelIndex.value > i) defaultModelIndex.value--
+}
+
 async function save() {
-  if (!form.value.name || !form.value.base_url || !form.value.model) {
-    ElMessage.warning('名称 / Base URL / 模型 为必填')
+  const validModels = form.value.models.map((m) => (m.model || '').trim()).filter(Boolean)
+  if (!form.value.name || !form.value.base_url || !validModels.length) {
+    ElMessage.warning('名称 / Base URL / 至少一個模型 为必填')
     return
   }
   const payload = {
-    name: form.value.name, base_url: form.value.base_url, model: form.value.model, is_default: form.value.is_default,
+    name: form.value.name,
+    base_url: form.value.base_url,
+    is_default: form.value.is_default,
+    models: form.value.models.map((m, i) => ({ model: m.model, is_default: i === defaultModelIndex.value })),
   }
+  const defModel = form.value.models[defaultModelIndex.value] && form.value.models[defaultModelIndex.value].model
+  if (defModel) payload.model = defModel
   if (form.value.api_key) payload.api_key = form.value.api_key
   if (editing.value) {
     await api.put(`/llm-providers/${form.value.id}`, payload)
@@ -213,4 +250,6 @@ onMounted(() => { loadProviders(); loadLauncher() })
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .tip { color: #909399; font-size: 13px; }
 .icon-preview { width: 32px; height: 32px; object-fit: contain; margin-left: 8px; vertical-align: middle; border-radius: 6px; border: 1px solid #ebeef5; }
+.model-list { width: 100%; }
+.model-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 </style>

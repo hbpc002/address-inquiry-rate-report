@@ -12,6 +12,7 @@ from app.models.attendance_config import AttendanceConfig
 from app.models.salary_config import SalaryConfig
 from app.models.field_annotation import FieldAnnotation
 from app.models.training_record import TrainingRecord
+from app.models.llm_provider import LLMProvider, LLMProviderModel
 
 __all__ = [
     "Base",
@@ -30,4 +31,6 @@ __all__ = [
     "SalaryConfig",
     "FieldAnnotation",
     "TrainingRecord",
+    "LLMProvider",
+    "LLMProviderModel",
 ]

@@ -7,7 +7,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
-from app.models.llm_provider import LLMProvider
+from app.models.llm_provider import LLMProvider, LLMProviderModel
 from app.models.app_config import AppConfig
 from app.core.security import get_current_user, require_permission
 from app.core.crypto import encrypt_secret, decrypt_secret, mask_secret
@@ -35,11 +35,17 @@ UPLOAD_DIR = os.path.join(
 ALLOWED_ICON_EXT = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
 
 
+class ProviderModelIn(BaseModel):
+    model: str
+    is_default: bool = False
+
+
 class ProviderIn(BaseModel):
     name: str
     base_url: str = "https://api.openai.com/v1"
     api_key: Optional[str] = None
-    model: str
+    model: Optional[str] = None
+    models: Optional[List[ProviderModelIn]] = None
     is_default: bool = False
 
 
@@ -50,6 +56,7 @@ class ProviderOut(BaseModel):
     model: str
     is_default: bool
     api_key_masked: str
+    models: List[dict] = []
 
 
 class TestIn(BaseModel):
@@ -71,10 +78,18 @@ class LauncherConfig(BaseModel):
     pos_y: Optional[int] = None
 
 
-def _to_out(p: LLMProvider) -> ProviderOut:
+def _models_of(db: Session, provider_id: int) -> List[dict]:
+    rows = db.query(LLMProviderModel).filter(LLMProviderModel.provider_id == provider_id).all()
+    return [{"model": r.model, "is_default": bool(r.is_default)} for r in rows]
+
+
+def _to_out(p: LLMProvider, models: Optional[List[dict]] = None) -> ProviderOut:
+    if models is None:
+        models = [{"model": p.model, "is_default": True}]
     return ProviderOut(
         id=p.id, name=p.name, base_url=p.base_url, model=p.model,
         is_default=bool(p.is_default), api_key_masked=mask_secret(decrypt_secret(p.api_key_encrypted)),
+        models=models,
     )
 
 
@@ -83,8 +98,27 @@ def list_providers_api(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    require_permission(current_user, "agent.config")
-    return [_to_out(p) for p in list_providers(db)]
+    require_permission(current_user, "agent.use")
+    providers = list_providers(db)
+    grouped = {}
+    for r in db.query(LLMProviderModel).all():
+        grouped.setdefault(r.provider_id, []).append({"model": r.model, "is_default": bool(r.is_default)})
+    return [_to_out(p, grouped.get(p.id)) for p in providers]
+
+
+def _resolve_models(body: ProviderIn):
+    """把入参规整为模型列表，并保证恰好一个默认。"""
+    if body.models:
+        items = [{"model": m.model, "is_default": bool(m.is_default)} for m in body.models if m.model and m.model.strip()]
+    elif body.model:
+        items = [{"model": body.model, "is_default": True}]
+    else:
+        items = []
+    if not items:
+        raise HTTPException(status_code=400, detail="至少需提供一个模型")
+    if not any(m["is_default"] for m in items):
+        items[0]["is_default"] = True
+    return items
 
 
 @router.post("", response_model=ProviderOut)
@@ -96,18 +130,23 @@ def create_provider(
     require_permission(current_user, "agent.config")
     if db.query(LLMProvider).filter(LLMProvider.name == body.name).first():
         raise HTTPException(status_code=400, detail="同名提供商已存在")
+    items = _resolve_models(body)
+    default_model = next((m["model"] for m in items if m["is_default"]), items[0]["model"])
     if body.is_default:
         for old in db.query(LLMProvider).filter(LLMProvider.is_default == True).all():
             old.is_default = False
     p = LLMProvider(
-        name=body.name, base_url=body.base_url, model=body.model,
+        name=body.name, base_url=body.base_url, model=default_model,
         is_default=body.is_default,
         api_key_encrypted=encrypt_secret(body.api_key) if body.api_key else None,
     )
     db.add(p)
+    db.flush()
+    for m in items:
+        db.add(LLMProviderModel(provider_id=p.id, model=m["model"], is_default=m["is_default"]))
     db.commit()
     db.refresh(p)
-    return _to_out(p)
+    return _to_out(p, items)
 
 
 @router.get("/launcher")
@@ -182,13 +221,22 @@ def update_provider(
             old.is_default = False
     p.name = body.name
     p.base_url = body.base_url
-    p.model = body.model
     p.is_default = body.is_default
     if body.api_key:
         p.api_key_encrypted = encrypt_secret(body.api_key)
+    models_out = None
+    if body.models is not None:
+        items = _resolve_models(body)
+        db.query(LLMProviderModel).filter(LLMProviderModel.provider_id == p.id).delete()
+        for m in items:
+            db.add(LLMProviderModel(provider_id=p.id, model=m["model"], is_default=m["is_default"]))
+        p.model = next((m["model"] for m in items if m["is_default"]), items[0]["model"])
+        models_out = items
+    elif body.model:
+        p.model = body.model
     db.commit()
     db.refresh(p)
-    return _to_out(p)
+    return _to_out(p, models_out)
 
 
 @router.delete("/{provider_id}")
@@ -201,6 +249,7 @@ def delete_provider(
     p = db.query(LLMProvider).filter(LLMProvider.id == provider_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="提供商不存在")
+    db.query(LLMProviderModel).filter(LLMProviderModel.provider_id == p.id).delete()
     db.delete(p)
     db.commit()
     return {"ok": True}
