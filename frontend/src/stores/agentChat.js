@@ -1,0 +1,178 @@
+import { defineStore } from 'pinia'
+import { ref, watch } from 'vue'
+
+function short(v) {
+  const s = typeof v === 'string' ? v : JSON.stringify(v)
+  return s.length > 300 ? s.slice(0, 300) + '…' : s
+}
+
+const LS_KEY = 'agent_chat'
+
+export const useAgentChatStore = defineStore('agentChat', () => {
+  const bubbleItems = ref([])
+  const input = ref('')
+  const streaming = ref(false)
+  const currentAiId = ref(null)
+  const thoughtSeq = ref(0)
+  const pendingThoughtId = ref(null)
+  const abortCtl = ref(null)
+  const provider = ref('') // provider name, '' = 后端默认
+  const model = ref('') // model name, '' = provider 默认
+
+  // 水合：从 localStorage 恢复对话（清掉残留 loading）
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null')
+    if (saved && Array.isArray(saved.bubbleItems)) {
+      bubbleItems.value = saved.bubbleItems.map((m) => ({ ...m, loading: false }))
+      thoughtSeq.value = saved.thoughtSeq || 0
+      provider.value = saved.provider || ''
+      model.value = saved.model || ''
+    }
+  } catch (e) {
+    /* 忽略损坏数据 */
+  }
+
+  watch(
+    [bubbleItems, provider, model],
+    () => {
+      try {
+        localStorage.setItem(
+          LS_KEY,
+          JSON.stringify({
+            bubbleItems: bubbleItems.value,
+            thoughtSeq: thoughtSeq.value,
+            provider: provider.value,
+            model: model.value,
+          })
+        )
+      } catch (e) {
+        /* 容量超限忽略 */
+      }
+    },
+    { deep: true }
+  )
+
+  function _ai() {
+    return bubbleItems.value.find((m) => m.id === currentAiId.value) || null
+  }
+
+  function clear() {
+    bubbleItems.value = []
+    currentAiId.value = null
+    thoughtSeq.value = 0
+    pendingThoughtId.value = null
+  }
+
+  function stop() {
+    if (abortCtl.value) abortCtl.value.abort()
+  }
+
+  function handleEvent(evt) {
+    const it = _ai()
+    if (!it) return
+    if (evt.type === 'token') {
+      it.content += evt.content
+    } else if (evt.type === 'tool_start') {
+      const id = 't' + ++thoughtSeq.value
+      pendingThoughtId.value = id
+      if (!it.thoughtItems) it.thoughtItems = []
+      it.thoughtItems.push({
+        id,
+        title: evt.name || '工具',
+        thinkContent: '入参：' + short(evt.input),
+        status: 'loading',
+        isCanExpand: true,
+      })
+    } else if (evt.type === 'tool_end') {
+      const item = it.thoughtItems.find((t) => t.id === pendingThoughtId.value)
+      if (item) {
+        item.status = 'success'
+        item.thinkContent += '\n结果：' + short(evt.output)
+      }
+      pendingThoughtId.value = null
+    } else if (evt.type === 'error') {
+      it.content += `\n\n> ⚠️ ${evt.message || '未知错误'}`
+    }
+  }
+
+  async function send(text) {
+    const q = (text != null ? text : input.value).trim()
+    if (!q || streaming.value) return
+    input.value = ''
+    const uid = 'u' + Date.now() + Math.random().toString(36).slice(2, 6)
+    bubbleItems.value.push({ id: uid, placement: 'end', content: q, variant: 'filled' })
+    const aid = 'a' + Date.now() + Math.random().toString(36).slice(2, 6)
+    bubbleItems.value.push({ id: aid, placement: 'start', content: '', variant: 'filled', loading: true, thoughtItems: [] })
+    currentAiId.value = aid
+    streaming.value = true
+    abortCtl.value = new AbortController()
+    const token = localStorage.getItem('token')
+    const headers = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = 'Bearer ' + token
+    try {
+      const resp = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          message: q,
+          provider: provider.value || undefined,
+          model: model.value || undefined,
+        }),
+        signal: abortCtl.value.signal,
+      })
+      if (!resp.ok || !resp.body) {
+        const it = _ai()
+        if (it) it.content += '\n\n> ⚠️ 请求失败（HTTP ' + (resp && resp.status) + '）'
+        return
+      }
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let idx
+        while ((idx = buffer.indexOf('\n\n')) >= 0) {
+          const chunk = buffer.slice(0, idx)
+          buffer = buffer.slice(idx + 2)
+          const line = chunk.replace(/^data: /, '')
+          if (!line.trim()) continue
+          let evt
+          try {
+            evt = JSON.parse(line)
+          } catch (e) {
+            continue
+          }
+          handleEvent(evt)
+        }
+      }
+    } catch (e) {
+      if (e && e.name !== 'AbortError') {
+        const it = _ai()
+        if (it) it.content += `\n\n> ⚠️ ${e.message || '请求失败'}`
+      }
+    } finally {
+      streaming.value = false
+      const it = _ai()
+      if (it) it.loading = false
+      currentAiId.value = null
+      abortCtl.value = null
+    }
+  }
+
+  return {
+    bubbleItems,
+    input,
+    streaming,
+    currentAiId,
+    thoughtSeq,
+    pendingThoughtId,
+    abortCtl,
+    provider,
+    model,
+    clear,
+    stop,
+    send,
+  }
+})

@@ -3,16 +3,35 @@
     <div class="agent-header">
       <div class="title">智能体 · 自然语言查报表</div>
       <div class="header-right">
-        <el-button size="small" text @click="clearMessages">清空</el-button>
+        <el-select
+          v-if="providers.length"
+          v-model="store.provider"
+          size="small"
+          placeholder="提供商"
+          style="width: 130px"
+          @change="onProviderChange"
+        >
+          <el-option v-for="p in providers" :key="p.id" :label="p.name" :value="p.name" />
+        </el-select>
+        <el-select
+          v-if="currentModels.length"
+          v-model="store.model"
+          size="small"
+          placeholder="模型"
+          style="width: 150px"
+        >
+          <el-option v-for="m in currentModels" :key="m" :label="m" :value="m" />
+        </el-select>
+        <el-button size="small" text @click="store.clear()">清空</el-button>
       </div>
     </div>
 
     <div class="messages" ref="messagesRef">
-      <div v-if="!bubbleItems.length" class="empty">
+      <div v-if="!store.bubbleItems.length" class="empty">
         <Prompts :items="promptItems" :wrap="true" @itemClick="onPrompt" />
       </div>
 
-      <BubbleList v-else :list="bubbleItems" :auto-scroll="true" class="bubble-list">
+      <BubbleList v-else :list="store.bubbleItems" :auto-scroll="true" class="bubble-list">
         <template #content="{ item }">
           <div class="bubble-body">
             <ThoughtChain
@@ -29,37 +48,38 @@
 
     <div class="input-bar">
       <el-input
-        v-model="input"
+        v-model="store.input"
         type="textarea"
         :rows="2"
         resize="none"
         placeholder="输入问题，Enter 发送 / Shift+Enter 换行"
         @keydown.enter.exact.prevent="send()"
       />
-      <el-button v-if="!streaming" type="primary" :disabled="!input.trim()" @click="send()">发送</el-button>
-      <el-button v-else type="danger" @click="stop()">停止</el-button>
+      <el-button v-if="!store.streaming" type="primary" :disabled="!store.input.trim()" @click="send()">发送</el-button>
+      <el-button v-else type="danger" @click="store.stop()">停止</el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, computed } from 'vue'
 import { BubbleList, ThoughtChain, Prompts } from 'vue-element-plus-x'
 import { api } from '@/stores/user'
+import { useAgentChatStore } from '@/stores/agentChat'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
 
-const props = defineProps({
+defineProps({
   embedded: { type: Boolean, default: false },
 })
 
-const bubbleItems = ref([])
-const input = ref('')
-const streaming = ref(false)
+const store = useAgentChatStore()
 const messagesRef = ref(null)
-const abortCtl = ref(null)
-let currentAi = null
-let thoughtSeq = 0
-let pendingThoughtId = null
+const providers = ref([])
+
+const currentModels = computed(() => {
+  const p = providers.value.find((x) => x.name === store.provider)
+  return p && Array.isArray(p.models) ? p.models.map((m) => (typeof m === 'string' ? m : m.model)) : []
+})
 
 const suggestions = [
   '2026-07 各班组出勤率排名',
@@ -69,104 +89,42 @@ const suggestions = [
 ]
 const promptItems = suggestions.map((label, i) => ({ key: String(i), label }))
 
-function short(v) {
-  const s = typeof v === 'string' ? v : JSON.stringify(v)
-  return s.length > 300 ? s.slice(0, 300) + '…' : s
-}
-
 function scrollBottom() {
   nextTick(() => {
     if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
   })
 }
 
-function clearMessages() {
-  bubbleItems.value = []
-  currentAi = null
-}
-
 function onPrompt(item) {
-  if (item && item.label) send(item.label)
+  if (item && item.label) store.send(item.label)
 }
 
-async function send(text) {
-  const q = (text != null ? text : input.value).trim()
-  if (!q || streaming.value) return
-  input.value = ''
-  bubbleItems.value.push({ id: `u${Date.now()}`, placement: 'end', content: q, variant: 'filled' })
-  currentAi = { id: `a${Date.now()}`, placement: 'start', content: '', variant: 'filled', loading: true, thoughtItems: [] }
-  bubbleItems.value.push(currentAi)
-  streaming.value = true
+function send(text) {
+  store.send(text)
   scrollBottom()
+}
 
-  abortCtl.value = new AbortController()
-  const token = localStorage.getItem('token')
+function onProviderChange() {
+  store.model = ''
+}
+
+async function loadProviders() {
   try {
-    const resp = await fetch('/api/agent/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ message: q }),
-      signal: abortCtl.value.signal,
-    })
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      let idx
-      while ((idx = buffer.indexOf('\n\n')) >= 0) {
-        const chunk = buffer.slice(0, idx)
-        buffer = buffer.slice(idx + 2)
-        const line = chunk.replace(/^data: /, '')
-        if (!line.trim()) continue
-        let evt
-        try { evt = JSON.parse(line) } catch { continue }
-        handleEvent(evt)
-      }
+    const r = await api.get('/llm-providers')
+    providers.value = r.data || []
+    if (!store.provider && providers.value.length) {
+      const def = providers.value.find((p) => p.is_default) || providers.value[0]
+      store.provider = def.name
     }
   } catch (e) {
-    if (e.name !== 'AbortError' && currentAi) currentAi.content += `\n\n> ⚠️ ${e.message || '请求失败'}`
-  } finally {
-    streaming.value = false
-    if (currentAi) currentAi.loading = false
-    currentAi = null
-    abortCtl.value = null
-    scrollBottom()
+    /* 无权限或接口异常时不影响对话 */
   }
 }
 
-function handleEvent(evt) {
-  if (!currentAi) return
-  if (evt.type === 'token') {
-    currentAi.content += evt.content
-  } else if (evt.type === 'tool_start') {
-    const id = `t${++thoughtSeq}`
-    pendingThoughtId = id
-    currentAi.thoughtItems.push({
-      id,
-      title: evt.name,
-      thinkContent: '入参：' + short(evt.input),
-      status: 'loading',
-      isCanExpand: true,
-    })
-  } else if (evt.type === 'tool_end') {
-    const item = currentAi.thoughtItems.find(t => t.id === pendingThoughtId)
-    if (item) {
-      item.status = 'success'
-      item.thinkContent += '\n结果：' + short(evt.output)
-    }
-    pendingThoughtId = null
-  } else if (evt.type === 'error') {
-    currentAi.content += `\n\n> ⚠️ ${evt.message}`
-  }
+onMounted(() => {
+  loadProviders()
   scrollBottom()
-}
-
-function stop() {
-  abortCtl.value?.abort()
-}
+})
 </script>
 
 <style scoped>
@@ -184,6 +142,7 @@ function stop() {
   border-bottom: 1px solid #ebeef5;
 }
 .title { font-weight: 600; }
+.header-right { display: flex; align-items: center; gap: 8px; }
 .messages {
   flex: 1;
   overflow-y: auto;
