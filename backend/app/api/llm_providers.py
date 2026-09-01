@@ -178,10 +178,19 @@ def put_launcher(
 ):
     require_permission(current_user, "agent.config")
     import json
+    # 以已存配置为基线合并，避免部分更新（如仅更新 pos_x/pos_y）时把
+    # 图标等其它已保存字段重置为默认值。
+    rec = db.query(AppConfig).filter(AppConfig.key == LAUNCHER_KEY).first()
+    base = {}
+    if rec and rec.value:
+        try:
+            base = json.loads(rec.value)
+        except Exception:
+            base = {}
     merged = dict(DEFAULT_LAUNCHER)
+    merged.update(base)
     provided = body.dict(exclude_unset=True)
     merged.update({k: v for k, v in provided.items() if k in DEFAULT_LAUNCHER})
-    rec = db.query(AppConfig).filter(AppConfig.key == LAUNCHER_KEY).first()
     if not rec:
         rec = AppConfig(key=LAUNCHER_KEY, value="")
         db.add(rec)

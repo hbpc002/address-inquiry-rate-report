@@ -156,13 +156,49 @@ def test_launcher_icon_offset_and_scale():
     assert again["icon_offset_y"] == -8
     assert again["icon_scale"] == 130
 
-    # 不传新字段时默认值为 0 / 100
+    # 部分更新（不含偏移/缩放字段）应保留已保存的值，而不是重置为默认
     r2 = client.put("/api/llm-providers/launcher", json={"label": "只改文字"})
     assert r2.status_code == 200
     d2 = r2.json()
-    assert d2["icon_offset_x"] == 0
-    assert d2["icon_offset_y"] == 0
-    assert d2["icon_scale"] == 100
+    assert d2["label"] == "只改文字"
+    assert d2["icon_offset_x"] == 12
+    assert d2["icon_offset_y"] == -8
+    assert d2["icon_scale"] == 130
+
+
+def test_launcher_partial_update_preserves_icon():
+    # 先保存带 URL 图标的完整配置
+    full = {
+        "enabled": True,
+        "label": "智能助手",
+        "icon_type": "url",
+        "icon_value": "/static/agent-icon-abc.png",
+        "position": "bottom-right",
+        "color": "#409EFF",
+        "draggable": True,
+        "pos_x": 100,
+        "pos_y": 200,
+    }
+    r = client.put("/api/llm-providers/launcher", json=full)
+    assert r.status_code == 200, r.text
+    assert r.json()["icon_type"] == "url"
+
+    # 模拟拖动悬浮按钮：只更新 pos，不应冲掉已保存的图标配置
+    r2 = client.put("/api/llm-providers/launcher", json={"pos_x": 300, "pos_y": 400})
+    assert r2.status_code == 200, r2.text
+    d2 = r2.json()
+    assert d2["pos_x"] == 300
+    assert d2["pos_y"] == 400
+    assert d2["icon_type"] == "url"
+    assert d2["icon_value"] == "/static/agent-icon-abc.png"
+    assert d2["label"] == "智能助手"
+
+    # 重新读取，确保持久化且未被重置为默认 emoji
+    again = client.get("/api/llm-providers/launcher").json()
+    assert again["icon_type"] == "url"
+    assert again["icon_value"] == "/static/agent-icon-abc.png"
+    assert again["pos_x"] == 300
+    assert again["pos_y"] == 400
 
 
 def test_provider_multi_model_crud():
