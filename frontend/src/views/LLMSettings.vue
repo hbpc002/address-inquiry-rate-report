@@ -62,6 +62,18 @@
           <img v-if="launcher.icon_type === 'url' && launcher.icon_value" :src="launcher.icon_value" class="icon-preview" alt="" />
           <span class="tip" style="margin-left:8px">支持 png/jpg/gif/svg/webp，≤2MB；上传后自动填入上方图标内容</span>
         </el-form-item>
+        <el-form-item v-if="launcher.icon_type === 'url'" label="水平偏移">
+          <el-input-number v-model="launcher.icon_offset_x" :min="-50" :max="50" :step="1" size="small" controls-position="right" />
+          <span class="tip" style="margin-left:8px">px，向右为正</span>
+        </el-form-item>
+        <el-form-item v-if="launcher.icon_type === 'url'" label="垂直偏移">
+          <el-input-number v-model="launcher.icon_offset_y" :min="-50" :max="50" :step="1" size="small" controls-position="right" />
+          <span class="tip" style="margin-left:8px">px，向下为正</span>
+        </el-form-item>
+        <el-form-item v-if="launcher.icon_type === 'url'" label="缩放">
+          <el-input-number v-model="launcher.icon_scale" :min="50" :max="200" :step="5" size="small" controls-position="right" />
+          <span class="tip" style="margin-left:8px">%</span>
+        </el-form-item>
         <el-form-item label="位置">
           <el-radio-group v-model="launcher.position">
             <el-radio value="bottom-right">右下角</el-radio>
@@ -125,7 +137,7 @@ const editing = ref(false)
 const iconInput = ref(null)
 const defaultModelIndex = ref(0)
 const form = ref({ id: null, name: '', base_url: '', model: '', api_key: '', is_default: false, models: [{ model: '' }] })
-const launcher = ref({ enabled: true, label: '智能助手', icon_type: 'emoji', icon_value: '🤖', position: 'bottom-right', color: '#409EFF', draggable: true, pos_x: null, pos_y: null })
+const launcher = ref({ enabled: true, label: '智能助手', icon_type: 'emoji', icon_value: '🤖', position: 'bottom-right', color: '#409EFF', draggable: true, pos_x: null, pos_y: null, icon_offset_x: 0, icon_offset_y: 0, icon_scale: 100 })
 
 async function loadProviders() {
   const r = await api.get('/llm-providers')

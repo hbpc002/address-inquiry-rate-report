@@ -9,7 +9,7 @@
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
     >
-      <img v-if="config.icon_type === 'url'" :src="config.icon_value" alt="" class="fab-icon" />
+      <img v-if="config.icon_type === 'url'" :src="config.icon_value" alt="" class="fab-icon" :style="iconStyle" draggable="false" @dragstart.prevent />
       <span v-else-if="config.icon_type === 'svg'" v-html="config.icon_value" class="fab-icon"></span>
       <span v-else class="fab-emoji">{{ config.icon_value }}</span>
     </button>
@@ -39,13 +39,24 @@ const pos = computed(() => launcher.pos)
 const visible = computed(() => config.value.enabled && userStore.hasPermission('agent.use'))
 
 const fabStyle = computed(() => {
+  const bg = config.value.icon_type === 'url' ? 'transparent' : (config.value.color || '#409EFF')
   if (pos.value.left != null) {
-    return { left: pos.value.left + 'px', top: pos.value.top + 'px', background: config.value.color || '#409EFF' }
+    return { left: pos.value.left + 'px', top: pos.value.top + 'px', background: bg }
   }
-  const base = { background: config.value.color || '#409EFF' }
+  const base = { background: bg }
   return config.value.position === 'bottom-left'
     ? { left: '24px', bottom: '24px', ...base }
     : { right: '24px', bottom: '24px', ...base }
+})
+
+const iconStyle = computed(() => {
+  if (config.value.icon_type !== 'url') return {}
+  const ox = Number(config.value.icon_offset_x) || 0
+  const oy = Number(config.value.icon_offset_y) || 0
+  const s = (Number(config.value.icon_scale) || 100) / 100
+  return {
+    transform: `translate(calc(-50% + ${ox}px), calc(-50% + ${oy}px)) scale(${s})`,
+  }
 })
 
 let dragging = false
@@ -118,9 +129,21 @@ onMounted(() => launcher.load())
   color: #fff;
   touch-action: none;
   user-select: none;
+  overflow: hidden;
 }
 .agent-fab:active { cursor: grabbing; }
 .fab-emoji { font-size: 26px; line-height: 1; }
-.fab-icon { width: 30px; height: 30px; object-fit: contain; }
+.agent-fab img.fab-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-drag: none;
+}
 .fab-icon :deep(svg) { width: 30px; height: 30px; fill: #fff; }
 </style>

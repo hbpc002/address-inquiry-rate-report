@@ -11,6 +11,9 @@ const DEFAULTS = {
   draggable: true,
   pos_x: null,
   pos_y: null,
+  icon_offset_x: 0,
+  icon_offset_y: 0,
+  icon_scale: 100,
 }
 
 export const useLauncherStore = defineStore('launcher', {

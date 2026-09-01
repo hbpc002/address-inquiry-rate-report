@@ -26,6 +26,9 @@ DEFAULT_LAUNCHER = {
     "draggable": True,
     "pos_x": None,
     "pos_y": None,
+    "icon_offset_x": 0,
+    "icon_offset_y": 0,
+    "icon_scale": 100,
 }
 
 UPLOAD_DIR = os.path.join(
@@ -76,6 +79,9 @@ class LauncherConfig(BaseModel):
     draggable: Optional[bool] = None
     pos_x: Optional[int] = None
     pos_y: Optional[int] = None
+    icon_offset_x: Optional[int] = None
+    icon_offset_y: Optional[int] = None
+    icon_scale: Optional[float] = None
 
 
 def _models_of(db: Session, provider_id: int) -> List[dict]:

@@ -135,6 +135,36 @@ def test_launcher_pos_and_draggable():
     assert again["pos_y"] == 240
 
 
+def test_launcher_icon_offset_and_scale():
+    upd = {
+        "enabled": True,
+        "icon_type": "url",
+        "icon_value": "/static/agent-icon-test.png",
+        "icon_offset_x": 12,
+        "icon_offset_y": -8,
+        "icon_scale": 130,
+    }
+    r = client.put("/api/llm-providers/launcher", json=upd)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["icon_offset_x"] == 12
+    assert data["icon_offset_y"] == -8
+    assert data["icon_scale"] == 130
+
+    again = client.get("/api/llm-providers/launcher").json()
+    assert again["icon_offset_x"] == 12
+    assert again["icon_offset_y"] == -8
+    assert again["icon_scale"] == 130
+
+    # 不传新字段时默认值为 0 / 100
+    r2 = client.put("/api/llm-providers/launcher", json={"label": "只改文字"})
+    assert r2.status_code == 200
+    d2 = r2.json()
+    assert d2["icon_offset_x"] == 0
+    assert d2["icon_offset_y"] == 0
+    assert d2["icon_scale"] == 100
+
+
 def test_provider_multi_model_crud():
     body = {
         "name": "deepseek",
