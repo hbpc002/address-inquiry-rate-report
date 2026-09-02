@@ -122,6 +122,7 @@ async function loadProviders() {
 }
 
 onMounted(() => {
+  store.activate()
   loadProviders()
   scrollBottom()
 })

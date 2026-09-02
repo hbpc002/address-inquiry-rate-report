@@ -1,12 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { useUserStore } from '@/stores/user'
 
 function short(v) {
   const s = typeof v === 'string' ? v : JSON.stringify(v)
   return s.length > 300 ? s.slice(0, 300) + '…' : s
 }
 
-const LS_KEY = 'agent_chat'
+function lsKey() {
+  const user = useUserStore().user
+  const uid = user?.id != null ? String(user.id) : 'anonymous'
+  return `agent_chat_${uid}`
+}
 
 export const useAgentChatStore = defineStore('agentChat', () => {
   const bubbleItems = ref([])
@@ -16,28 +21,42 @@ export const useAgentChatStore = defineStore('agentChat', () => {
   const thoughtSeq = ref(0)
   const pendingThoughtId = ref(null)
   const abortCtl = ref(null)
-  const provider = ref('') // provider name, '' = 后端默认
-  const model = ref('') // model name, '' = provider 默认
+  const provider = ref('')
+  const model = ref('')
 
-  // 水合：从 localStorage 恢复对话（清掉残留 loading）
-  try {
-    const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null')
-    if (saved && Array.isArray(saved.bubbleItems)) {
-      bubbleItems.value = saved.bubbleItems.map((m) => ({ ...m, loading: false }))
-      thoughtSeq.value = saved.thoughtSeq || 0
-      provider.value = saved.provider || ''
-      model.value = saved.model || ''
-    }
-  } catch (e) {
-    /* 忽略损坏数据 */
+  let _boundKey = null
+
+  function _hydrate(key) {
+    _boundKey = key
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || 'null')
+      if (saved && Array.isArray(saved.bubbleItems)) {
+        bubbleItems.value = saved.bubbleItems.map((m) => ({ ...m, loading: false }))
+        thoughtSeq.value = saved.thoughtSeq || 0
+        provider.value = saved.provider || ''
+        model.value = saved.model || ''
+        return
+      }
+    } catch (e) { /* 忽略损坏数据 */ }
+    bubbleItems.value = []
+    thoughtSeq.value = 0
+    provider.value = ''
+    model.value = ''
+  }
+
+  function activate() {
+    const key = lsKey()
+    if (key === _boundKey) return
+    _hydrate(key)
   }
 
   watch(
     [bubbleItems, provider, model],
     () => {
+      if (!_boundKey) return
       try {
         localStorage.setItem(
-          LS_KEY,
+          _boundKey,
           JSON.stringify({
             bubbleItems: bubbleItems.value,
             thoughtSeq: thoughtSeq.value,
@@ -171,6 +190,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     abortCtl,
     provider,
     model,
+    activate,
     clear,
     stop,
     send,
