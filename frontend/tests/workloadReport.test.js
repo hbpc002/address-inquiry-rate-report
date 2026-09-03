@@ -1004,6 +1004,196 @@ describe('WorkloadDetail - 自定义列逻辑测试', () => {
   })
 })
 
+describe('WorkloadDetail - 详情抽屉自定义列测试', () => {
+  const DETAIL_COLUMNS_KEY = 'workload-report-detail-columns'
+  const COLUMNS_KEY = 'workload-report-columns'
+
+  const DEFAULT_DETAIL_COLUMNS = [
+    '呼入人工服务-人工服务-通话次数',
+    '呼入人工服务-人工服务-通话总时长(秒)',
+    '呼入人工服务-人工服务-通话均长(秒)',
+    '呼入人工服务-人工服务-服务后整理总时长(秒)',
+    '呼入人工服务-工单-生成总量',
+    '呼入人工服务-满意度-非常满意量',
+    '呼出服务-人工呼出呼叫量',
+    '操作次数及时长-示忙次数',
+    '总体-工作总时长(秒)',
+    '总体-工时利用率',
+    '呼入人工服务-满意度-非常满意量',
+    '呼入人工服务-满意度-满意量',
+    '呼入人工服务-满意度-一般量',
+    '呼入人工服务-满意度-不满意量',
+    '呼入人工服务-满意度-非常不满意量'
+  ]
+
+  const DEFAULT_MAIN_COLUMNS = [
+    '呼入人工服务-人工服务-通话次数',
+    '呼入人工服务-人工服务-通话总时长(秒)',
+    '呼入人工服务-人工服务-通话均长(秒)',
+    '呼入人工服务-人工服务-服务后整理总时长(秒)',
+    '呼入人工服务-工单-生成总量',
+    '人工服务-满意度-满意率',
+    '呼入人工服务-解决率-解决率',
+    '呼出服务-人工呼出呼叫量',
+    '总体-工时利用率',
+    '操作次数及时长-示忙次数',
+    '呼入人工服务-满意度-非常满意量',
+    '呼入人工服务-满意度-满意量',
+    '呼入人工服务-满意度-一般量',
+    '呼入人工服务-满意度-不满意量',
+    '呼入人工服务-满意度-非常不满意量'
+  ]
+
+  const allMetricFields = [
+    { field: '呼入人工服务-人工服务-通话次数', label: '通话次数', isRate: false, width: 80 },
+    { field: '呼入人工服务-人工服务-通话总时长(秒)', label: '通话总时长(秒)', isRate: false, width: 80 },
+    { field: '呼入人工服务-人工服务-通话均长(秒)', label: '通话均长(秒)', isRate: false, width: 80 },
+    { field: '呼入人工服务-工单-生成总量', label: '提单量', isRate: false, width: 80 },
+    { field: '人工服务-满意度-满意率', label: '满意率', isRate: true, width: 80 },
+    { field: '呼出服务-人工呼出呼叫量', label: '人工呼出呼叫量', isRate: false, width: 80 },
+    { field: '总体-工时利用率', label: '工时利用率', isRate: true, width: 80 },
+    { field: '呼入人工服务-满意度-非常满意量', label: '非常满意量', isRate: false, width: 80 },
+    { field: '操作次数及时长-示忙次数', label: '示忙次数', isRate: false, width: 80 }
+  ]
+
+  beforeEach(() => {
+    localStorage.removeItem(DETAIL_COLUMNS_KEY)
+    localStorage.removeItem(COLUMNS_KEY)
+  })
+
+  function loadDetailSelectedColumns() {
+    try {
+      const saved = localStorage.getItem(DETAIL_COLUMNS_KEY)
+      return saved ? JSON.parse(saved) : [...DEFAULT_DETAIL_COLUMNS]
+    } catch { return [...DEFAULT_DETAIL_COLUMNS] }
+  }
+
+  function computeVisibleDetailColumns(detailSelected, allFields) {
+    return allFields
+      .filter(f => detailSelected.includes(f.field))
+      .map(f => ({
+        ...f,
+        width: f.width + 5
+      }))
+  }
+
+  describe('loadDetailSelectedColumns', () => {
+    it('should return DEFAULT_DETAIL_COLUMNS when localStorage is empty', () => {
+      const cols = loadDetailSelectedColumns()
+      expect(cols).toEqual(DEFAULT_DETAIL_COLUMNS)
+    })
+
+    it('should load saved columns from localStorage', () => {
+      const saved = ['呼入人工服务-人工服务-通话次数', '人工服务-满意度-满意率']
+      localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify(saved))
+      const cols = loadDetailSelectedColumns()
+      expect(cols).toEqual(saved)
+    })
+
+    it('should fallback to defaults on corrupt localStorage', () => {
+      localStorage.setItem(DETAIL_COLUMNS_KEY, 'not-valid-json')
+      const cols = loadDetailSelectedColumns()
+      expect(cols).toEqual(DEFAULT_DETAIL_COLUMNS)
+    })
+
+    it('should handle empty array in localStorage', () => {
+      localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify([]))
+      const cols = loadDetailSelectedColumns()
+      expect(cols).toEqual([])
+    })
+  })
+
+  describe('computeVisibleDetailColumns', () => {
+    it('should return columns matching the selected set', () => {
+      const selected = ['呼入人工服务-人工服务-通话次数', '人工服务-满意度-满意率']
+      const visible = computeVisibleDetailColumns(selected, allMetricFields)
+      expect(visible).toHaveLength(2)
+      expect(visible[0].field).toBe('呼入人工服务-人工服务-通话次数')
+      expect(visible[1].field).toBe('人工服务-满意度-满意率')
+    })
+
+    it('should add 5px to each column width', () => {
+      const selected = ['呼入人工服务-人工服务-通话次数']
+      const visible = computeVisibleDetailColumns(selected, allMetricFields)
+      expect(visible[0].width).toBe(85)
+    })
+
+    it('should return empty when nothing selected', () => {
+      const visible = computeVisibleDetailColumns([], allMetricFields)
+      expect(visible).toHaveLength(0)
+    })
+
+    it('should ignore fields not in allMetricFields', () => {
+      const selected = ['呼入人工服务-人工服务-通话次数', '不存在的字段']
+      const visible = computeVisibleDetailColumns(selected, allMetricFields)
+      expect(visible).toHaveLength(1)
+      expect(visible[0].field).toBe('呼入人工服务-人工服务-通话次数')
+    })
+
+    it('should preserve isRate flag from allMetricFields', () => {
+      const selected = ['人工服务-满意度-满意率']
+      const visible = computeVisibleDetailColumns(selected, allMetricFields)
+      expect(visible[0].isRate).toBe(true)
+    })
+
+    it('should preserve label from allMetricFields', () => {
+      const selected = ['呼入人工服务-工单-生成总量']
+      const visible = computeVisibleDetailColumns(selected, allMetricFields)
+      expect(visible[0].label).toBe('提单量')
+    })
+  })
+
+  describe('detail vs main column independence', () => {
+    it('should store detail columns under different localStorage key', () => {
+      const mainCols = ['呼入人工服务-人工服务-通话次数', '人工服务-满意度-满意率']
+      const detailCols = ['呼入人工服务-工单-生成总量', '总体-工时利用率']
+
+      localStorage.setItem(COLUMNS_KEY, JSON.stringify(mainCols))
+      localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify(detailCols))
+
+      const loadedMain = JSON.parse(localStorage.getItem(COLUMNS_KEY))
+      const loadedDetail = JSON.parse(localStorage.getItem(DETAIL_COLUMNS_KEY))
+
+      expect(loadedMain).toEqual(mainCols)
+      expect(loadedDetail).toEqual(detailCols)
+      expect(loadedMain).not.toEqual(loadedDetail)
+    })
+
+    it('should not affect detail columns when main columns change', () => {
+      const detailCols = ['呼入人工服务-人工服务-通话次数']
+      localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify(detailCols))
+
+      localStorage.setItem(COLUMNS_KEY, JSON.stringify(['人工服务-满意度-满意率']))
+      const detail = JSON.parse(localStorage.getItem(DETAIL_COLUMNS_KEY))
+      expect(detail).toEqual(detailCols)
+    })
+
+    it('should not affect main columns when detail columns change', () => {
+      const mainCols = ['人工服务-满意度-满意率']
+      localStorage.setItem(COLUMNS_KEY, JSON.stringify(mainCols))
+
+      localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify(['总体-工时利用率']))
+      const main = JSON.parse(localStorage.getItem(COLUMNS_KEY))
+      expect(main).toEqual(mainCols)
+    })
+  })
+
+  describe('default detail columns vs default main columns', () => {
+    it('should have different default sets', () => {
+      expect(DEFAULT_DETAIL_COLUMNS).not.toEqual(DEFAULT_MAIN_COLUMNS)
+    })
+
+    it('detail defaults should not include 满意率 or 解决率 (which are rate-only in main)', () => {
+      expect(DEFAULT_DETAIL_COLUMNS).not.toContain('人工服务-满意度-满意率')
+      expect(DEFAULT_DETAIL_COLUMNS).not.toContain('呼入人工服务-解决率-解决率')
+    })
+
+    it('detail defaults should include 工作总时长 which main defaults do not', () => {
+      expect(DEFAULT_DETAIL_COLUMNS).toContain('总体-工作总时长(秒)')
+    })
+  })
+})
+
 describe('WorkloadReport - 总体满意率计算', () => {
   function getMetricValue(row, field) {
     const val = row.aggregated_metrics?.[field]

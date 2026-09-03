@@ -262,6 +262,12 @@
     </el-dialog>
 
     <el-drawer v-model="drawerVisible" :title="drawerTitle" size="50%" direction="rtl">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%">
+          <span style="font-size: 16px; font-weight: 600">{{ drawerTitle }}</span>
+          <el-button type="primary" size="small" @click="detailColumnSelectorVisible = true">自定义列</el-button>
+        </div>
+      </template>
       <template v-if="personalRecords.length">
         <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
           <el-descriptions-item label="账号">{{ personalRecords[0].account }}</el-descriptions-item>
@@ -283,6 +289,17 @@
       </template>
       <div v-else style="text-align: center; padding: 40px; color: #999">加载中...</div>
     </el-drawer>
+
+    <el-dialog v-model="detailColumnSelectorVisible" title="明细自定义显示列" width="600px">
+      <el-checkbox-group v-model="detailSelectedColumns">
+        <el-checkbox v-for="col in allMetricFields" :key="col.field" :label="col.field" style="margin: 4px 12px; width: 200px">
+          <span :title="col.field">{{ col.label }}</span>
+        </el-checkbox>
+      </el-checkbox-group>
+      <template #footer>
+        <el-button @click="detailColumnSelectorVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -410,12 +427,26 @@ function loadSelectedColumns() {
   } catch { return [...DEFAULT_COLUMNS] }
 }
 
+const DETAIL_COLUMNS_KEY = 'workload-report-detail-columns'
+function loadDetailSelectedColumns() {
+  try {
+    const saved = localStorage.getItem(DETAIL_COLUMNS_KEY)
+    return saved ? JSON.parse(saved) : [...DETAIL_COLUMNS]
+  } catch { return [...DETAIL_COLUMNS] }
+}
+
 const allMetricFields = ref([])
 const columnSelectorVisible = ref(false)
 const selectedColumns = ref(loadSelectedColumns())
+const detailColumnSelectorVisible = ref(false)
+const detailSelectedColumns = ref(loadDetailSelectedColumns())
 
 watch(selectedColumns, (val) => {
   localStorage.setItem(COLUMNS_KEY, JSON.stringify(val))
+}, { deep: true })
+
+watch(detailSelectedColumns, (val) => {
+  localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify(val))
 }, { deep: true })
 
 watch(() => searchForm.team_desc, () => {
@@ -479,7 +510,7 @@ const visibleMetricColumns = computed(() => {
 
 const visibleDetailColumns = computed(() => {
   return allMetricFields.value
-    .filter(f => DETAIL_COLUMNS.includes(f.field))
+    .filter(f => detailSelectedColumns.value.includes(f.field))
     .map(f => ({
       ...f,
       width: f.width + 5
