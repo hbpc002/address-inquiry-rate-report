@@ -147,6 +147,15 @@ def _migrate_db():
                 except Exception as e:
                     print(f"Failed to add column segment_details: {e}")
 
+        if 'llm_provider_models' in tables:
+            lp_cols = {col['name'] for col in inspector.get_columns('llm_provider_models')}
+            if 'fallback_order' not in lp_cols:
+                try:
+                    db.execute(text("ALTER TABLE llm_provider_models ADD COLUMN fallback_order INTEGER DEFAULT 0"))
+                    print("Added column fallback_order to llm_provider_models")
+                except Exception as e:
+                    print(f"Failed to add column fallback_order: {e}")
+
         if 'training_records' not in tables:
             try:
                 db.execute(text("""

@@ -251,3 +251,119 @@ def test_build_chat_model_selection():
     p = LLMProvider(name="t", base_url="http://x/v1", model="default-model")
     assert build_chat_model(p).model == "default-model"
     assert build_chat_model(p, model="other-model").model == "other-model"
+    # 默认重试次数为 7（限流退避后才有机会切 fallback）
+    assert build_chat_model(p).max_retries == 7
+    assert build_chat_model(p, max_retries=2).max_retries == 2
+
+
+def _mk_provider(db, name, models):
+    from app.core.crypto import encrypt_secret
+    from app.models.llm_provider import LLMProvider, LLMProviderModel
+
+    p = LLMProvider(
+        name=name, base_url="http://127.0.0.1:1/v1", model=models[0]["model"],
+        api_key_encrypted=encrypt_secret("k"),
+    )
+    db.add(p)
+    db.flush()
+    for m in models:
+        db.add(LLMProviderModel(provider_id=p.id, model=m["model"], is_default=m["is_default"], fallback_order=m.get("fallback_order", 0)))
+    db.commit()
+    return p
+
+
+def test_fallback_models_order():
+    from app.core.llm import fallback_models
+    from app.models.database import SessionLocal
+    from app.models.llm_provider import LLMProvider, LLMProviderModel
+
+    db = SessionLocal()
+    try:
+        p = _mk_provider(db, "fallback-order", [
+            {"model": "primary-a", "is_default": True},
+            {"model": "backup-2", "is_default": False, "fallback_order": 2},
+            {"model": "backup-1", "is_default": False, "fallback_order": 1},
+        ])
+        chain = fallback_models(db, p)
+        names = [m.model for m in chain]
+        assert names == ["primary-a", "backup-1", "backup-2"], names
+        # 指定主模型时，其余按 fallback_order 升序
+        chain2 = fallback_models(db, p, requested_model="backup-2")
+        assert [m.model for m in chain2] == ["backup-2", "primary-a", "backup-1"]
+    finally:
+        db.close()
+
+
+def test_fallback_crud_via_api():
+    body = {
+        "name": "fallback-api",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "sk-x",
+        "models": [
+            {"model": "main-model", "is_default": True, "fallback_order": 0},
+            {"model": "fb-1", "is_default": False, "fallback_order": 1},
+            {"model": "fb-2", "is_default": False, "fallback_order": 2},
+        ],
+    }
+    r = client.post("/api/llm-providers", json=body)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    fb = {m["model"]: m["fallback_order"] for m in data["models"]}
+    assert fb == {"main-model": 0, "fb-1": 1, "fb-2": 2}
+
+    lst = client.get("/api/llm-providers").json()
+    prov = next(p for p in lst if p["name"] == "fallback-api")
+    assert {m["model"]: m["fallback_order"] for m in prov["models"]} == fb
+    client.delete(f"/api/llm-providers/{data['id']}")
+
+
+def test_fallback_chat_model_switches_on_rate_limit():
+    """主模型抛 429 时自动切换到备用模型；全部失败才抛错。"""
+    from langchain_core.messages import HumanMessage
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.outputs import ChatGeneration, ChatResult
+    from langchain_core.messages import AIMessage
+    from openai import RateLimitError
+    from app.core.llm import FallbackChatModel
+    import httpx
+
+    def rate_limit_error(msg="429 rate limit"):
+        req = httpx.Request("POST", "http://test/v1")
+        resp = httpx.Response(429, request=req)
+        return RateLimitError(msg, response=resp, body={"error": {"message": msg}})
+
+    class Flaky(BaseChatModel):
+        model_name: str = "m"
+        fail: bool = True
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            if self.fail:
+                raise rate_limit_error()
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"ok-{self.model_name}"))])
+
+        @property
+        def _llm_type(self):
+            return "flaky"
+
+    primary = Flaky(model_name="primary", fail=True)
+    backup = Flaky(model_name="backup", fail=True)
+    rescue = Flaky(model_name="rescue", fail=False)
+    chain = FallbackChatModel([primary, backup, rescue])
+
+    out = chain.invoke([HumanMessage("q")])
+    assert "ok-rescue" in out.content
+    assert chain.used_fallback is True
+    assert chain.used_model == "rescue"  # 最终产出答案的是第三个模型
+
+    # 全部成功（未遇限流）不应标记降级
+    ok_chain = FallbackChatModel([Flaky(model_name="a", fail=False)])
+    assert ok_chain.invoke([HumanMessage("q")]).content == "ok-a"
+    assert ok_chain.used_fallback is False
+
+    # 全部失败 → 抛最后限流错误
+    all_fail = FallbackChatModel([Flaky(model_name="a", fail=True), Flaky(model_name="b", fail=True)])
+    try:
+        all_fail.invoke([HumanMessage("q")])
+        assert False, "应当抛 RateLimitError"
+    except RateLimitError:
+        pass

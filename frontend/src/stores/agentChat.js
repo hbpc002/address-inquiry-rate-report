@@ -109,6 +109,8 @@ export const useAgentChatStore = defineStore('agentChat', () => {
         item.thinkContent += '\n结果：' + short(evt.output)
       }
       pendingThoughtId.value = null
+    } else if (evt.type === 'notice') {
+      it.content += `\n\n> ℹ️ ${evt.message || ''}`
     } else if (evt.type === 'error') {
       it.content += `\n\n> ⚠️ ${evt.message || '未知错误'}`
     }

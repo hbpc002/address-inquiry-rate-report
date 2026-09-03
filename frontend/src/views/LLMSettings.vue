@@ -102,9 +102,19 @@
             <div v-for="(m, i) in form.models" :key="i" class="model-row">
               <el-radio v-model="defaultModelIndex" :label="i">默认</el-radio>
               <el-input v-model="m.model" placeholder="如 qwen2.5:72b / deepseek-chat" style="flex:1" />
+              <el-input-number
+                v-model="m.fallback_order"
+                :min="0" :max="20" :step="1"
+                size="small" controls-position="right"
+                :disabled="defaultModelIndex === i"
+                placeholder="备用顺序"
+                style="width: 90px"
+              />
+              <span class="tip" style="white-space:nowrap">备用顺序</span>
               <el-button link type="danger" :disabled="form.models.length <= 1" @click="removeModel(i)">删除</el-button>
             </div>
             <el-button size="small" @click="addModel">+ 添加模型</el-button>
+            <div class="tip" style="margin-top:4px">主模型（默认）重试 7 次仍限流时，按“备用顺序”从小到大依次切换（0 表示不参与降级）。</div>
           </div>
         </el-form-item>
         <el-form-item label="API Key">
@@ -152,15 +162,15 @@ async function loadLauncher() {
 
 function openCreate() {
   editing.value = false
-  form.value = { id: null, name: '', base_url: '', model: '', api_key: '', is_default: false, models: [{ model: '' }] }
+  form.value = { id: null, name: '', base_url: '', model: '', api_key: '', is_default: false, models: [{ model: '', fallback_order: 0 }] }
   defaultModelIndex.value = 0
   dialogVisible.value = true
 }
 function openEdit(row) {
   editing.value = true
   const models = row.models && row.models.length
-    ? row.models.map((m) => ({ model: m.model }))
-    : row.model ? [{ model: row.model }] : [{ model: '' }]
+    ? row.models.map((m) => ({ model: m.model, fallback_order: m.fallback_order || 0 }))
+    : row.model ? [{ model: row.model, fallback_order: 0 }] : [{ model: '', fallback_order: 0 }]
   const di = row.models && row.models.length ? row.models.findIndex((m) => m.is_default) : 0
   form.value = { id: row.id, name: row.name, base_url: row.base_url, model: row.model, api_key: '', is_default: row.is_default, models }
   defaultModelIndex.value = di < 0 ? 0 : di
@@ -168,7 +178,7 @@ function openEdit(row) {
 }
 
 function addModel() {
-  form.value.models.push({ model: '' })
+  form.value.models.push({ model: '', fallback_order: 0 })
 }
 function removeModel(i) {
   form.value.models.splice(i, 1)
@@ -186,7 +196,11 @@ async function save() {
     name: form.value.name,
     base_url: form.value.base_url,
     is_default: form.value.is_default,
-    models: form.value.models.map((m, i) => ({ model: m.model, is_default: i === defaultModelIndex.value })),
+    models: form.value.models.map((m, i) => ({
+      model: m.model,
+      is_default: i === defaultModelIndex.value,
+      fallback_order: i === defaultModelIndex.value ? 0 : (Number(m.fallback_order) || 0),
+    })),
   }
   const defModel = form.value.models[defaultModelIndex.value] && form.value.models[defaultModelIndex.value].model
   if (defModel) payload.model = defModel

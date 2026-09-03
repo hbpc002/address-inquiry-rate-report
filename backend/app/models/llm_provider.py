@@ -24,7 +24,11 @@ class LLMProvider(Base):
 
 
 class LLMProviderModel(Base):
-    """一个提供商下的多个模型；is_default 标记该 provider 内的默认模型。"""
+    """一个提供商下的多个模型；is_default 标记该 provider 内的默认模型。
+
+    fallback_order 用于同 provider 内的限流降级链：主模型（is_default）重试后
+    仍遇到限流(429)时，按 fallback_order 升序切换备用模型。0 表示非备用。
+    """
 
     __tablename__ = "llm_provider_models"
 
@@ -37,3 +41,4 @@ class LLMProviderModel(Base):
     )
     model = Column(String(100), nullable=False)
     is_default = Column(Boolean, default=False)
+    fallback_order = Column(Integer, default=0)

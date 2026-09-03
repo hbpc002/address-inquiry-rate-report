@@ -41,6 +41,7 @@ ALLOWED_ICON_EXT = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
 class ProviderModelIn(BaseModel):
     model: str
     is_default: bool = False
+    fallback_order: int = 0
 
 
 class ProviderIn(BaseModel):
@@ -86,12 +87,15 @@ class LauncherConfig(BaseModel):
 
 def _models_of(db: Session, provider_id: int) -> List[dict]:
     rows = db.query(LLMProviderModel).filter(LLMProviderModel.provider_id == provider_id).all()
-    return [{"model": r.model, "is_default": bool(r.is_default)} for r in rows]
+    return [
+        {"model": r.model, "is_default": bool(r.is_default), "fallback_order": r.fallback_order or 0}
+        for r in rows
+    ]
 
 
 def _to_out(p: LLMProvider, models: Optional[List[dict]] = None) -> ProviderOut:
     if models is None:
-        models = [{"model": p.model, "is_default": True}]
+        models = [{"model": p.model, "is_default": True, "fallback_order": 0}]
     return ProviderOut(
         id=p.id, name=p.name, base_url=p.base_url, model=p.model,
         is_default=bool(p.is_default), api_key_masked=mask_secret(decrypt_secret(p.api_key_encrypted)),
@@ -108,16 +112,21 @@ def list_providers_api(
     providers = list_providers(db)
     grouped = {}
     for r in db.query(LLMProviderModel).all():
-        grouped.setdefault(r.provider_id, []).append({"model": r.model, "is_default": bool(r.is_default)})
+        grouped.setdefault(r.provider_id, []).append(
+            {"model": r.model, "is_default": bool(r.is_default), "fallback_order": r.fallback_order or 0}
+        )
     return [_to_out(p, grouped.get(p.id)) for p in providers]
 
 
 def _resolve_models(body: ProviderIn):
     """把入参规整为模型列表，并保证恰好一个默认。"""
     if body.models:
-        items = [{"model": m.model, "is_default": bool(m.is_default)} for m in body.models if m.model and m.model.strip()]
+        items = [
+            {"model": m.model, "is_default": bool(m.is_default), "fallback_order": m.fallback_order or 0}
+            for m in body.models if m.model and m.model.strip()
+        ]
     elif body.model:
-        items = [{"model": body.model, "is_default": True}]
+        items = [{"model": body.model, "is_default": True, "fallback_order": 0}]
     else:
         items = []
     if not items:
@@ -149,7 +158,9 @@ def create_provider(
     db.add(p)
     db.flush()
     for m in items:
-        db.add(LLMProviderModel(provider_id=p.id, model=m["model"], is_default=m["is_default"]))
+        db.add(LLMProviderModel(
+            provider_id=p.id, model=m["model"], is_default=m["is_default"], fallback_order=m["fallback_order"],
+        ))
     db.commit()
     db.refresh(p)
     return _to_out(p, items)
@@ -244,7 +255,9 @@ def update_provider(
         items = _resolve_models(body)
         db.query(LLMProviderModel).filter(LLMProviderModel.provider_id == p.id).delete()
         for m in items:
-            db.add(LLMProviderModel(provider_id=p.id, model=m["model"], is_default=m["is_default"]))
+            db.add(LLMProviderModel(
+                provider_id=p.id, model=m["model"], is_default=m["is_default"], fallback_order=m["fallback_order"],
+            ))
         p.model = next((m["model"] for m in items if m["is_default"]), items[0]["model"])
         models_out = items
     elif body.model:
