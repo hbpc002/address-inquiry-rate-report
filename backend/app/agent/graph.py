@@ -24,6 +24,8 @@ SYSTEM_PROMPT = (
 MAX_ITERATIONS = 6
 # 构造给 LLM 的历史消息上限（最近 N 条），更早的工具结果压缩为摘要
 MAX_HISTORY_MESSAGES = 12
+# 连续 run_sql 失败多少次后，自动跳过 run_sql 并提示 LLM 使用报表工具
+CONSECUTIVE_RUN_SQL_FAILURES = 2
 
 
 def _trim_history(state: dict) -> list:
@@ -59,12 +61,53 @@ def _trim_history(state: dict) -> list:
     return msgs
 
 
+def _count_consecutive_run_sql_failures(state: dict) -> int:
+    """从消息历史尾部反向计数连续的 run_sql 失败对数。
+
+    每一对 = AIMessage(tool_calls=[{name:"run_sql"}]) + ToolMessage(content 含 "error")。
+    返回连续失败对数（0 表示最近没有 run_sql 连续失败）。
+    """
+    msgs = state["messages"]
+    count = 0
+    # 从尾部向前扫描，每两步一组（ToolMessage + AIMessage）
+    i = len(msgs) - 1
+    while i >= 1:
+        tool_msg = msgs[i]
+        ai_msg = msgs[i - 1]
+        if not isinstance(tool_msg, ToolMessage):
+            break
+        if not isinstance(ai_msg, AIMessage):
+            break
+        # 检查 AIMessage 是否调用了 run_sql
+        tool_calls = getattr(ai_msg, "tool_calls", None)
+        if not tool_calls or not any(tc.get("name") == "run_sql" for tc in tool_calls):
+            break
+        # 检查 ToolMessage 是否为错误结果
+        content = tool_msg.content if isinstance(tool_msg.content, str) else str(tool_msg.content)
+        if '"error"' not in content:
+            break
+        count += 1
+        i -= 2
+    return count
+
+
 def build_graph(llm, tools):
     tool_node = ToolNode(tools)
     llm_with_tools = llm.bind_tools(tools)
 
     def agent(state):
         trimmed = _trim_history(state)
+        # 连续 run_sql 失败时，注入指令让 LLM 放弃 SQL 转用报表工具
+        sql_fails = _count_consecutive_run_sql_failures(state)
+        if sql_fails >= CONSECUTIVE_RUN_SQL_FAILURES:
+            trimmed = trimmed + [
+                AIMessage(content=(
+                    f"连续 {sql_fails} 次 run_sql 失败（表名或列名不正确）。"
+                    "请不要再尝试 run_sql，改用已提供的报表工具（query_team_ranking / "
+                    "query_month_summary / query_date_range / query_daily / query_efficiency / "
+                    "query_dashboard_stats）获取数据，或直接基于已有信息给出结论。"
+                ))
+            ]
         return {"messages": [llm_with_tools.invoke(trimmed)]}
 
     # 迭代计数，防止无限循环耗尽令牌
@@ -76,6 +119,9 @@ def build_graph(llm, tools):
             return END
         iteration_counter["n"] += 1
         if iteration_counter["n"] >= MAX_ITERATIONS:
+            return "force_finalize"
+        # 连续 run_sql 失败超限，直接结束循环
+        if _count_consecutive_run_sql_failures(state) >= CONSECUTIVE_RUN_SQL_FAILURES + 1:
             return "force_finalize"
         return "tools"
 
