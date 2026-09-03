@@ -14,9 +14,8 @@ python-dotenv==1.0.0
 alembic==1.13.0
 pytest==7.4.3
 # 智能体（LangGraph + 工具调用 + text-to-SQL）
-langgraph
-langchain-openai
-langchain-community
-openai
-sqlparse
-cryptography
+langgraph==1.2.11
+langchain-openai==1.6.0
+langchain-core==1.6.1
+openai==3.5.0
+sqlparse==0.6.0
