@@ -193,6 +193,8 @@ def _make_run_sql(db, schema_desc: str):
     doc = (
         "对考勤数据库执行只读 SQL（仅 SELECT）。当现有报表工具无法覆盖自定义分析时使用。\n"
         "注意：仅允许单条 SELECT，禁止 INSERT/UPDATE/DELETE/DROP/WITH/INTO。\n"
+        "日期列必须使用 'YYYY-MM-DD' 格式（如 '2026-09-03'），禁止使用空字符串。\n"
+        "涉及日期范围查询（如'最近一周/本月'）请优先使用 query_date_range 工具。\n"
         "以下是数据库中实际存在的表和关键列（PostgreSQL 语法）：\n"
         f"{schema_desc}"
     )

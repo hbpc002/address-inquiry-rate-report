@@ -120,6 +120,42 @@ def test_run_sql_tool_description_contains_schema():
         db.close()
 
 
+def test_run_sql_tool_description_contains_date_hint():
+    """run_sql 工具描述应包含日期格式提醒和 query_date_range 推荐。"""
+    db = SessionLocal()
+    try:
+        from app.agent.tools import make_tools
+        tools = make_tools(db)
+        by_name = {t.name: t for t in tools}
+        doc = by_name["run_sql"].description
+        assert "YYYY-MM-DD" in doc
+        assert "query_date_range" in doc
+    finally:
+        db.close()
+
+
+def test_initial_messages_injects_current_date():
+    """initial_messages 应在 system prompt 中注入当天日期。"""
+    from datetime import datetime
+    from app.agent.graph import initial_messages
+    msgs = initial_messages("测试问题")
+    from langchain_core.messages import SystemMessage, HumanMessage
+    assert len(msgs) == 2
+    assert isinstance(msgs[0], SystemMessage)
+    assert isinstance(msgs[1], HumanMessage)
+    today = datetime.now().strftime("%Y-%m-%d")
+    assert today in msgs[0].content
+    assert msgs[1].content == "测试问题"
+
+
+def test_system_prompt_mentions_report_tool_priority():
+    """SYSTEM_PROMPT 应明确要求优先使用报表工具。"""
+    from app.agent.graph import SYSTEM_PROMPT
+    assert "query_date_range" in SYSTEM_PROMPT
+    assert "必须优先" in SYSTEM_PROMPT
+    assert "{current_date}" in SYSTEM_PROMPT
+
+
 def test_build_schema_description_returns_content():
     """_build_schema_description 应返回包含实际表信息的字符串。"""
     db = SessionLocal()
