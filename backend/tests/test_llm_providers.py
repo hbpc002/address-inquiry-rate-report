@@ -251,8 +251,9 @@ def test_build_chat_model_selection():
     p = LLMProvider(name="t", base_url="http://x/v1", model="default-model")
     assert build_chat_model(p).model == "default-model"
     assert build_chat_model(p, model="other-model").model == "other-model"
-    # 默认重试次数为 7（限流退避后才有机会切 fallback）
-    assert build_chat_model(p).max_retries == 7
+    # 默认重试次数为 3 + 60s 超时（缩短静默等待，限流时更快降级）
+    assert build_chat_model(p).max_retries == 3
+    assert build_chat_model(p).request_timeout == 60
     assert build_chat_model(p, max_retries=2).max_retries == 2
 
 

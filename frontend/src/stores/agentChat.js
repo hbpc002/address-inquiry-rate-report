@@ -75,6 +75,59 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     return bubbleItems.value.find((m) => m.id === currentAiId.value) || null
   }
 
+  function _thinkingList() {
+    const it = _ai()
+    if (!it) return []
+    if (!it.thoughtItems) it.thoughtItems = []
+    return it.thoughtItems
+  }
+
+  // 结束当前挂起中的 loading 节点
+  function _finalizePending(onlyId = null) {
+    const list = _thinkingList()
+    const it = _ai()
+    if (!it) return
+    for (const t of list) {
+      if (t.status === 'loading' && (onlyId == null || t.id === onlyId)) {
+        t.status = 'success'
+        if (onlyId != null) break
+      }
+    }
+    if (onlyId != null) pendingThoughtId.value = null
+  }
+
+  function _addStatus(title) {
+    const it = _ai()
+    if (!it) return
+    _finalizePending()
+    const id = 's' + ++thoughtSeq.value
+    pendingThoughtId.value = id
+    it.thoughtItems = it.thoughtItems || []
+    it.thoughtItems.push({
+      id,
+      title: title || '正在处理',
+      thinkContent: '正在处理…',
+      status: 'loading',
+      isCanExpand: true,
+    })
+  }
+
+  function _addTool(name, input) {
+    const it = _ai()
+    if (!it) return
+    _finalizePending()
+    const id = 't' + ++thoughtSeq.value
+    pendingThoughtId.value = id
+    if (!it.thoughtItems) it.thoughtItems = []
+    it.thoughtItems.push({
+      id,
+      title: name || '工具',
+      thinkContent: '入参：' + short(input),
+      status: 'loading',
+      isCanExpand: true,
+    })
+  }
+
   function clear() {
     bubbleItems.value = []
     currentAiId.value = null
@@ -90,28 +143,24 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     const it = _ai()
     if (!it) return
     if (evt.type === 'token') {
+      _finalizePending()
       it.content += evt.content
+    } else if (evt.type === 'status') {
+      _addStatus(evt.title)
     } else if (evt.type === 'tool_start') {
-      const id = 't' + ++thoughtSeq.value
-      pendingThoughtId.value = id
-      if (!it.thoughtItems) it.thoughtItems = []
-      it.thoughtItems.push({
-        id,
-        title: evt.name || '工具',
-        thinkContent: '入参：' + short(evt.input),
-        status: 'loading',
-        isCanExpand: true,
-      })
+      _addTool(evt.name, evt.input)
     } else if (evt.type === 'tool_end') {
-      const item = it.thoughtItems.find((t) => t.id === pendingThoughtId.value)
+      const item = _thinkingList().find((t) => t.id === pendingThoughtId.value)
       if (item) {
         item.status = 'success'
         item.thinkContent += '\n结果：' + short(evt.output)
       }
       pendingThoughtId.value = null
     } else if (evt.type === 'notice') {
+      _finalizePending()
       it.content += `\n\n> ℹ️ ${evt.message || ''}`
     } else if (evt.type === 'error') {
+      _finalizePending()
       it.content += `\n\n> ⚠️ ${evt.message || '未知错误'}`
     }
   }

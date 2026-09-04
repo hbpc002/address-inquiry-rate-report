@@ -41,6 +41,10 @@
             />
             <MarkdownMessage v-if="item.placement === 'start'" :content="item.content" />
             <span v-else class="user-text">{{ item.content }}</span>
+            <div v-if="item.placement === 'start' && currentStepOf(item)" class="step-bar">
+              <span class="spinner"></span>
+              <span class="step-text">{{ currentStepOf(item) }}</span>
+            </div>
           </div>
         </template>
       </BubbleList>
@@ -108,6 +112,12 @@ function onProviderChange() {
   store.model = ''
 }
 
+function currentStepOf(item) {
+  if (!store.streaming || !item.thoughtItems) return ''
+  const running = [...item.thoughtItems].reverse().find((t) => t.status === 'loading')
+  return running ? running.title : ''
+}
+
 async function loadProviders() {
   try {
     const r = await api.get('/llm-providers')
@@ -155,6 +165,29 @@ onMounted(() => {
 .bubble-body { word-break: break-word; }
 .user-text { white-space: pre-wrap; }
 .thought-chain { margin-bottom: 8px; }
+.step-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: #f0f2f5;
+  border-radius: 6px;
+  color: #606266;
+  font-size: 12px;
+}
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #c0c4cc;
+  border-top-color: #409eff;
+  border-radius: 50%;
+  animation: step-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes step-spin {
+  to { transform: rotate(360deg); }
+}
 .input-bar {
   display: flex;
   gap: 8px;

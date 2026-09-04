@@ -27,14 +27,15 @@ def list_providers(db: Session) -> list:
     return db.query(LLMProvider).order_by(LLMProvider.is_default.desc(), LLMProvider.id).all()
 
 
-DEFAULT_MAX_RETRIES = 7
+DEFAULT_MAX_RETRIES = 3
 
 
 def build_chat_model(provider: LLMProvider, model: str = None, temperature: float = 0.2, **kwargs):
     """根据提供商配置构建 LangChain ChatOpenAI（兼容任意 OpenAI 接口）。
 
     model 可覆盖 provider 的默认模型（用于同一提供商下多模型选择）。
-    max_retries 默认 7：OpenAI SDK 内置指数退避 + 随机抖动，自动处理瞬时 429/5xx。
+    max_retries 默认 3：OpenAI SDK 内置指数退避 + 随机抖动，自动处理瞬时 429/5xx。
+    request_timeout 默认 60 秒：避免接口长时间挂起导致前端无反馈。
     """
     from langchain_openai import ChatOpenAI
 
@@ -47,7 +48,7 @@ def build_chat_model(provider: LLMProvider, model: str = None, temperature: floa
         streaming=True,
         max_retries=kwargs.pop("max_retries", DEFAULT_MAX_RETRIES),
     )
-    params.setdefault("request_timeout", kwargs.pop("request_timeout", 120))
+    params.setdefault("request_timeout", kwargs.pop("request_timeout", 60))
     params.update(kwargs)
     return ChatOpenAI(**params)
 

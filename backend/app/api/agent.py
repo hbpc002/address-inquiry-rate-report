@@ -52,12 +52,26 @@ async def agent_chat(
         try:
             async for ev in graph.astream_events({"messages": messages}, version="v2"):
                 kind = ev.get("event")
-                if kind == "on_chat_model_stream":
+                if kind == "on_chat_model_start":
+                    yield __sse({"type": "status", "title": "正在分析问题"})
+                elif kind == "on_chat_model_stream":
+                    if llm.used_fallback and not fallback_notified:
+                        fallback_notified = True
+                        yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
                     chunk = ev["data"]["chunk"]
                     content = chunk.content if isinstance(chunk.content, str) else ""
                     if content:
                         yield __sse({"type": "token", "content": content})
+                elif kind == "on_chat_model_end":
+                    resp = ev["data"]["output"]
+                    tool_calls = getattr(resp, "tool_calls", None)
+                    if tool_calls:
+                        yield __sse({"type": "status", "title": "已获取数据，正在汇总分析"})
+                    elif llm.used_fallback and not fallback_notified:
+                        fallback_notified = True
+                        yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
                 elif kind == "on_tool_start":
+                    yield __sse({"type": "status", "title": f"正在执行工具：{ev.get('name')}"})
                     yield __sse({
                         "type": "tool_start",
                         "name": ev.get("name"),
@@ -66,9 +80,6 @@ async def agent_chat(
                 elif kind == "on_tool_end":
                     out = str(ev["data"].get("output"))[:800]
                     yield __sse({"type": "tool_end", "name": ev.get("name"), "output": out})
-            if llm.used_fallback and not fallback_notified:
-                fallback_notified = True
-                yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
             yield __sse({"type": "done"})
         except RateLimitError:
             yield __sse({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})
