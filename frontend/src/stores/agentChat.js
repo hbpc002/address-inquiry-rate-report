@@ -147,6 +147,14 @@ export const useAgentChatStore = defineStore('agentChat', () => {
       it.content += evt.content
     } else if (evt.type === 'status') {
       _addStatus(evt.title)
+    } else if (evt.type === 'progress') {
+      // 模型生成工具调用阶段无可视文本，更新当前 loading 节点文案，
+      // 让界面在长时间分析中保持实时反馈而不是"卡住"
+      const pending = _thinkingList().find((t) => t.status === 'loading')
+      if (pending && evt.text) {
+        pending.title = evt.text
+        pending.thinkContent = evt.text
+      }
     } else if (evt.type === 'tool_start') {
       _addTool(evt.name, evt.input)
     } else if (evt.type === 'tool_end') {

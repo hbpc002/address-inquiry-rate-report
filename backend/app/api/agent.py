@@ -1,4 +1,5 @@
 import json
+import time
 
 from openai import RateLimitError
 from fastapi import APIRouter, Depends, Body
@@ -16,6 +17,17 @@ from app.core.llm import (
 )
 from app.agent.tools import make_tools, _build_data_range
 from app.agent.graph import build_graph, initial_messages
+
+# 模型生成工具调用（如 SQL）时 content 为空、无可视文本；节流地发 progress
+# 心跳，让前端在最长空白阶段仍有实时反馈。单位：秒。
+PROGRESS_INTERVAL = 2.0
+# 进度文案轮换，避免界面长时间看起来"卡住"
+_PROGRESS_TEXTS = [
+    "正在分析数据…",
+    "正在生成查询…",
+    "正在整理结果…",
+    "正在比对数据…",
+]
 
 router = APIRouter(prefix="/api/agent", tags=["智能体对话"])
 
@@ -48,45 +60,80 @@ async def agent_chat(
     messages = initial_messages(body.message, data_range=_build_data_range(db))
 
     async def event_stream():
-        fallback_notified = False
-        try:
-            async for ev in graph.astream_events({"messages": messages}, version="v2"):
-                kind = ev.get("event")
-                if kind == "on_chat_model_start":
-                    yield __sse({"type": "status", "title": "正在分析问题"})
-                elif kind == "on_chat_model_stream":
-                    if llm.used_fallback and not fallback_notified:
-                        fallback_notified = True
-                        yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
-                    chunk = ev["data"]["chunk"]
-                    content = chunk.content if isinstance(chunk.content, str) else ""
-                    if content:
-                        yield __sse({"type": "token", "content": content})
-                elif kind == "on_chat_model_end":
-                    resp = ev["data"]["output"]
-                    tool_calls = getattr(resp, "tool_calls", None)
-                    if tool_calls:
-                        yield __sse({"type": "status", "title": "已获取数据，正在汇总分析"})
-                    elif llm.used_fallback and not fallback_notified:
-                        fallback_notified = True
-                        yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
-                elif kind == "on_tool_start":
-                    yield __sse({"type": "status", "title": f"正在执行工具：{ev.get('name')}"})
-                    yield __sse({
-                        "type": "tool_start",
-                        "name": ev.get("name"),
-                        "input": ev["data"].get("input"),
-                    })
-                elif kind == "on_tool_end":
-                    out = str(ev["data"].get("output"))[:800]
-                    yield __sse({"type": "tool_end", "name": ev.get("name"), "output": out})
-            yield __sse({"type": "done"})
-        except RateLimitError:
-            yield __sse({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})
-        except Exception as e:  # noqa: BLE001
-            yield __sse({"type": "error", "message": str(e)})
+        async for s in iter_sse_events(graph, llm, messages):
+            yield s
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
+    """把 LangGraph 的 astream_events 转成 SSE 文本序列（可独立测试）。
+
+    - content 非空 → token 事件（逐字流式显示）
+    - content 为空但带 tool_call_chunks（模型正在生成工具/SQL 参数）→ 节流发
+      progress 事件，让前端在最长空白期有实时更新
+
+    _now 为可注入的时钟，便于测试节流/轮换逻辑（默认使用系统的单调时钟）。
+    """
+    fallback_notified = False
+    last_progress = None
+    progress_idx = 0
+    try:
+        async for ev in graph.astream_events({"messages": messages}, version="v2"):
+            kind = ev.get("event")
+            if kind == "on_chat_model_start":
+                yield __sse({"type": "status", "title": "正在分析问题"})
+            elif kind == "on_chat_model_stream":
+                if llm.used_fallback and not fallback_notified:
+                    fallback_notified = True
+                    yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
+                chunk = ev["data"]["chunk"]
+                content = chunk.content if isinstance(chunk.content, str) else ""
+                if content:
+                    yield __sse({"type": "token", "content": content})
+                elif getattr(chunk, "tool_call_chunks", None) or _reasoning_content(chunk):
+                    # 模型在生成工具参数：无可视文本，但可据此判断仍在工作
+                    cur = _now()
+                    if last_progress is None or cur - last_progress >= PROGRESS_INTERVAL:
+                        last_progress = cur
+                        text = _PROGRESS_TEXTS[progress_idx % len(_PROGRESS_TEXTS)]
+                        progress_idx += 1
+                        yield __sse({"type": "progress", "text": text})
+            elif kind == "on_chat_model_end":
+                resp = ev["data"]["output"]
+                tool_calls = getattr(resp, "tool_calls", None)
+                if tool_calls:
+                    yield __sse({"type": "status", "title": "已获取数据，正在汇总分析"})
+                elif llm.used_fallback and not fallback_notified:
+                    fallback_notified = True
+                    yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
+            elif kind == "on_tool_start":
+                yield __sse({"type": "status", "title": f"正在执行工具：{ev.get('name')}"})
+                yield __sse({
+                    "type": "tool_start",
+                    "name": ev.get("name"),
+                    "input": ev["data"].get("input"),
+                })
+            elif kind == "on_tool_end":
+                out = str(ev["data"].get("output"))[:800]
+                yield __sse({"type": "tool_end", "name": ev.get("name"), "output": out})
+        yield __sse({"type": "done"})
+    except RateLimitError:
+        yield __sse({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})
+    except Exception as e:  # noqa: BLE001
+        yield __sse({"type": "error", "message": str(e)})
+
+
+def _reasoning_content(chunk) -> bool:
+    """识别推理类模型（如 Qwen）流式输出的 reasoning 片段。"""
+    try:
+        for kw in ("reasoning_content", "reasoning"):
+            val = chunk.additional_kwargs.get(kw)
+            if val:
+                return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 def __sse(payload: dict) -> str:

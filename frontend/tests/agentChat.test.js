@@ -168,4 +168,38 @@ describe('agentChat store 持久化', () => {
     expect(ai.thoughtItems[1].status).toBe('success')
     expect(ai.thoughtItems[1].thinkContent).toContain('c')
   })
+
+  it('progress 事件更新当前 loading 节点的文案而不新增节点', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    const store = useAgentChatStore()
+    store.activate()
+    const sse =
+      'data: ' + JSON.stringify({ type: 'status', title: '正在分析问题' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'progress', text: '正在生成查询…' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'progress', text: '正在整理结果…' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'done' }) + '\n\n'
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: {
+        getReader: () => {
+          const enc = new TextEncoder()
+          let sent = false
+          return {
+            read: async () => {
+              if (sent) return { done: true, value: undefined }
+              sent = true
+              return { done: false, value: enc.encode(sse) }
+            },
+          }
+        },
+      },
+    }))
+    await store.send('最近一周')
+    const ai = store.bubbleItems[1]
+    // progress 只更新不新增节点：仍只有 status 产生的 1 个节点
+    expect(ai.thoughtItems.length).toBe(1)
+    // 文案被最后一次 progress 更新
+    expect(ai.thoughtItems[0].title).toBe('正在整理结果…')
+    expect(ai.thoughtItems[0].thinkContent).toBe('正在整理结果…')
+  })
 })
