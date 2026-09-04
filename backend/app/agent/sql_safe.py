@@ -28,13 +28,14 @@ def validate_sql(sql: str) -> str:
     if ";" in no_str.rstrip(";").strip():
         raise ValueError("仅允许单条 SQL 语句")
 
-    body = no_str.rstrip(";").strip()
+    body = stripped.rstrip(";").strip()
     m = re.match(r"\s*(\w+)", body, re.IGNORECASE)
     first_kw = m.group(1).lower() if m else ""
     if first_kw != "select":
         raise ValueError("仅允许 SELECT 查询")
 
-    low = body.lower()
+    # 关键字检测在去字符串字面量的版本上进行，避免字面量里的词干扰
+    low = no_str.lower()
     for kw in FORBIDDEN_KEYWORDS:
         if re.search(r"\b" + kw + r"\b", low):
             raise ValueError(f"禁止的关键字: {kw}")

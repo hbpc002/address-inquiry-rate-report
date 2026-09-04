@@ -45,3 +45,17 @@ def test_forbidden_keyword_rejected():
         assert False
     except ValueError:
         pass
+
+
+def test_string_literals_preserved():
+    """返回的 SQL 应保留字符串字面量的原始内容（不能被替换为空串）。"""
+    out = validate_sql("SELECT * FROM daily_reports WHERE schedule_date BETWEEN '2026-08-29' AND '2026-09-04'")
+    assert "'2026-08-29'" in out
+    assert "'2026-09-04'" in out
+
+
+def test_keyword_inside_literal_not_rejected():
+    """字符串字面量里的关键词不应被误判为写语句。"""
+    # 'with' 在字面量内出现；SELECT 里虽含 with 词，但不构成 WITH 子句
+    out = validate_sql("SELECT name FROM employees WHERE remark = 'with a friend'")
+    assert out.lower().startswith("select")

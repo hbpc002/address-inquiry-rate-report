@@ -7,6 +7,7 @@ from langgraph.prebuilt import ToolNode
 SYSTEM_PROMPT = (
     "你是一个企业「排班签到报表系统」的数据分析智能体，用中文回答用户关于考勤、工时、出勤率、排班的问题。\n"
     "当前日期：{current_date}，涉及日期范围时请据此计算。\n"
+    "{data_range}\n"
     "\n"
     "# 能力与工具优先级\n"
     "- **必须优先**使用提供的报表工具获取结构化数据：\n"
@@ -146,6 +147,7 @@ def build_graph(llm, tools):
     return graph.compile()
 
 
-def initial_messages(question: str) -> list:
+def initial_messages(question: str, data_range: str = "") -> list:
     today = datetime.now().strftime("%Y-%m-%d")
-    return [SystemMessage(content=SYSTEM_PROMPT.format(current_date=today)), HumanMessage(content=question)]
+    prompt = SYSTEM_PROMPT.format(current_date=today, data_range=data_range)
+    return [SystemMessage(content=prompt), HumanMessage(content=question)]

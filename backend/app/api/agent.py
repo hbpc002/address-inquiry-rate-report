@@ -14,7 +14,7 @@ from app.core.llm import (
     fallback_models,
     build_fallback_model,
 )
-from app.agent.tools import make_tools
+from app.agent.tools import make_tools, _build_data_range
 from app.agent.graph import build_graph, initial_messages
 
 router = APIRouter(prefix="/api/agent", tags=["智能体对话"])
@@ -45,7 +45,7 @@ async def agent_chat(
     llm = build_fallback_model(provider, models)
     tools = make_tools(db)
     graph = build_graph(llm, tools)
-    messages = initial_messages(body.message)
+    messages = initial_messages(body.message, data_range=_build_data_range(db))
 
     async def event_stream():
         fallback_notified = False

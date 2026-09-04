@@ -173,6 +173,80 @@ def test_build_schema_description_returns_content():
         db.close()
 
 
+def test_fill_empty_date_literals_between():
+    """BETWEEN '' AND '' 应被替换为具体日期窗口。"""
+    from datetime import date, timedelta
+    from app.agent.tools import _fill_empty_date_literals
+    filled = _fill_empty_date_literals(
+        "SELECT * FROM daily_reports WHERE schedule_date BETWEEN '' AND ''"
+    )
+    today = date.today()
+    week_ago = (today - timedelta(days=6)).isoformat()
+    assert f"BETWEEN '{week_ago}' AND '{today.isoformat()}'" in filled
+
+
+def test_fill_empty_date_literals_comparison():
+    """单侧比较 >= '' / <= '' 应被替换为今天。"""
+    from datetime import date
+    from app.agent.tools import _fill_empty_date_literals
+    filled = _fill_empty_date_literals(
+        "SELECT * FROM daily_reports WHERE schedule_date >= '' AND schedule_date <= ''"
+    )
+    today = date.today().isoformat()
+    assert f">= '{today}'" in filled
+    assert f"<= '{today}'" in filled
+
+
+def test_fill_empty_date_literals_ignores_non_date():
+    """不含日期列的 SQL 空串不应被替换。"""
+    from app.agent.tools import _fill_empty_date_literals
+    filled = _fill_empty_date_literals("SELECT * FROM employees WHERE name != ''")
+    assert "''" in filled
+
+
+def test_run_sql_empty_date_no_error():
+    """run_sql 执行带空日期占位符的 SQL 不应报错。"""
+    db = SessionLocal()
+    try:
+        from app.agent.tools import make_tools
+        tools = make_tools(db)
+        by_name = {t.name: t for t in tools}
+        res = by_name["run_sql"].invoke({
+            "sql_query": "SELECT e.name, e.team, SUM(d.actual_hours) AS total FROM "
+                         "daily_reports d JOIN employees e ON e.id = d.emp_id "
+                         "WHERE d.schedule_date BETWEEN '' AND '' "
+                         "GROUP BY e.name, e.team ORDER BY total LIMIT 10"
+        })
+        data = json.loads(res)
+        assert "error" not in data
+        assert "row_count" in data
+    finally:
+        db.close()
+
+
+def test_build_data_range_empty_db_returns_empty():
+    """空库时 _build_data_range 应返回空字符串（优雅降级）。"""
+    db = SessionLocal()
+    try:
+        from app.agent.tools import _build_data_range
+        assert _build_data_range(db) == ""
+    finally:
+        db.close()
+
+
+def test_initial_messages_accept_data_range():
+    """initial_messages 应把数据日期范围写入 system prompt。"""
+    from app.agent.graph import initial_messages
+    from langchain_core.messages import SystemMessage
+    msgs = initial_messages("测试", data_range="每日考勤数据范围: 2026-08-01 ~ 2026-09-03")
+    assert "2026-08-01" in msgs[0].content
+
+
+def test_system_prompt_contains_data_range_placeholder():
+    from app.agent.graph import SYSTEM_PROMPT
+    assert "{data_range}" in SYSTEM_PROMPT
+
+
 def test_count_consecutive_run_sql_failures():
     """连续 run_sql 失败计数器应正确识别。"""
     from langchain_core.messages import AIMessage, ToolMessage, HumanMessage

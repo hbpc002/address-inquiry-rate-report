@@ -1,5 +1,7 @@
 """智能体工具集：复用报表查询逻辑 + 只读 text-to-SQL。"""
 import json
+import re
+from datetime import date, timedelta
 
 from sqlalchemy import text, inspect
 from langchain_core.tools import tool
@@ -11,6 +13,45 @@ from app.agent.sql_safe import validate_sql
 MAX_RESULT_CHARS = 2000
 # run_sql 回传的最大行数（原始 SQL 仍受 sql_safe.MAX_ROWS=200 约束）
 MAX_RESULT_ROWS = 50
+
+# 含日期时间的表列名，用于判断空字符串字面量应被当作日期占位符
+_DATE_COLUMNS = (
+    "schedule_date", "record_date", "checkin_time", "checkout_time",
+    "actual_checkin", "actual_checkout", "date", "start_time", "end_time",
+    "scheduled_start", "scheduled_end", "training_date",
+)
+
+
+def _fill_empty_date_literals(sql: str) -> str:
+    """将日期比较中的空字符串字面量 '' 自动填充为当前日期，避免数据库报错。
+
+    小模型 text-to-SQL 常常把日期写成未填充的占位符 ''（如
+    `BETWEEN '' AND ''`），导致 `invalid input syntax for type date: ""`。
+    这里在执行前识别日期列的空串并替换为真实日期：
+      - BETWEEN '' AND ''        -> BETWEEN '<今天-6天>' AND '<今天>'
+      - 单侧比较 >= '' / <= ''    -> 对应窗口边界
+    仅当整条 SQL 引用了日期列时才替换，避免误伤非日期场景的空串。
+    """
+    if "''" not in sql or not _DATE_COLUMNS:
+        return sql
+    lower = sql.lower()
+    if not any(col in lower for col in _DATE_COLUMNS):
+        return sql
+
+    today = date.today()
+    week_ago = today - timedelta(days=6)
+
+    # BETWEEN '' AND '' 两处占位符
+    result = re.sub(
+        r"(BETWEEN\s*)''(\s*AND\s*)''",
+        lambda m: f"{m.group(1)}'{week_ago.isoformat()}'{m.group(2)}'{today.isoformat()}'",
+        sql,
+        flags=re.IGNORECASE,
+    )
+
+    # 剩余的孤立空串占位符替换为今天（单侧比较 >= '' / < '' 等）
+    result = re.sub(r"''", f"'{today.isoformat()}'", result)
+    return result
 
 
 def _cap(text_out: str, limit: int = MAX_RESULT_CHARS) -> str:
@@ -63,6 +104,26 @@ _SHOW_COLUMNS = {
 }
 
 
+def _build_data_range(db) -> str:
+    """查询真实考勤数据的日期范围，返回人类可读提示（供 system prompt / 工具描述用）。
+
+    空库或查询失败时返回空字符串（优雅降级）。
+    """
+    try:
+        bind = db.get_bind()
+        with bind.connect() as conn:
+            row = conn.execute(text(
+                "SELECT MIN(schedule_date), MAX(schedule_date), "
+                "COUNT(DISTINCT schedule_date) FROM daily_reports"
+            )).fetchone()
+        if not row or not row[0] or not row[1]:
+            return ""
+        return (f"每日考勤数据范围: {row[0]} ~ {row[1]}，共 {row[2]} 个工作日。"
+                f"「最近一周/本月」等相对日期请据此折算成具体日期后再查询。")
+    except Exception:
+        return ""
+
+
 def _build_schema_description(db) -> str:
     """通过 SQLAlchemy inspector 从数据库中获取实际表结构，生成紧凑描述。
 
@@ -105,6 +166,7 @@ def _build_schema_description(db) -> str:
 
 
 def run_sql(db, sql: str) -> dict:
+    sql = _fill_empty_date_literals(sql)
     validated = validate_sql(sql)
     bind = db.get_bind()
     with bind.connect() as conn:
@@ -124,6 +186,7 @@ def make_tools(db):
 
     # 动态生成 schema 描述，写入 run_sql 工具的 docstring
     schema_desc = _build_schema_description(db)
+    data_range = _build_data_range(db)
 
     @tool("query_team_ranking")
     def query_team_ranking(year_month: str) -> str:
@@ -174,7 +237,7 @@ def make_tools(db):
         data = report_queries.dashboard_stats(db, year_month)
         return _cap(json.dumps(data, ensure_ascii=False))
 
-    run_sql_tool = tool("run_sql")(_make_run_sql(db, schema_desc))
+    run_sql_tool = tool("run_sql")(_make_run_sql(db, schema_desc, data_range))
 
     return [
         query_team_ranking,
@@ -187,7 +250,7 @@ def make_tools(db):
     ]
 
 
-def _make_run_sql(db, schema_desc: str):
+def _make_run_sql(db, schema_desc: str, data_range: str = ""):
     """构建 run_sql 工具函数（闭包持有 db + schema 描述）。"""
     # 动态 docstring：包含实际表结构，LLM 能直接看到表名和列名
     doc = (
@@ -195,6 +258,7 @@ def _make_run_sql(db, schema_desc: str):
         "注意：仅允许单条 SELECT，禁止 INSERT/UPDATE/DELETE/DROP/WITH/INTO。\n"
         "日期列必须使用 'YYYY-MM-DD' 格式（如 '2026-09-03'），禁止使用空字符串。\n"
         "涉及日期范围查询（如'最近一周/本月'）请优先使用 query_date_range 工具。\n"
+        f"{data_range}\n"
         "以下是数据库中实际存在的表和关键列（PostgreSQL 语法）：\n"
         f"{schema_desc}"
     )
@@ -211,7 +275,7 @@ def _make_run_sql(db, schema_desc: str):
         except Exception as e:
             return json.dumps(
                 {"error": f"SQL 执行失败: {e}",
-                 "hint": f"可能原因：表名或列名不正确。请参考工具说明中的表结构。\n可用表: {schema_desc}"},
+                 "hint": f"可能原因：表名或列名不正确。请参考工具说明中的表结构。\n{data_range}\n可用表: {schema_desc}"},
                 ensure_ascii=False,
             )
 
