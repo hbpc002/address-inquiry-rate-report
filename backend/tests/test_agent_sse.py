@@ -177,6 +177,43 @@ def test_error_on_exception():
     assert "boom" in out[-1]["message"]
 
 
+def test_no_notice_event_when_fallback():
+    """降级到备用模型时不再向用户输出"主模型限流"notice。"""
+    llm = FakeLLM()
+    llm.used_fallback = True
+    llm.used_model = "backup-model"
+    events = [
+        _ev("on_chat_model_stream", chunk=_content_chunk("你好")),
+        _ev("on_chat_model_end", output=AIMessage(content="你好")),
+    ]
+    result = asyncio_run(_collect(events, llm=llm))
+    assert not any(e["type"] == "notice" for e in result), (
+        "不再输出限流 notice，实际: " + str([e for e in result if e["type"] == "notice"])
+    )
+
+
+def test_sse_response_has_streaming_headers():
+    """/api/agent/chat 的响应头应包含 SSE 实时透传加固头。"""
+    from starlette.responses import StreamingResponse
+
+    async def gen():
+        yield "data: {}\n\n"
+
+    resp = StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
+    assert resp.headers["X-Accel-Buffering"] == "no"
+    assert resp.headers["Cache-Control"] == "no-cache"
+    assert resp.headers["Connection"] == "keep-alive"
+    assert resp.media_type == "text/event-stream"
+
+
 def asyncio_run(coro):
     import asyncio
     return asyncio.run(coro)

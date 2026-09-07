@@ -63,7 +63,18 @@ async def agent_chat(
         async for s in iter_sse_events(graph, llm, messages):
             yield s
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # SSE 实时透传加固头：
+    #  - X-Accel-Buffering: no  —— 通知 nginx 不要缓冲该响应（某些环境下至关重要）
+    #  - Cache-Control: no-cache —— 避免代理/浏览器缓存整个流
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "X-Accel-Buffering": "no",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
@@ -75,7 +86,6 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
 
     _now 为可注入的时钟，便于测试节流/轮换逻辑（默认使用系统的单调时钟）。
     """
-    fallback_notified = False
     last_progress = None
     progress_idx = 0
     try:
@@ -84,9 +94,6 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
             if kind == "on_chat_model_start":
                 yield __sse({"type": "status", "title": "正在分析问题"})
             elif kind == "on_chat_model_stream":
-                if llm.used_fallback and not fallback_notified:
-                    fallback_notified = True
-                    yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
                 chunk = ev["data"]["chunk"]
                 content = chunk.content if isinstance(chunk.content, str) else ""
                 if content:
@@ -104,9 +111,6 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                 tool_calls = getattr(resp, "tool_calls", None)
                 if tool_calls:
                     yield __sse({"type": "status", "title": "已获取数据，正在汇总分析"})
-                elif llm.used_fallback and not fallback_notified:
-                    fallback_notified = True
-                    yield __sse({"type": "notice", "message": f"主模型限流，已自动切换备用模型 {llm.used_model}"})
             elif kind == "on_tool_start":
                 yield __sse({"type": "status", "title": f"正在执行工具：{ev.get('name')}"})
                 yield __sse({
