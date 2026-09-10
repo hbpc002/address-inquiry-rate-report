@@ -3,7 +3,7 @@ import { api } from '@/stores/user'
 
 const DEFAULTS = {
   enabled: true,
-  label: '智能助手',
+  label: '哟你通通',
   icon_type: 'emoji',
   icon_value: '🤖',
   position: 'bottom-right',

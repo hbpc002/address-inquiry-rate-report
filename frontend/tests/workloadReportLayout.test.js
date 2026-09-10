@@ -11,6 +11,19 @@ vi.mock('../src/stores/user', () => {
   }
 })
 
+vi.mock('../src/stores/uiConfig', () => ({
+  useUiConfigStore: vi.fn(() => ({
+    labels: {
+      project_name: '客户服务中心运营管理平台',
+      dashboard: '工效仪表盘',
+      checkin_report: '排班调度',
+      workload_report: '团队管理',
+      agent: '哟你通通',
+    },
+    loaded: true,
+  }))
+}))
+
 vi.mock('../src/utils/echarts', () => ({
   createPieOptions: vi.fn(() => ({})),
   createBarOptions: vi.fn(() => ({})),

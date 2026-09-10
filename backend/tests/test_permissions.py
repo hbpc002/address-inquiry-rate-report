@@ -23,7 +23,7 @@ def test_registry_contains_workload():
 
 def test_registry_contains_workload_report():
     assert "workload_report" in PERMISSION_REGISTRY
-    assert PERMISSION_REGISTRY["workload_report"]["label"] == "工作量报表"
+    assert PERMISSION_REGISTRY["workload_report"]["label"] == "团队管理"
     assert "view_call_salary" in PERMISSION_REGISTRY["workload_report"]["permissions"]
     assert "view_sat_salary" in PERMISSION_REGISTRY["workload_report"]["permissions"]
     assert "view_total_salary" in PERMISSION_REGISTRY["workload_report"]["permissions"]
@@ -33,7 +33,7 @@ def test_registry_contains_workload_report():
 
 def test_registry_contains_agent():
     assert "agent" in PERMISSION_REGISTRY
-    assert PERMISSION_REGISTRY["agent"]["label"] == "智能体"
+    assert PERMISSION_REGISTRY["agent"]["label"] == "哟你通通"
     assert "use" in PERMISSION_REGISTRY["agent"]["permissions"]
     assert "config" in PERMISSION_REGISTRY["agent"]["permissions"]
 
@@ -67,6 +67,15 @@ def test_all_keys_contains_new_permissions():
     assert "workload_report.view_sat_diff" in keys
     assert "agent.use" in keys
     assert "agent.config" in keys
+    assert "system.config" in keys
+
+
+def test_registry_contains_checkin_report_rename():
+    assert PERMISSION_REGISTRY["checkin_report"]["label"] == "排班调度"
+
+
+def test_registry_contains_system_config():
+    assert "config" in PERMISSION_REGISTRY["system"]["permissions"]
 
 
 def test_all_keys_count():

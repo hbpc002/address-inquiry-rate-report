@@ -3,7 +3,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "排班签到报表系统"
+    PROJECT_NAME: str = "客户服务中心运营管理平台"
     DATABASE_URL: str = "postgresql://postgres:admin123%40kf@localhost:5432/schedule"
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"

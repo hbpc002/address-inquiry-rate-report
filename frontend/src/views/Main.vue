@@ -2,7 +2,7 @@
   <el-container class="main-container">
     <el-aside :width="sidebarWidth">
       <div class="logo">
-        <span v-show="!isCollapsed">排班签到系统</span>
+        <span v-show="!isCollapsed">{{ ui.labels.project_name }}</span>
       </div>
       <el-menu
         :default-active="activeMenu"
@@ -15,7 +15,7 @@
       >
         <el-menu-item index="/">
           <el-icon><House /></el-icon>
-          <span>仪表盘</span>
+          <span>{{ ui.labels.dashboard }}</span>
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('employees')" index="/employees">
           <el-icon><User /></el-icon>
@@ -31,7 +31,7 @@
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('checkin_report')" index="/checkin-report">
           <el-icon><Tickets /></el-icon>
-          <span>签入签出报表</span>
+          <span>{{ ui.labels.checkin_report }}</span>
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('training_records')" index="/training-records">
           <el-icon><EditPen /></el-icon>
@@ -43,7 +43,7 @@
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('workload_report')" index="/workload-report">
           <el-icon><DataBoard /></el-icon>
-          <span>工作量报表</span>
+          <span>{{ ui.labels.workload_report }}</span>
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
           <el-icon><Warning /></el-icon>
@@ -75,7 +75,7 @@
         </el-menu-item>
         <el-menu-item v-if="userStore.hasPermission('agent.use')" index="/agent">
           <el-icon><ChatDotRound /></el-icon>
-          <span>智能体</span>
+          <span>{{ ui.labels.agent }}</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -117,9 +117,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin, Edit, ChatDotRound, Tools } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AgentLauncher from '@/components/AgentLauncher.vue'
@@ -127,6 +128,7 @@ import AgentLauncher from '@/components/AgentLauncher.vue'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 
 const activeMenu = computed(() => route.path)
 const showChangePwd = ref(false)
@@ -143,6 +145,10 @@ function handleLogout() {
   userStore.logout()
   router.push('/login')
 }
+
+onMounted(() => {
+  ui.load()
+})
 
 async function handleChangePwd() {
   if (!pwdForm.value.oldPassword || !pwdForm.value.newPassword) {

@@ -16,7 +16,7 @@ describe('Roles page - permission registry', () => {
 
   it('PERMISSION_REGISTRY should have correct labels for workload pages', () => {
     expect(PERMISSION_REGISTRY.workload.label).toBe('工作量详单')
-    expect(PERMISSION_REGISTRY.workload_report.label).toBe('工作量报表')
+    expect(PERMISSION_REGISTRY.workload_report.label).toBe('团队管理')
     expect(PERMISSION_REGISTRY.salary_config.label).toBe('绩效配置')
   })
 

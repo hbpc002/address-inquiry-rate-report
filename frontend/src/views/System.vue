@@ -101,6 +101,38 @@
         </el-card>
       </el-tab-pane>
 
+      <el-tab-pane v-if="userStore.hasPermission('system.config')" label="系统配置" name="ui">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>界面名称配置</span>
+            </div>
+          </template>
+          <el-alert type="info" :closable="false" title="修改后立即生效（侧边栏菜单、页面标题、登录页与浏览器标题）" style="margin-bottom: 16px" />
+          <el-form :model="uiForm" label-width="160px" style="max-width: 560px">
+            <el-form-item label="项目主名称">
+              <el-input v-model="uiForm.project_name" placeholder="客户服务中心运营管理平台" />
+            </el-form-item>
+            <el-form-item label="仪表盘（工效仪表盘）">
+              <el-input v-model="uiForm.dashboard" />
+            </el-form-item>
+            <el-form-item label="签入签出报表（排班调度）">
+              <el-input v-model="uiForm.checkin_report" />
+            </el-form-item>
+            <el-form-item label="工作量报表（团队管理）">
+              <el-input v-model="uiForm.workload_report" />
+            </el-form-item>
+            <el-form-item label="智能体（哟你通通）">
+              <el-input v-model="uiForm.agent" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :loading="savingUiLabels" @click="saveUiLabels">保存</el-button>
+              <el-button @click="refreshUiForm">重置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-tab-pane>
+
       <el-tab-pane v-if="userStore.hasPermission('agent.config')" label="模型配置" name="llm">
         <LLMSettings />
       </el-tab-pane>
@@ -127,10 +159,12 @@
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LLMSettings from './LLMSettings.vue'
 
 const userStore = useUserStore()
+const uiConfig = useUiConfigStore()
 
 const activeTab = ref('logs')
 const logs = ref([])
@@ -143,6 +177,33 @@ const changelogDialogVisible = ref(false)
 const changelogDialogTitle = ref('')
 const changelogForm = ref({ id: null, title: '', content: '' })
 const savingChangelog = ref(false)
+const uiForm = ref({ project_name: '', dashboard: '', checkin_report: '', workload_report: '', agent: '' })
+const savingUiLabels = ref(false)
+
+function refreshUiForm() {
+  uiForm.value = { ...uiConfig.labels }
+}
+
+async function saveUiLabels() {
+  const fields = ['project_name', 'dashboard', 'checkin_report', 'workload_report', 'agent']
+  for (const f of fields) {
+    if (!uiForm.value[f] || !String(uiForm.value[f]).trim()) {
+      ElMessage.warning('请填写完整所有名称')
+      return
+    }
+  }
+  savingUiLabels.value = true
+  try {
+    const patch = {}
+    for (const f of fields) patch[f] = String(uiForm.value[f]).trim()
+    await uiConfig.update(patch)
+    ElMessage.success('界面名称已保存')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  } finally {
+    savingUiLabels.value = false
+  }
+}
 
 async function loadLogs() {
   try {
@@ -256,6 +317,7 @@ async function handleDeleteChangelog(row) {
 
 onMounted(() => {
   loadChangelogs()
+  uiConfig.load().finally(refreshUiForm)
 })
 </script>
 

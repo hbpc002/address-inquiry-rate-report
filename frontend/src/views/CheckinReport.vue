@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>签入签出报表</span>
+          <span>{{ ui.labels.checkin_report }}</span>
           <el-button v-if="userStore.hasPermission('checkin_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
         </div>
       </template>
@@ -645,7 +645,9 @@ import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions, createMultiBarOptions, CHART_COLORS } from '../utils/echarts'
 import { getYesterday } from '../utils/date'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import ColumnWithTip from '../components/ColumnWithTip.vue'

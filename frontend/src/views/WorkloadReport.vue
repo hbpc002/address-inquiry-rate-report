@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>工作量报表</span>
+          <span>{{ ui.labels.workload_report }}</span>
           <span>
             <el-button v-if="userStore.hasPermission('workload_report.screenshot')" type="primary" size="small" :loading="screenshotLoading" @click="handleScreenshot">截图导出</el-button>
             <el-button v-if="userStore.hasPermission('workload_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
@@ -312,7 +312,9 @@ import { createPieOptions, createBarOptions, CHART_COLORS } from '../utils/echar
 import { getYesterday } from '../utils/date'
 import { getWorkloadDetailDateRange } from '../utils/workloadDetailRange'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 import { downloadBlob } from '../utils/download'
 import html2canvas from 'html2canvas'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
@@ -1035,9 +1037,9 @@ function handleExportFiltered() {
   const link = document.createElement('a')
   let filename = 'workload_report_filtered.csv'
   if (searchForm.team_desc) {
-    filename = `${searchForm.team_desc}_工作量报表.csv`
+    filename = `${searchForm.team_desc}_${ui.labels.workload_report}.csv`
   } else if (searchForm.class_name) {
-    filename = `${searchForm.class_name}_工作量报表.csv`
+    filename = `${searchForm.class_name}_${ui.labels.workload_report}.csv`
   }
   link.download = filename
   link.href = URL.createObjectURL(blob)
@@ -1196,7 +1198,7 @@ async function handleScreenshot() {
     periodInfo = `${searchForm.start_date} ~ ${searchForm.end_date}`
   }
 
-  let title = '工作量报表'
+  let title = ui.labels.workload_report
   if (searchForm.team_desc) {
     title = `${searchForm.team_desc} ${title}`
   } else if (filterType.value === 'team' && filterValue.value) {
@@ -1229,7 +1231,7 @@ async function handleScreenshot() {
       onclone: () => {}
     })
     const link = document.createElement('a')
-    link.download = `工作量报表_${periodInfo || '报表'}.png`
+    link.download = `${ui.labels.workload_report}_${periodInfo || '报表'}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
     ElMessage.success('截图导出成功')

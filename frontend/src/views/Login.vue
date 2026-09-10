@@ -1,7 +1,7 @@
 <template>
   <div class="login-container">
     <el-card class="login-card">
-      <h2>排班签到报表系统</h2>
+      <h2>{{ ui.labels.project_name }}</h2>
       <el-form :model="form" @submit.prevent="handleLogin">
         <el-form-item>
           <el-input v-model="form.username" placeholder="用户名" :prefix-icon="User" />
@@ -20,17 +20,23 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 
 const form = ref({ username: '', password: '' })
 const loading = ref(false)
+
+onMounted(() => {
+  ui.load()
+})
 
 async function handleLogin() {
   if (!form.value.username || !form.value.password) {

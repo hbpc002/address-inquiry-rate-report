@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/llm-providers", tags=["智能体模型配置"])
 LAUNCHER_KEY = "agent_launcher"
 DEFAULT_LAUNCHER = {
     "enabled": True,
-    "label": "智能助手",
+    "label": "哟你通通",
     "icon_type": "emoji",
     "icon_value": "🤖",
     "position": "bottom-right",

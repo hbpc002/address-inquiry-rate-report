@@ -1,7 +1,7 @@
 <template>
   <div class="agent-chat">
     <div class="agent-header">
-      <div class="title">智能体 · 自然语言查报表</div>
+      <div class="title">{{ ui.labels.agent }} · 自然语言查报表</div>
       <div class="header-right">
         <el-select
           v-if="providers.length"
@@ -70,6 +70,7 @@ import { ref, nextTick, onMounted, computed } from 'vue'
 import { BubbleList, ThoughtChain, Prompts } from 'vue-element-plus-x'
 import { api } from '@/stores/user'
 import { useAgentChatStore } from '@/stores/agentChat'
+import { useUiConfigStore } from '@/stores/uiConfig'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
 
 defineProps({
@@ -77,6 +78,7 @@ defineProps({
 })
 
 const store = useAgentChatStore()
+const ui = useUiConfigStore()
 const messagesRef = ref(null)
 const providers = ref([])
 

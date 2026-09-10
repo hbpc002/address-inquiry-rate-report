@@ -30,7 +30,7 @@ export const PERMISSION_REGISTRY = {
     },
   },
   checkin_report: {
-    label: '签入签出报表',
+    label: '排班调度',
     permissions: {
       view: '查看',
       export: '导出',
@@ -45,7 +45,7 @@ export const PERMISSION_REGISTRY = {
     },
   },
   workload_report: {
-    label: '工作量报表',
+    label: '团队管理',
     permissions: {
       view: '查看',
       export: '导出',
@@ -92,6 +92,7 @@ export const PERMISSION_REGISTRY = {
       clear_data: '清除数据',
       changelogs: '管理更新日志',
       export_logs: '导出日志',
+      config: '界面名称配置',
     },
   },
   users: {
@@ -130,7 +131,7 @@ export const PERMISSION_REGISTRY = {
     },
   },
   agent: {
-    label: '智能体',
+    label: '哟你通通',
     permissions: {
       use: '使用对话',
       config: '模型与界面配置',

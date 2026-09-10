@@ -14,7 +14,7 @@
       <span v-else class="fab-emoji">{{ config.icon_value }}</span>
     </button>
 
-    <el-drawer v-model="open" :title="config.label || '智能助手'" direction="rtl" size="480px">
+    <el-drawer v-model="open" :title="config.label || '哟你通通'" direction="rtl" size="480px">
       <AgentChat embedded />
     </el-drawer>
   </div>
