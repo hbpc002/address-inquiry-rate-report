@@ -530,6 +530,79 @@ class TestWorkloadReport:
         zl = next(i for i in data["items"] if i["account"] == "STTR00004")
         assert zl["aggregated_metrics"]["呼入人工服务-人工服务-通话均长(秒)"] == 160.0
 
+    def test_report_utilization_rate_weighted_by_duration(self):
+        """总体-工时利用率 应按 (Σ通话+Σ整理)/Σ工作总时长 加权重算，而非导入值算术平均"""
+        db = SessionLocal()
+        try:
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-工作总时长(秒)": 10000, "总体-工时利用率": 0.9,
+                         "呼入人工服务-人工服务-通话总时长(秒)": 5000,
+                         "呼入人工服务-人工服务-服务后整理总时长(秒)": 1000,
+                         "呼入人工服务-人工服务-通话次数": 50}, import_batch="batch001"),
+            )
+            db.add(Workload(
+                date=date(2026, 6, 29), province="广西", account="STTR00004", name="赵六", emp_no="1004",
+                team_desc=f"{ORG_PREFIX}热线二组",
+                metrics={"总体-工作总时长(秒)": 20000, "总体-工时利用率": 0.1,
+                         "呼入人工服务-人工服务-通话总时长(秒)": 10000,
+                         "呼入人工服务-人工服务-服务后整理总时长(秒)": 500,
+                         "呼入人工服务-人工服务-通话次数": 100}, import_batch="batch001"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zl = next(i for i in data["items"] if i["account"] == "STTR00004")
+        # 算术平均=(0.9+0.1)/2=0.5；按时长加权重算=16500/30000=0.55
+        assert zl["aggregated_metrics"]["总体-工时利用率"] == 0.55
+
+    def test_report_organize_avg_weighted_by_count(self):
+        """呼入/呼出/合计的 服务后整理均长 应按 (Σ整理总时长)/(Σ通话量) 加权重算"""
+        db = SessionLocal()
+        try:
+            ORG_PREFIX = "广西分公司>>省中心>>客户服务营销中心>>"
+            day1 = {"呼入人工服务-人工服务-服务后整理总时长(秒)": 2000,
+                    "呼入人工服务-人工服务-通话次数": 50,
+                    "呼出服务-服务后整理总时长(秒)": 1000,
+                    "呼出服务-通话次数": 100,
+                    "服务量合计-服务后整理总时长(秒)": 1500,
+                    "服务量合计-通话量": 100}
+            day2 = {"呼入人工服务-人工服务-服务后整理总时长(秒)": 500,
+                    "呼入人工服务-人工服务-通话次数": 100,
+                    "呼出服务-服务后整理总时长(秒)": 500,
+                    "呼出服务-通话次数": 50,
+                    "服务量合计-服务后整理总时长(秒)": 800,
+                    "服务量合计-通话量": 50}
+            for day, metrics in [(28, day1), (29, day2)]:
+                db.add(Workload(
+                    date=date(2026, 6, day), province="广西", account="STTR00004",
+                    name="赵六", emp_no="1004",
+                    team_desc=f"{ORG_PREFIX}热线二组",
+                    metrics=metrics, import_batch="batch001",
+                ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+        assert resp.status_code == 200
+        data = resp.json()
+        zl = next(i for i in data["items"] if i["account"] == "STTR00004")
+        am = zl["aggregated_metrics"]
+        # 呼入:2500/150=16.67；呼出:1500/150=10；合计:2300/150=15.33
+        assert am["呼入人工服务-人工服务-服务后整理均长(秒)"] == 16.67
+        assert am["呼出服务-服务后整理均长(秒)"] == 10.0
+        assert am["服务量合计-服务后整理均长(秒)"] == 15.33
+        assert am["呼入人工服务-人工服务-服务后整理总时长(秒)"] == 2500.0
+        assert am["呼出服务-服务后整理总时长(秒)"] == 1500.0
+        assert am["服务量合计-服务后整理总时长(秒)"] == 2300.0
+
     def test_report_filter_by_name(self):
         resp = client.get("/api/workloads/report", params={"start_date": "2026-06-28", "end_date": "2026-06-28", "name": "张三"})
         assert resp.status_code == 200
@@ -887,6 +960,36 @@ class TestWorkloadMetricsFields:
         assert resp.status_code == 200
         fields = resp.json()
         assert len(fields) > 0
+
+    def test_metrics_fields_intersects_aggregatable(self):
+        """metrics-fields 应只返回 DB 中真实存在且可聚合(CORE)的字段，含新扩充的整理均长类"""
+        db = SessionLocal()
+        try:
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                team_desc="热线一组",
+                metrics={
+                    "总体-工作总时长(秒)": 100,
+                    "呼入人工服务-人工服务-通话次数": 1,
+                    "呼入人工服务-人工服务-服务后整理均长(秒)": 2.5,
+                    "呼出服务-服务后整理总时长(秒)": 5,
+                    "呼入人工服务-人工服务-通话时长0-3秒(含3秒)": 3,
+                    " 人工服务-解决率-转解决情况调查率": 0.5,
+                }, import_batch="batch_seed"),
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/metrics-fields")
+        assert resp.status_code == 200
+        fields = resp.json()
+        assert "总体-工作总时长(秒)" in fields
+        assert "呼入人工服务-人工服务-通话次数" in fields
+        assert "呼入人工服务-人工服务-服务后整理均长(秒)" in fields
+        assert "呼出服务-服务后整理总时长(秒)" in fields
+        assert "呼入人工服务-人工服务-通话时长0-3秒(含3秒)" not in fields
+        assert " 人工服务-解决率-转解决情况调查率" not in fields
 
 
 class TestWorkloadDailyProduction:

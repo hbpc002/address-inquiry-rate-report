@@ -33,6 +33,7 @@ CORE_METRICS_FIELDS = [
     "呼入人工服务-人工服务-通话总时长(秒)",
     "呼入人工服务-人工服务-通话均长(秒)",
     "呼入人工服务-人工服务-服务后整理总时长(秒)",
+    "呼入人工服务-人工服务-服务后整理均长(秒)",
     "呼入人工服务-人工服务-呼入等待应答时长",
     "人工服务-满意度-满意率",
     "呼入人工服务-解决率-解决率",
@@ -41,7 +42,12 @@ CORE_METRICS_FIELDS = [
     "呼入人工服务-工单-其中:投诉工单",
     "呼出服务-人工呼出呼叫量",
     "呼出服务-通话总时长(秒)",
+    "呼出服务-通话次数",
+    "呼出服务-服务后整理总时长(秒)",
+    "呼出服务-服务后整理均长(秒)",
     "服务量合计-通话量",
+    "服务量合计-服务后整理总时长(秒)",
+    "服务量合计-服务后整理均长(秒)",
     "操作次数及时长-示忙次数",
     "操作次数及时长-休息时长(秒)",
     "操作次数及时长-呼入-静音次数",
@@ -52,6 +58,14 @@ CORE_METRICS_FIELDS = [
     "呼入人工服务-满意度-不满意量",
     "呼入人工服务-满意度-非常不满意量",
 ]
+
+# 均长类字段按「总时长 / 次数」加权重算，参照通话均长逻辑
+AVG_FIELD_MAP = {
+    "呼入人工服务-人工服务-通话均长(秒)": ("呼入人工服务-人工服务-通话总时长(秒)", "呼入人工服务-人工服务-通话次数"),
+    "呼入人工服务-人工服务-服务后整理均长(秒)": ("呼入人工服务-人工服务-服务后整理总时长(秒)", "呼入人工服务-人工服务-通话次数"),
+    "呼出服务-服务后整理均长(秒)": ("呼出服务-服务后整理总时长(秒)", "呼出服务-通话次数"),
+    "服务量合计-服务后整理均长(秒)": ("服务量合计-服务后整理总时长(秒)", "服务量合计-通话量"),
+}
 
 
 @router.get("", response_model=WorkloadListResponse)
@@ -270,8 +284,8 @@ def get_metrics_fields(
 ):
     sample = db.query(Workload.metrics).filter(Workload.metrics.isnot(None)).first()
     if sample and sample[0]:
-        fields = list(sample[0].keys())
-        return fields
+        keys = set(sample[0].keys())
+        return [f for f in CORE_METRICS_FIELDS if f in keys]
     return CORE_METRICS_FIELDS
 
 
@@ -388,15 +402,18 @@ def get_workload_report(
         aggregated = {}
         for field in CORE_METRICS_FIELDS:
             agg_data = data["agg"].get(field)
-            if agg_data and agg_data["count"] > 0:
-                if field == "呼入人工服务-人工服务-通话均长(秒)":
-                    dur_data = data["agg"].get("呼入人工服务-人工服务-通话总时长(秒)")
-                    cnt_data = data["agg"].get("呼入人工服务-人工服务-通话次数")
-                    if dur_data and dur_data["count"] > 0 and cnt_data and cnt_data["sum"]:
-                        aggregated[field] = round(dur_data["sum"] / cnt_data["sum"], 2)
-                    else:
-                        aggregated[field] = round(agg_data["sum"] / agg_data["count"], 2)
-                elif "率" in field:
+            if field in AVG_FIELD_MAP:
+                dur_field, cnt_field = AVG_FIELD_MAP[field]
+                dur_data = data["agg"].get(dur_field)
+                cnt_data = data["agg"].get(cnt_field)
+                if dur_data and dur_data["count"] > 0 and cnt_data and cnt_data["sum"]:
+                    aggregated[field] = round(dur_data["sum"] / cnt_data["sum"], 2)
+                elif agg_data and agg_data["count"] > 0:
+                    aggregated[field] = round(agg_data["sum"] / agg_data["count"], 2)
+                else:
+                    aggregated[field] = None
+            elif agg_data and agg_data["count"] > 0:
+                if "率" in field:
                     aggregated[field] = round(agg_data["sum"] / agg_data["count"], 2)
                 else:
                     aggregated[field] = round(agg_data["sum"], 1)
@@ -418,6 +435,13 @@ def get_workload_report(
                 )
             else:
                 aggregated["人工服务-满意度-满意率"] = None
+
+        # 工时利用率按时长加权重算，公式：(Σ通话总时长 + Σ整理总时长) / Σ总体工作总时长
+        work_dur = aggregated.get("总体-工作总时长(秒)")
+        call_dur = aggregated.get("呼入人工服务-人工服务-通话总时长(秒)")
+        organize_dur = aggregated.get("呼入人工服务-人工服务-服务后整理总时长(秒)")
+        if work_dur and work_dur > 0 and call_dur is not None and organize_dur is not None:
+            aggregated["总体-工时利用率"] = round((call_dur + organize_dur) / work_dur, 4)
 
         items.append(WorkloadReportItem(
             account=data["account"],

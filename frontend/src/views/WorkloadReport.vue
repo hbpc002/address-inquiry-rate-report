@@ -465,10 +465,30 @@ watch(viewMode, (val) => {
   if (val === 'class') classFilter.value = ''
 })
 
-function displayLabel(field) {
-  const label = field.split('-').pop()
-  if (label === '生成总量') return '提单量'
-  return label
+function displayLabel(field, ambiguous = new Set()) {
+  const parts = field.split('-')
+  const label = parts[parts.length - 1]
+  let display = label
+  if (ambiguous.has(label) && parts.length >= 2) {
+    display = parts[parts.length - 2] + '/' + label
+  }
+  if (display === '生成总量') return '提单量'
+  return display
+}
+
+function buildMetricFields(fields) {
+  const counts = {}
+  fields.forEach(f => {
+    const label = f.split('-').pop()
+    counts[label] = (counts[label] || 0) + 1
+  })
+  const ambiguous = new Set(Object.keys(counts).filter(l => counts[l] > 1))
+  return fields.map(f => ({
+    field: f,
+    label: displayLabel(f, ambiguous),
+    isRate: isRateField(f),
+    width: 80
+  }))
 }
 
 function isRateField(field) {
@@ -1321,21 +1341,12 @@ async function loadMetricsFields() {
     const res = await api.get('/workloads/metrics-fields')
     const fields = res.data
     if (!Array.isArray(fields) || fields.length === 0) {
-      allMetricFields.value = FALLBACK_FIELDS.map(f => ({
-        field: f, label: displayLabel(f), isRate: isRateField(f), width: 80
-      }))
+      allMetricFields.value = buildMetricFields(FALLBACK_FIELDS)
       return
     }
-    allMetricFields.value = fields.map(f => ({
-      field: f,
-      label: displayLabel(f),
-      isRate: isRateField(f),
-      width: 80
-    }))
+    allMetricFields.value = buildMetricFields(fields)
   } catch {
-    allMetricFields.value = FALLBACK_FIELDS.map(f => ({
-      field: f, label: displayLabel(f), isRate: isRateField(f), width: 80
-    }))
+    allMetricFields.value = buildMetricFields(FALLBACK_FIELDS)
   }
 }
 
