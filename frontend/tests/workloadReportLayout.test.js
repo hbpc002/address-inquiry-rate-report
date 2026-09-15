@@ -91,6 +91,31 @@ const reportData = {
   ]
 }
 
+const personalDetailData = {
+  items: [
+    {
+      id: 1, date: '2026-06-28', account: 'A001', name: '张三', emp_no: 'E001', team_desc: '班组A1',
+      metrics: {
+        '呼入人工服务-人工服务-通话次数': 30,
+        '呼入人工服务-人工服务-通话总时长(秒)': 6000,
+        '呼入人工服务-工单-生成总量': 10,
+        '总体-工作总时长(秒)': 28800,
+        '总体-工时利用率': 0.9
+      }
+    },
+    {
+      id: 2, date: '2026-06-29', account: 'A001', name: '张三', emp_no: 'E001', team_desc: '班组A1',
+      metrics: {
+        '呼入人工服务-人工服务-通话次数': 20,
+        '呼入人工服务-人工服务-通话总时长(秒)': 5200,
+        '呼入人工服务-工单-生成总量': 5,
+        '总体-工作总时长(秒)': 25200,
+        '总体-工时利用率': 0.8
+      }
+    }
+  ]
+}
+
 const stubs = {
   'el-button': { template: '<button class="el-button-stub"><slot /></button>' },
   'el-card': { template: '<div class="el-card-stub"><slot name="header" /><slot /></div>' },
@@ -104,7 +129,10 @@ const stubs = {
   'el-descriptions': { template: '<div class="el-descriptions-stub"><slot /></div>' },
   'el-descriptions-item': { template: '<span class="el-descriptions-item-stub"><slot /></span>' },
   'el-dialog': { props: ['modelValue'], template: '<div v-if="modelValue" class="el-dialog-stub"><slot /></div>' },
-  'el-drawer': { props: ['modelValue'], template: '<div v-if="modelValue" class="el-drawer-stub"><slot /></div>' },
+  'el-drawer': {
+    props: ['modelValue', 'title'],
+    template: '<div v-if="modelValue" class="el-drawer-stub"><slot name="header" /><slot /></div>'
+  },
   'el-form': { template: '<form class="el-form-stub"><slot /></form>' },
   'el-form-item': { props: ['label'], template: '<div class="el-form-item-stub"><span class="el-form-item-label">{{ label }}</span><slot /></div>' },
   'el-input': { template: '<input type="text" class="el-input-stub" />' },
@@ -167,5 +195,50 @@ describe('WorkloadReport 汇总页 - 指标区单行压缩', () => {
     expect(stats[2].text()).toContain('100')
     expect(stats[3].text()).toContain('60')
     expect(stats[6].text()).toContain('10')
+  })
+})
+
+describe('WorkloadReport 个人详情抽屉 - 图表渲染', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
+    api.get.mockImplementation((url) => {
+      if (url === '/salary-config') return Promise.resolve({ data: { items: [] } })
+      if (url === '/employees/teams') return Promise.resolve({ data: [{ team: '班组A1' }] })
+      if (url === '/employees/leaders') return Promise.resolve({ data: [] })
+      if (url === '/workloads/metrics-fields') return Promise.resolve({ data: [] })
+      if (url === '/workloads/report') return Promise.resolve({ data: reportData })
+      if (url === '/workloads') return Promise.resolve({ data: personalDetailData })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  async function openDrawer(wrapper) {
+    wrapper.vm.openDetail({ account: 'A001', name: '张三' })
+    await flushPromises()
+    await flushPromises()
+  }
+
+  it('打开个人详情抽屉后渲染 3 张图表', async () => {
+    const wrapper = await mountPage()
+    await openDrawer(wrapper)
+
+    expect(wrapper.find('.el-drawer-stub').exists()).toBe(true)
+    expect(wrapper.findAll('.el-drawer-stub .echart-stub')).toHaveLength(3)
+  })
+
+  it('抽屉图表使用统一 280px 高度', async () => {
+    const wrapper = await mountPage()
+    await openDrawer(wrapper)
+
+    const heights = wrapper.findAll('.el-drawer-stub .echart-stub').map(e => e.attributes('data-height'))
+    expect(heights).toEqual(['280px', '280px', '280px'])
+  })
+
+  it('抽屉标题包含姓名与账号', async () => {
+    const wrapper = await mountPage()
+    await openDrawer(wrapper)
+
+    expect(wrapper.find('.el-drawer-stub').text()).toContain('张三（A001）工作量明细')
   })
 })

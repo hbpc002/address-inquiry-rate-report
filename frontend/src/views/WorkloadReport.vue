@@ -271,7 +271,7 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="drawerVisible" :title="drawerTitle" size="50%" direction="rtl">
+    <el-drawer v-model="drawerVisible" :title="drawerTitle" size="70%" direction="rtl">
       <template #header>
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%">
           <span style="font-size: 16px; font-weight: 600">{{ drawerTitle }}</span>
@@ -285,6 +285,24 @@
           <el-descriptions-item label="工号">{{ personalRecords[0].emp_no }}</el-descriptions-item>
           <el-descriptions-item label="班组">{{ personalRecords[0].team_desc }}</el-descriptions-item>
         </el-descriptions>
+
+        <el-row :gutter="12" class="detail-charts" style="margin-bottom: 16px">
+          <el-col :span="8">
+            <el-card shadow="hover">
+              <Echart :options="personalCallTicketOptions" height="280px" />
+            </el-card>
+          </el-col>
+          <el-col :span="8">
+            <el-card shadow="hover">
+              <Echart :options="personalWorkUtilOptions" height="280px" />
+            </el-card>
+          </el-col>
+          <el-col :span="8">
+            <el-card shadow="hover">
+              <Echart :options="personalAvgCallOptions" height="280px" />
+            </el-card>
+          </el-col>
+        </el-row>
 
         <div style="overflow-x: auto;">
           <el-table :data="personalRecords" border stripe size="small" max-height="500">
@@ -1478,6 +1496,106 @@ async function openDetail(row) {
     ElMessage.error('加载个人明细失败')
   }
 }
+
+const DETAIL_METRIC = {
+  CALL_COUNT: '呼入人工服务-人工服务-通话次数',
+  CALL_TOTAL_SECONDS: '呼入人工服务-人工服务-通话总时长(秒)',
+  TICKET_COUNT: '呼入人工服务-工单-生成总量',
+  WORK_SECONDS: '总体-工作总时长(秒)',
+  UTILIZATION: '总体-工时利用率'
+}
+
+function dailyMetric(rec, field) {
+  const v = rec.metrics?.[field]
+  if (v === null || v === undefined) return null
+  if (typeof v === 'number') return v
+  const num = parseFloat(v)
+  return isNaN(num) ? null : num
+}
+
+function sortedPersonalRecords() {
+  return [...personalRecords.value].sort((a, b) => (a.date > b.date ? 1 : -1))
+}
+
+const personalCallTicketOptions = computed(() => {
+  const records = sortedPersonalRecords()
+  if (!records.length) return {}
+  const dates = records.map(r => r.date.slice(5))
+  const calls = records.map(r => dailyMetric(r, DETAIL_METRIC.CALL_COUNT))
+  const tickets = records.map(r => dailyMetric(r, DETAIL_METRIC.TICKET_COUNT))
+  return {
+    title: { text: '每日话务量与工单量', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['通话次数', '工单量'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+    xAxis: { type: 'category', data: dates, name: '日期' },
+    yAxis: [
+      { type: 'value', name: '通话次数' },
+      { type: 'value', name: '工单量' }
+    ],
+    series: [
+      { name: '通话次数', type: 'bar', data: calls, itemStyle: { color: CHART_COLORS[0] } },
+      { name: '工单量', type: 'line', yAxisIndex: 1, data: tickets, smooth: true, itemStyle: { color: CHART_COLORS[1] } }
+    ]
+  }
+})
+
+const personalWorkUtilOptions = computed(() => {
+  const records = sortedPersonalRecords()
+  if (!records.length) return {}
+  const dates = records.map(r => r.date.slice(5))
+  const hours = records.map(r => {
+    const seconds = dailyMetric(r, DETAIL_METRIC.WORK_SECONDS)
+    return seconds === null ? null : Math.round(seconds / 3600 * 100) / 100
+  })
+  const utilizations = records.map(r => {
+    const u = dailyMetric(r, DETAIL_METRIC.UTILIZATION)
+    return u === null ? null : Math.round(u * 10000) / 100
+  })
+  return {
+    title: { text: '每日工时与利用率', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['工时(h)', '利用率(%)'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+    xAxis: { type: 'category', data: dates, name: '日期' },
+    yAxis: [
+      { type: 'value', name: '工时(h)' },
+      { type: 'value', name: '利用率(%)', min: 0, max: 100 }
+    ],
+    series: [
+      { name: '工时(h)', type: 'bar', data: hours, itemStyle: { color: CHART_COLORS[0] } },
+      { name: '利用率(%)', type: 'line', yAxisIndex: 1, data: utilizations, smooth: true, itemStyle: { color: CHART_COLORS[2] } }
+    ]
+  }
+})
+
+const personalAvgCallOptions = computed(() => {
+  const records = sortedPersonalRecords()
+  if (!records.length) return {}
+  const dates = records.map(r => r.date.slice(5))
+  const avgs = records.map(r => {
+    const seconds = dailyMetric(r, DETAIL_METRIC.CALL_TOTAL_SECONDS)
+    const count = dailyMetric(r, DETAIL_METRIC.CALL_COUNT)
+    if (seconds === null || count === null || count === 0) return null
+    return Math.round(seconds / count * 10) / 10
+  })
+  return {
+    title: { text: '每日通话均长', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['通话均长(秒)'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+    xAxis: { type: 'category', data: dates, name: '日期' },
+    yAxis: { type: 'value', name: '秒' },
+    series: [{
+      name: '通话均长(秒)',
+      type: 'line',
+      data: avgs,
+      smooth: true,
+      itemStyle: { color: CHART_COLORS[1] },
+      areaStyle: { opacity: 0.3 }
+    }]
+  }
+})
 
 onMounted(async () => {
   await loadSalaryConfig()
