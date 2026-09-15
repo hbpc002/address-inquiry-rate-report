@@ -122,55 +122,65 @@
               </el-col>
               <el-col :span="16">
                 <el-table v-if="viewMode === 'team'" :data="classFilter ? classFilteredRanking : teamRanking" size="small" border stripe max-height="280" @row-click="handleTeamRowClick">
-                  <el-table-column label="排名" width="55" type="index" />
+                  <el-table-column label="排名" width="50" type="index" />
                   <el-table-column label="班组" prop="team" />
-                  <el-table-column label="组长" prop="leader" min-width="60" />
-                  <el-table-column label="人数" width="55" prop="count" />
-                  <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
-                  <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
-                  <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
+                  <el-table-column label="组长" prop="leader" min-width="55" />
+                  <el-table-column label="人数" width="50" prop="count" />
+                  <el-table-column label="总通话量" width="80" sortable prop="total_calls" />
+                  <el-table-column label="平均通话均长" width="95" sortable prop="avg_duration" />
+                  <el-table-column label="平均满意率" width="85" sortable prop="avg_satisfaction">
                     <template #default="{ row }">
                       <span :style="getMetricStyle('人工服务-满意度-满意率', row.avg_satisfaction)">{{ formatRate(row.avg_satisfaction) }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="占比" width="100" sortable prop="total_calls">
+                  <el-table-column label="占比" width="90" sortable prop="total_calls">
                     <template #default="{ row }">
                       <span>{{ (row.total_calls / filteredCallSum * 100).toFixed(1) }}%</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="提单率" width="85" sortable prop="ti_dan_lv">
+                  <el-table-column label="提单率" width="80" sortable prop="ti_dan_lv">
                     <template #default="{ row }">
                       <span :style="getMetricStyle('_ti_dan_lv', row.ti_dan_lv)">{{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="人均通话量(含组长、师傅)" width="120" sortable prop="avg_calls_per_person_all" />
-                  <el-table-column label="人均通话量(组员)" width="105" sortable prop="avg_calls_per_person_member" />
-                  <el-table-column label="接话小时量" width="90" sortable prop="member_call_hourly_rate">
+                  <el-table-column label="人均通话量(含组长、师傅)" width="105" sortable prop="avg_calls_per_person_all" />
+                  <el-table-column label="人均通话量(组员)" width="90" sortable prop="avg_calls_per_person_member" />
+                  <el-table-column label="接话小时量" width="80" sortable prop="member_call_hourly_rate">
                     <template #default="{ row }">
                       {{ row.member_call_hourly_rate.toFixed(1) }}
                     </template>
                   </el-table-column>
+                  <el-table-column label="工时利用率(组员)" width="95" sortable prop="member_utilization_rate">
+                    <template #default="{ row }">
+                      <span>{{ formatRate(row.member_utilization_rate) }}</span>
+                    </template>
+                  </el-table-column>
                 </el-table>
                 <el-table v-else :data="classRanking" size="small" border stripe max-height="280">
-                  <el-table-column label="排名" width="55" type="index" />
+                  <el-table-column label="排名" width="50" type="index" />
                   <el-table-column label="班级" prop="name" />
-                  <el-table-column label="班组数" width="65" prop="team_count" />
-                  <el-table-column label="人数" width="55" prop="count" />
-                  <el-table-column label="总通话量" width="85" sortable prop="total_calls" />
-                  <el-table-column label="平均通话均长" width="100" sortable prop="avg_duration" />
-                  <el-table-column label="平均满意率" width="90" sortable prop="avg_satisfaction">
+                  <el-table-column label="班组数" width="60" prop="team_count" />
+                  <el-table-column label="人数" width="50" prop="count" />
+                  <el-table-column label="总通话量" width="80" sortable prop="total_calls" />
+                  <el-table-column label="平均通话均长" width="95" sortable prop="avg_duration" />
+                  <el-table-column label="平均满意率" width="85" sortable prop="avg_satisfaction">
                     <template #default="{ row }">
                       <span :style="getMetricStyle('人工服务-满意度-满意率', row.avg_satisfaction)">{{ formatRate(row.avg_satisfaction) }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="占比" width="100" sortable prop="total_calls">
+                  <el-table-column label="占比" width="90" sortable prop="total_calls">
                     <template #default="{ row }">
                       <span>{{ (row.total_calls / classCallSum * 100).toFixed(1) }}%</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="提单率" width="85" sortable prop="ti_dan_lv">
+                  <el-table-column label="提单率" width="80" sortable prop="ti_dan_lv">
                     <template #default="{ row }">
                       <span>{{ (row.ti_dan_lv * 100).toFixed(2) + '%' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="工时利用率(组员)" width="95" sortable prop="member_utilization_rate">
+                    <template #default="{ row }">
+                      <span>{{ formatRate(row.member_utilization_rate) }}</span>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -550,6 +560,7 @@ const teamRanking = computed(() => {
         count_all: 0, count_member: 0,
         total_calls_all: 0, total_calls_member: 0,
         total_duration: 0, total_work_duration_member: 0,
+        total_call_duration_member: 0, total_organize_duration_member: 0,
         total_ticket_count: 0,
         total_sat_numerator: 0, total_sat_denominator: 0,
         leaders: []
@@ -568,6 +579,8 @@ const teamRanking = computed(() => {
       t.count_member++
       t.total_calls_member += calls
       t.total_work_duration_member += getMetricValue(d, '总体-工作总时长(秒)') || 0
+      t.total_call_duration_member += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+      t.total_organize_duration_member += getMetricValue(d, '呼入人工服务-人工服务-服务后整理总时长(秒)') || 0
     }
     const verySat = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
     const sat = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
@@ -599,7 +612,13 @@ const teamRanking = computed(() => {
         avg_duration: data.total_calls_all > 0 ? +(data.total_duration / data.total_calls_all).toFixed(1) : 0,
         avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null,
         total_sat_numerator: data.total_sat_numerator,
-        total_sat_denominator: data.total_sat_denominator
+        total_sat_denominator: data.total_sat_denominator,
+        member_work_duration: data.total_work_duration_member,
+        member_call_duration: data.total_call_duration_member,
+        member_organize_duration: data.total_organize_duration_member,
+        member_utilization_rate: data.total_work_duration_member > 0
+          ? (data.total_call_duration_member + data.total_organize_duration_member) / data.total_work_duration_member
+          : 0
       }
     })
     .sort((a, b) => b.total_calls - a.total_calls)
@@ -668,7 +687,7 @@ const classRanking = computed(() => {
     const cls = extractClass(t.team)
     if (!cls) return
     if (!classMap[cls]) {
-      classMap[cls] = { count: 0, team_count: 0, total_calls: 0, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
+      classMap[cls] = { count: 0, team_count: 0, total_calls: 0, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0, total_work_duration_member: 0, total_call_duration_member: 0, total_organize_duration_member: 0 }
     }
     const c = classMap[cls]
     c.count += t.count
@@ -678,6 +697,9 @@ const classRanking = computed(() => {
     c.total_duration += t.total_duration
     c.total_sat_numerator += t.total_sat_numerator || 0
     c.total_sat_denominator += t.total_sat_denominator || 0
+    c.total_work_duration_member += t.member_work_duration || 0
+    c.total_call_duration_member += t.member_call_duration || 0
+    c.total_organize_duration_member += t.member_organize_duration || 0
   })
   return Object.entries(classMap)
     .map(([name, data]) => ({
@@ -689,7 +711,10 @@ const classRanking = computed(() => {
       total_duration: data.total_duration,
       ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
       avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
-      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null,
+      member_utilization_rate: data.total_work_duration_member > 0
+        ? (data.total_call_duration_member + data.total_organize_duration_member) / data.total_work_duration_member
+        : 0
     }))
     .sort((a, b) => b.total_calls - a.total_calls)
 })

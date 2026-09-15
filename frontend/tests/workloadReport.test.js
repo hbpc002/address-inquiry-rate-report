@@ -53,6 +53,7 @@ function makeTeamRanking(data, teamLeaders = {}) {
         count_all: 0, count_member: 0,
         total_calls_all: 0, total_calls_member: 0,
         total_duration: 0, total_work_duration_member: 0,
+        total_call_duration_member: 0, total_organize_duration_member: 0,
         total_ticket_count: 0,
         total_sat_numerator: 0, total_sat_denominator: 0,
         leaders: []
@@ -71,6 +72,8 @@ function makeTeamRanking(data, teamLeaders = {}) {
       t.count_member++
       t.total_calls_member += calls
       t.total_work_duration_member += getMetricValue(d, '总体-工作总时长(秒)') || 0
+      t.total_call_duration_member += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
+      t.total_organize_duration_member += getMetricValue(d, '呼入人工服务-人工服务-服务后整理总时长(秒)') || 0
     }
     const verySat = getMetricValue(d, '呼入人工服务-满意度-非常满意量') || 0
     const sat = getMetricValue(d, '呼入人工服务-满意度-满意量') || 0
@@ -98,7 +101,13 @@ function makeTeamRanking(data, teamLeaders = {}) {
         avg_duration: data.total_calls_all > 0 ? +(data.total_duration / data.total_calls_all).toFixed(1) : 0,
         avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null,
         total_sat_numerator: data.total_sat_numerator,
-        total_sat_denominator: data.total_sat_denominator
+        total_sat_denominator: data.total_sat_denominator,
+        member_work_duration: data.total_work_duration_member,
+        member_call_duration: data.total_call_duration_member,
+        member_organize_duration: data.total_organize_duration_member,
+        member_utilization_rate: data.total_work_duration_member > 0
+          ? (data.total_call_duration_member + data.total_organize_duration_member) / data.total_work_duration_member
+          : 0
       }
     })
     .sort((a, b) => b.total_calls - a.total_calls)
@@ -163,7 +172,7 @@ function makeClassRanking(teamRankingData) {
     const cls = extractClass(t.team)
     if (!cls) return
     if (!classMap[cls]) {
-      classMap[cls] = { count: 0, team_count: 0, total_calls: 0, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0 }
+      classMap[cls] = { count: 0, team_count: 0, total_calls: 0, total_ticket_count: 0, total_duration: 0, total_sat_numerator: 0, total_sat_denominator: 0, total_work_duration_member: 0, total_call_duration_member: 0, total_organize_duration_member: 0 }
     }
     const c = classMap[cls]
     c.count += t.count
@@ -173,6 +182,9 @@ function makeClassRanking(teamRankingData) {
     c.total_duration += t.total_duration
     c.total_sat_numerator += t.total_sat_numerator || 0
     c.total_sat_denominator += t.total_sat_denominator || 0
+    c.total_work_duration_member += t.member_work_duration || 0
+    c.total_call_duration_member += t.member_call_duration || 0
+    c.total_organize_duration_member += t.member_organize_duration || 0
   })
   return Object.entries(classMap)
     .map(([name, data]) => ({
@@ -183,7 +195,10 @@ function makeClassRanking(teamRankingData) {
       total_ticket_count: data.total_ticket_count,
       ti_dan_lv: data.total_calls > 0 ? data.total_ticket_count / data.total_calls : 0,
       avg_duration: data.total_calls > 0 ? +(data.total_duration / data.total_calls).toFixed(1) : 0,
-      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null
+      avg_satisfaction: data.total_sat_denominator > 0 ? data.total_sat_numerator / data.total_sat_denominator : null,
+      member_utilization_rate: data.total_work_duration_member > 0
+        ? (data.total_call_duration_member + data.total_organize_duration_member) / data.total_work_duration_member
+        : 0
     }))
     .sort((a, b) => b.total_calls - a.total_calls)
 }
@@ -439,6 +454,33 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(teamA.avg_calls_per_person_member).toBe(20)
       expect(teamA.member_call_hourly_rate).toBe(3.3)
     })
+    it('should compute 工时利用率(组员) weighted, excluding 组长/师傅', () => {
+      const data = [
+        { role: '组员', name: '张三', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 20, '呼入人工服务-人工服务-通话总时长(秒)': 4000, '呼入人工服务-人工服务-服务后整理总时长(秒)': 500, '总体-工作总时长(秒)': 22000 } },
+        { role: '组员', name: '李四', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 10, '呼入人工服务-人工服务-通话总时长(秒)': 1800, '呼入人工服务-人工服务-服务后整理总时长(秒)': 200, '总体-工作总时长(秒)': 20000 } },
+        { role: '组长', name: '李组长', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话总时长(秒)': 9000, '呼入人工服务-人工服务-服务后整理总时长(秒)': 1000, '总体-工作总时长(秒)': 25000 } },
+        { role: '师傅', name: '王师傅', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 25, '呼入人工服务-人工服务-通话总时长(秒)': 6000, '呼入人工服务-人工服务-服务后整理总时长(秒)': 800, '总体-工作总时长(秒)': 24000 } }
+      ]
+      const result = makeTeamRanking(data)
+      expect(result).toHaveLength(1)
+      const teamA = result[0]
+      expect(teamA.count_member).toBe(2)
+      expect(teamA.count).toBe(4)
+      expect(teamA.member_work_duration).toBe(42000)
+      expect(teamA.member_call_duration).toBe(5800)
+      expect(teamA.member_organize_duration).toBe(700)
+      expect(teamA.member_utilization_rate).toBeCloseTo((5800 + 700) / 42000, 6)
+    })
+    it('should return 0 工时利用率(组员) when no member work duration', () => {
+      const data = [
+        { role: '组长', name: '李组长', team_desc: 'A组', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 30, '呼入人工服务-人工服务-通话总时长(秒)': 9000, '总体-工作总时长(秒)': 25000 } }
+      ]
+      const result = makeTeamRanking(data)
+      const teamA = result[0]
+      expect(teamA.count_member).toBe(0)
+      expect(teamA.member_work_duration).toBe(0)
+      expect(teamA.member_utilization_rate).toBe(0)
+    })
     it('should handle unknown team_desc', () => {
       const data = [
         { role: '组员', aggregated_metrics: { '呼入人工服务-人工服务-通话次数': 5, '总体-工作总时长(秒)': 18000 } }
@@ -646,6 +688,25 @@ describe('WorkloadReport - 格式化函数测试', () => {
       expect(erban.count).toBe(6)
       expect(erban.total_calls).toBe(150)
       expect(erban.avg_satisfaction).toBeCloseTo(120 / 130, 4)
+    })
+    it('should aggregate 工时利用率(组员) across teams in a class', () => {
+      const teamData = [
+        { team: '一班1组', leader: '', count: 5, total_calls: 100, total_ticket_count: 10, total_duration: 5000, total_sat_numerator: 80, total_sat_denominator: 90, member_work_duration: 36000, member_call_duration: 4000, member_organize_duration: 500 },
+        { team: '一班2组', leader: '', count: 4, total_calls: 80, total_ticket_count: 8, total_duration: 4000, total_sat_numerator: 60, total_sat_denominator: 70, member_work_duration: 28800, member_call_duration: 3000, member_organize_duration: 300 },
+        { team: '二班1组', leader: '', count: 6, total_calls: 150, total_ticket_count: 15, total_duration: 7500, total_sat_numerator: 120, total_sat_denominator: 130, member_work_duration: 21600, member_call_duration: 2000, member_organize_duration: 160 }
+      ]
+      const result = makeClassRanking(teamData)
+      const yiban = result.find(r => r.name === '一班')
+      expect(yiban.member_utilization_rate).toBeCloseTo((7000 + 800) / 64800, 6)
+      const erban = result.find(r => r.name === '二班')
+      expect(erban.member_utilization_rate).toBeCloseTo((2000 + 160) / 21600, 6)
+    })
+    it('should return 0 工时利用率(组员) when no member work duration in class', () => {
+      const teamData = [
+        { team: '一班1组', leader: '', count: 5, total_calls: 100, total_ticket_count: 10, total_duration: 5000, total_sat_numerator: 0, total_sat_denominator: 0, member_work_duration: 0, member_call_duration: 0, member_organize_duration: 0 },
+      ]
+      const result = makeClassRanking(teamData)
+      expect(result[0].member_utilization_rate).toBe(0)
     })
     it('should return null avg_satisfaction when denominator is zero', () => {
       const teamData = [
