@@ -83,7 +83,7 @@
         </el-col>
         <el-col :span="14">
           <el-card shadow="hover">
-            <Echart :options="scatterOptions" height="300px" @click="handleScatterClick" />
+            <Echart :options="scatterOptions" :height="scatterHeight" />
           </el-card>
         </el-col>
       </el-row>
@@ -126,7 +126,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
-import { createPieOptions, CHART_COLORS } from '../utils/echarts'
+import { createPieOptions } from '../utils/echarts'
+import { buildScatterOptions, ZOOM_THRESHOLD } from '../utils/broadbandScatter'
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
@@ -173,10 +174,6 @@ const filteredData = computed(() => {
   let data = tableData.value
   if (filterType.value === 'team' && filterValue.value) {
     data = data.filter(d => d.team === filterValue.value)
-  } else if (filterType.value === 'emp' && filterValue.value) {
-    data = data.filter(d => d.emp_no === filterValue.value)
-  } else if (filterType.value === 'name' && filterValue.value) {
-    data = data.filter(d => d.name === filterValue.value)
   }
   return data
 })
@@ -251,72 +248,22 @@ const teamChartOptions = computed(() => {
   )
 })
 
-const scatterOptions = computed(() => {
-  const teamMap = {}
-  tableData.value.forEach(d => {
-    const team = d.team || '未知班组'
-    if (!(team in teamMap)) teamMap[team] = Object.keys(teamMap).length
-  })
-  const series = Object.keys(teamMap).map(team => ({
-    name: team,
-    type: 'scatter',
-    symbolSize: 12,
-    itemStyle: { color: CHART_COLORS[teamMap[team] % CHART_COLORS.length], opacity: 0.8 },
-    data: tableData.value
-      .filter(d => (d.team || '未知班组') === team)
-      .map(d => [d.recommend, +(d.success_rate * 100).toFixed(1), {
-        emp_no: d.emp_no,
-        name: d.name,
-        team: d.team,
-        recommend: d.recommend,
-        completed: d.completed
-      }])
-  }))
-  return {
-    title: { text: '推荐量-成功率散点图', left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: {
-      trigger: 'item',
-      confine: true,
-      formatter: (params) => {
-        const meta = params.data?.[2] || {}
-        const x = params.data?.[0]
-        const y = params.data?.[1]
-        return `${meta.name || ''} (${meta.emp_no || ''})\n${meta.team || ''}\n推荐量: ${x ?? 0}\n成功率: ${(y ?? 0).toFixed(1)}%\n成功推荐: ${meta.completed ?? 0}`
-      }
-    },
-    legend: { orient: 'horizontal', bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '12%', containLabel: true },
-    xAxis: { type: 'value', name: '推荐量', axisLabel: { rotate: 0 } },
-    yAxis: { type: 'value', name: '成功率(%)', min: 0, max: 100 },
-    series
-  }
-})
+const scatterOptions = computed(() => buildScatterOptions(filteredData.value))
+
+const scatterHeight = computed(() => filteredData.value.length > ZOOM_THRESHOLD ? '380px' : '300px')
 
 function handlePieClick(params) {
-  if (params && params.name) {
-    const team = params.name
-    if (filterType.value === 'team' && filterValue.value === team) {
-      filterType.value = ''
-      filterValue.value = ''
-    } else {
-      filterType.value = 'team'
-      filterValue.value = team
-      if (searchForm.team && searchForm.team !== team) searchForm.team = team
-    }
-    currentPage.value = 1
-  }
-}
-
-function handleScatterClick(params) {
-  const meta = params.data?.[2]
-  if (!meta) return
-  const empNo = meta.emp_no
-  if (filterType.value === 'emp' && filterValue.value === empNo) {
+  if (!params || !params.name) return
+  const team = params.name
+  if (searchForm.team === team) {
+    // 再点同一班组：取消筛选，回到全部
+    searchForm.team = ''
     filterType.value = ''
     filterValue.value = ''
   } else {
-    filterType.value = 'emp'
-    filterValue.value = empNo
+    searchForm.team = team
+    filterType.value = 'team'
+    filterValue.value = team
   }
   currentPage.value = 1
 }

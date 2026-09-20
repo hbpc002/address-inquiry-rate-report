@@ -2,11 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { PERMISSION_REGISTRY, getAllPermissionKeys } from '../src/permissions'
 
 describe('Roles page - permission registry', () => {
-  it('should have 15 permission groups including salary_config and agent', () => {
+  it('should have all permission groups including broadband and salary_config', () => {
     const groups = Object.keys(PERMISSION_REGISTRY)
     expect(groups).toContain('salary_config')
     expect(groups).toContain('agent')
-    expect(groups.length).toBe(16)
+    expect(groups).toContain('broadband')
+    expect(groups).toContain('broadband_report')
+    expect(groups.length).toBe(18)
   })
 
   it('getAllPermissionKeys should include salary_config.view', () => {
@@ -17,6 +19,8 @@ describe('Roles page - permission registry', () => {
   it('PERMISSION_REGISTRY should have correct labels for workload pages', () => {
     expect(PERMISSION_REGISTRY.workload.label).toBe('工作量详单')
     expect(PERMISSION_REGISTRY.workload_report.label).toBe('团队管理')
+    expect(PERMISSION_REGISTRY.broadband.label).toBe('无缝订单')
+    expect(PERMISSION_REGISTRY.broadband_report.label).toBe('宽带营销画像')
     expect(PERMISSION_REGISTRY.salary_config.label).toBe('绩效配置')
   })
 
