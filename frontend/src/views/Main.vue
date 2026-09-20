@@ -6,6 +6,7 @@
       </div>
       <el-menu
         :default-active="activeMenu"
+        :default-openeds="openedMenus"
         :collapse="isCollapsed"
         :collapse-transition="false"
         router
@@ -53,26 +54,27 @@
           <el-icon><DataAnalysis /></el-icon>
           <span>考勤报表</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.canView('system')" index="/system">
-          <el-icon><Setting /></el-icon>
-          <span>系统管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('users')" index="/users">
-          <el-icon><UserFilled /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('roles')" index="/roles">
-          <el-icon><Management /></el-icon>
-          <span>角色管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('salary_config')" index="/salary-settings">
-          <el-icon><Coin /></el-icon>
-          <span>绩效配置</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('field_annotations')" index="/field-annotations">
-          <el-icon><Edit /></el-icon>
-          <span>字段批注</span>
-        </el-menu-item>
+        <el-sub-menu v-if="canViewSystem" index="system">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>系统设置</span>
+          </template>
+          <el-menu-item v-if="userStore.canView('system')" index="/system">
+            <span>系统管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('users')" index="/users">
+            <span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('roles')" index="/roles">
+            <span>角色管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('salary_config')" index="/salary-settings">
+            <span>绩效配置</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('field_annotations')" index="/field-annotations">
+            <span>字段批注</span>
+          </el-menu-item>
+        </el-sub-menu>
         <el-menu-item v-if="userStore.hasPermission('agent.use')" index="/agent">
           <el-icon><ChatDotRound /></el-icon>
           <span>{{ ui.labels.agent }}</span>
@@ -134,6 +136,17 @@ const activeMenu = computed(() => route.path)
 const showChangePwd = ref(false)
 const changing = ref(false)
 const pwdForm = ref({ oldPassword: '', newPassword: '' })
+
+const SYSTEM_ITEMS = [
+  { path: '/system', key: 'system' },
+  { path: '/users', key: 'users' },
+  { path: '/roles', key: 'roles' },
+  { path: '/salary-settings', key: 'salary_config' },
+  { path: '/field-annotations', key: 'field_annotations' },
+]
+const SYSTEM_PATHS = SYSTEM_ITEMS.map(i => i.path)
+const canViewSystem = computed(() => SYSTEM_ITEMS.some(i => userStore.canView(i.key)))
+const openedMenus = computed(() => (SYSTEM_PATHS.includes(activeMenu.value) ? ['system'] : []))
 
 const isCollapsed = ref(false)
 const sidebarWidth = computed(() => isCollapsed.value ? '64px' : '200px')
