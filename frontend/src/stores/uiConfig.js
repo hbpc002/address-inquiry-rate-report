@@ -6,6 +6,7 @@ const DEFAULTS = {
   dashboard: '工效仪表盘',
   checkin_report: '排班调度',
   workload_report: '团队管理',
+  broadband_report: '宽带营销画像',
   agent: '哟你通通',
 }
 

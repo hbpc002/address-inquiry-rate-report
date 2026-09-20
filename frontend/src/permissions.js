@@ -57,6 +57,21 @@ export const PERMISSION_REGISTRY = {
       view_sat_diff: '查看满意度差额',
     },
   },
+  broadband: {
+    label: '无缝订单',
+    permissions: {
+      view: '查看',
+      upload: '导入',
+      delete: '删除',
+    },
+  },
+  broadband_report: {
+    label: '宽带营销画像',
+    permissions: {
+      view: '查看',
+      export: '导出',
+    },
+  },
   reports: {
     label: '考勤报表',
     permissions: {

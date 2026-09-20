@@ -26,6 +26,10 @@
           <el-icon><DataBoard /></el-icon>
           <span>{{ ui.labels.workload_report }}</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('broadband_report')" index="/broadband-report">
+          <el-icon><DataLine /></el-icon>
+          <span>{{ ui.labels.broadband_report }}</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.canView('reports')" index="/reports">
           <el-icon><DataAnalysis /></el-icon>
           <span>考勤报表</span>
@@ -49,6 +53,9 @@
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('workload')" index="/workloads">
             <span>工作量详单</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('broadband')" index="/broadband-orders">
+            <span>无缝订单</span>
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canViewSystem" index="system">
@@ -123,7 +130,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
-import { House, Tickets, DataBoard, DataAnalysis, FolderOpened, Setting, Fold, Expand, ChatDotRound } from '@element-plus/icons-vue'
+import { House, Tickets, DataBoard, DataAnalysis, DataLine, FolderOpened, Setting, Fold, Expand, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AgentLauncher from '@/components/AgentLauncher.vue'
 
@@ -154,6 +161,7 @@ const DATA_ITEMS = [
   { path: '/checkins', key: 'checkins' },
   { path: '/training-records', key: 'training_records' },
   { path: '/workloads', key: 'workload' },
+  { path: '/broadband-orders', key: 'broadband' },
 ]
 const DATA_PATHS = DATA_ITEMS.map(i => i.path)
 const canViewData = computed(() => DATA_ITEMS.some(i => userStore.canView(i.key)))

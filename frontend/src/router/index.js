@@ -54,6 +54,18 @@ const routes = [
         meta: { permission: 'workload_report.view' }
       },
       {
+        path: 'broadband-orders',
+        name: 'BroadbandOrders',
+        component: () => import('../views/BroadbandOrders.vue'),
+        meta: { permission: 'broadband.view' }
+      },
+      {
+        path: 'broadband-report',
+        name: 'BroadbandReport',
+        component: () => import('../views/BroadbandReport.vue'),
+        meta: { permission: 'broadband_report.view' }
+      },
+      {
         path: 'work-hour-settings',
         name: 'WorkHourSettings',
         component: () => import('../views/WorkHourSettings.vue'),

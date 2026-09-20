@@ -37,6 +37,7 @@ def init_db():
     from app.models.workload import Workload
     from app.models.field_annotation import FieldAnnotation
     from app.models.training_record import TrainingRecord
+    from app.models.seamless_order import SeamlessOrder
     from app.models.app_config import AppConfig
     from app.models.llm_provider import LLMProvider
 
