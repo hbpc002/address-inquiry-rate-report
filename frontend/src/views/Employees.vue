@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>员工管理</span>
+          <span>{{ ui.labels.employees }}</span>
           <el-space>
             <template v-if="activeTab === 'active'">
               <el-button v-if="userStore.hasPermission('employees.export')" @click="handleExport">导出员工</el-button>
@@ -200,9 +200,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const importVisible = ref(false)

@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>工作量详单</span>
+          <span>{{ ui.labels.workload }}</span>
           <div>
             <el-button @click="columnSelectorVisible = true">
               自定义列
@@ -124,10 +124,12 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api, useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const uploading = ref(false)

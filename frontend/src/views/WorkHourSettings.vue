@@ -3,7 +3,7 @@
     <el-card style="margin-bottom: 16px">
       <template #header>
         <div class="card-header">
-          <span>迟到早退阈值设置</span>
+          <span>{{ ui.labels.work_hour_settings }}</span>
           <el-button v-if="userStore.hasPermission('work_hour_settings.edit')" type="primary" :loading="configSaving" @click="handleSaveConfig">保存配置</el-button>
         </div>
       </template>
@@ -130,9 +130,11 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 
 const tableData = ref([])
 const dialogVisible = ref(false)

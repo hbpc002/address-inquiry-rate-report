@@ -32,54 +32,54 @@
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('reports')" index="/reports">
           <el-icon><DataAnalysis /></el-icon>
-          <span>考勤报表</span>
+          <span>{{ ui.labels.reports }}</span>
         </el-menu-item>
         <el-sub-menu v-if="canViewData" index="data">
           <template #title>
             <el-icon><FolderOpened /></el-icon>
-            <span>数据管理</span>
+            <span>{{ ui.labels.menu_data }}</span>
           </template>
           <el-menu-item v-if="userStore.canView('schedules')" index="/schedules">
-            <span>排班管理</span>
+            <span>{{ ui.labels.schedules }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('employees')" index="/employees">
-            <span>员工管理</span>
+            <span>{{ ui.labels.employees }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('checkins')" index="/checkins">
-            <span>签到记录</span>
+            <span>{{ ui.labels.checkins }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('training_records')" index="/training-records">
-            <span>培训记录</span>
+            <span>{{ ui.labels.training_records }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('workload')" index="/workloads">
-            <span>工作量详单</span>
+            <span>{{ ui.labels.workload }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('broadband')" index="/broadband-orders">
-            <span>无缝订单</span>
+            <span>{{ ui.labels.broadband_orders }}</span>
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canViewSystem" index="system">
           <template #title>
             <el-icon><Setting /></el-icon>
-            <span>系统设置</span>
+            <span>{{ ui.labels.menu_system }}</span>
           </template>
           <el-menu-item v-if="userStore.canView('system')" index="/system">
-            <span>系统管理</span>
+            <span>{{ ui.labels.system }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('users')" index="/users">
-            <span>用户管理</span>
+            <span>{{ ui.labels.users }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('roles')" index="/roles">
-            <span>角色管理</span>
+            <span>{{ ui.labels.roles }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
-            <span>工时预警设置</span>
+            <span>{{ ui.labels.work_hour_settings }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('salary_config')" index="/salary-settings">
-            <span>绩效配置</span>
+            <span>{{ ui.labels.salary_config }}</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('field_annotations')" index="/field-annotations">
-            <span>字段批注</span>
+            <span>{{ ui.labels.field_annotations }}</span>
           </el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="userStore.hasPermission('agent.use')" index="/agent">

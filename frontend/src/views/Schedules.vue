@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>排班管理</span>
+          <span>{{ ui.labels.schedules }}</span>
           <el-space>
             <el-button v-if="userStore.hasPermission('schedules.upload')" type="success" @click="dialogType = 'import'; importVisible = true">导入考勤报表</el-button>
             <el-button v-if="userStore.hasPermission('schedules.create')" type="primary" @click="dialogType = 'add'; dialogVisible = true">新增排班</el-button>
@@ -218,10 +218,12 @@
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const importVisible = ref(false)

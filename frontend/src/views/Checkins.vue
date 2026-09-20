@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>签到记录</span>
+          <span>{{ ui.labels.checkins }}</span>
           <el-button v-if="userStore.hasPermission('checkins.upload')" type="primary" @click="dialogVisible = true">导入签到</el-button>
         </div>
       </template>
@@ -114,10 +114,12 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { api, useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 const tableData = ref([])
 const dialogVisible = ref(false)
 const uploading = ref(false)

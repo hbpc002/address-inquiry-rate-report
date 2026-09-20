@@ -16,6 +16,22 @@ const DEFAULTS = {
   dashboard: '工效仪表盘',
   checkin_report: '排班调度',
   workload_report: '团队管理',
+  broadband_report: '宽带营销画像',
+  reports: '考勤报表',
+  menu_data: '数据管理',
+  schedules: '排班管理',
+  employees: '员工管理',
+  checkins: '签到记录',
+  training_records: '培训记录',
+  workload: '工作量详单',
+  broadband_orders: '无缝订单',
+  menu_system: '系统设置',
+  system: '系统管理',
+  users: '用户管理',
+  roles: '角色管理',
+  work_hour_settings: '工时预警设置',
+  salary_config: '绩效配置',
+  field_annotations: '字段批注',
   agent: '哟你通通',
 }
 
@@ -33,6 +49,10 @@ describe('uiConfig store', () => {
     expect(store.labels.checkin_report).toBe('排班调度')
     expect(store.labels.workload_report).toBe('团队管理')
     expect(store.labels.agent).toBe('哟你通通')
+    expect(store.labels.broadband_report).toBe('宽带营销画像')
+    expect(store.labels.reports).toBe('考勤报表')
+    expect(store.labels.broadband_orders).toBe('无缝订单')
+    expect(store.labels.menu_data).toBe('数据管理')
   })
 
   it('load() 合并后端返回的名称并更新浏览器标题', async () => {

@@ -1,14 +1,8 @@
 import { defineStore } from 'pinia'
 import { api } from '@/stores/user'
+import { UI_LABEL_DEFAULTS } from '@/utils/uiLabels'
 
-const DEFAULTS = {
-  project_name: '客户服务中心运营管理平台',
-  dashboard: '工效仪表盘',
-  checkin_report: '排班调度',
-  workload_report: '团队管理',
-  broadband_report: '宽带营销画像',
-  agent: '哟你通通',
-}
+const DEFAULTS = { ...UI_LABEL_DEFAULTS }
 
 export const useUiConfigStore = defineStore('uiConfig', {
   state: () => ({

@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>字段批注管理</span>
+          <span>{{ ui.labels.field_annotations }}</span>
           <el-button v-if="userStore.hasPermission('field_annotations.edit')" type="primary" @click="openCreate">新增批注</el-button>
         </div>
       </template>
@@ -82,9 +82,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 const loading = ref(false)
 const saving = ref(false)
 const annotations = ref([])

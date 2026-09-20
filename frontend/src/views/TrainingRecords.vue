@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>培训记录</span>
+          <span>{{ ui.labels.training_records }}</span>
           <el-space>
             <el-button v-if="userStore.hasPermission('training_records.view')" @click="loadData">刷新</el-button>
             <el-button v-if="userStore.hasPermission('training_records.create')" type="primary" @click="openBatchDialog">批量录入</el-button>
@@ -130,10 +130,12 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api, useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 
 const empOptions = ref([])
 const tableData = ref([])

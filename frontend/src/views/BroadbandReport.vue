@@ -124,6 +124,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api, useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions } from '../utils/echarts'
@@ -132,7 +133,8 @@ import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
 const userStore = useUserStore()
-const pageTitle = '宽带营销画像'
+const ui = useUiConfigStore()
+const pageTitle = computed(() => ui.labels.broadband_report)
 
 const now = new Date()
 const defaultMonth = now.toISOString().slice(0, 7)

@@ -1,7 +1,7 @@
 <template>
   <div class="salary-settings">
     <el-card>
-      <template #header><span>绩效工资配置</span></template>
+      <template #header><span>{{ ui.labels.salary_config }}</span></template>
 
       <el-form label-width="160px" v-loading="loading">
         <el-divider content-position="left">接话绩效工资 - 梯度</el-divider>
@@ -138,7 +138,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
+const ui = useUiConfigStore()
 
 const loading = ref(false)
 const saving = ref(false)

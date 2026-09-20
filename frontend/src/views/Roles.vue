@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>角色管理</span>
+          <span>{{ ui.labels.roles }}</span>
           <el-button v-if="userStore.hasPermission('roles.manage')" type="primary" @click="handleAdd">新增角色</el-button>
         </div>
       </template>
@@ -120,10 +120,12 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { PERMISSION_REGISTRY, getAllPermissionKeys } from '../permissions'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 
 const tableData = ref([])
 const dialogVisible = ref(false)

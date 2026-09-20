@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>用户管理</span>
+          <span>{{ ui.labels.users }}</span>
           <el-button v-if="userStore.hasPermission('users.manage')" type="primary" @click="handleAdd">新增用户</el-button>
           <el-button v-if="userStore.hasPermission('users.manage')" type="success" @click="importVisible = true">批量导入</el-button>
         </div>
@@ -116,9 +116,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 
 const tableData = ref([])
 const roles = ref([])

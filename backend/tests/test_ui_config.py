@@ -39,15 +39,22 @@ def test_ui_labels_defaults():
     assert data["dashboard"] == "工效仪表盘"
     assert data["checkin_report"] == "排班调度"
     assert data["workload_report"] == "团队管理"
+    assert data["broadband_report"] == "宽带营销画像"
+    assert data["reports"] == "考勤报表"
+    assert data["broadband_orders"] == "无缝订单"
+    assert data["menu_data"] == "数据管理"
+    assert data["menu_system"] == "系统设置"
     assert data["agent"] == "哟你通通"
 
 
 def test_ui_labels_update_and_persist():
-    r = client.put("/api/ui-labels", json={"dashboard": "数据看板", "agent": "小助手"})
+    r = client.put("/api/ui-labels", json={"dashboard": "数据看板", "agent": "小助手", "broadband_report": "宽带画像", "broadband_orders": "订单中心"})
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["dashboard"] == "数据看板"
     assert data["agent"] == "小助手"
+    assert data["broadband_report"] == "宽带画像"
+    assert data["broadband_orders"] == "订单中心"
     # 未传入的字段保持默认
     assert data["project_name"] == "客户服务中心运营管理平台"
 
@@ -56,6 +63,8 @@ def test_ui_labels_update_and_persist():
     data2 = r2.json()
     assert data2["dashboard"] == "数据看板"
     assert data2["agent"] == "小助手"
+    assert data2["broadband_report"] == "宽带画像"
+    assert data2["broadband_orders"] == "订单中心"
 
     _restore_defaults()
 
@@ -98,7 +107,13 @@ def test_ui_labels_stored_in_app_config():
 
 def test_default_labels_module_constant():
     assert DEFAULT_UI_LABELS["project_name"] == "客户服务中心运营管理平台"
-    assert set(DEFAULT_UI_LABELS.keys()) == {"project_name", "dashboard", "checkin_report", "workload_report", "agent"}
+    assert set(DEFAULT_UI_LABELS.keys()) == {
+        "project_name", "dashboard", "checkin_report", "workload_report",
+        "broadband_report", "reports", "menu_data", "schedules", "employees",
+        "checkins", "training_records", "workload", "broadband_orders",
+        "menu_system", "system", "users", "roles", "work_hour_settings",
+        "salary_config", "field_annotations", "agent",
+    }
 
 
 def test_admin_has_system_config_permission():

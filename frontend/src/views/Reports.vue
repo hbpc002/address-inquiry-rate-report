@@ -3,7 +3,7 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>考勤报表</span>
+          <span>{{ ui.labels.reports }}</span>
           <el-space>
             <el-button v-if="userStore.hasPermission('reports.recalculate')" type="warning" @click="handleRecalculate">重算考勤</el-button>
             <el-button v-if="userStore.hasPermission('reports.export')" type="success" @click="handleExport">导出报表</el-button>
@@ -541,9 +541,11 @@
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
+import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 
 const userStore = useUserStore()
+const ui = useUiConfigStore()
 import Echart from '../components/Echart.vue'
 import ColumnWithTip from '../components/ColumnWithTip.vue'
 import { createPieOptions, createBarOptions, createLineOptions, createHorizontalBarOptions, createMultiBarOptions } from '../utils/echarts'
