@@ -75,48 +75,52 @@
         </el-col>
       </el-row>
 
-      <el-row :gutter="20" v-if="tableData.length" style="margin-bottom: 16px">
-        <el-col :span="10">
-          <el-card shadow="hover">
-            <Echart :options="teamChartOptions" height="300px" @click="handlePieClick" />
-          </el-card>
-        </el-col>
-        <el-col :span="14">
+      <el-row v-if="tableData.length" style="margin-bottom: 16px">
+        <el-col :span="24">
           <el-card shadow="hover">
             <Echart :options="scatterOptions" :height="scatterHeight" />
           </el-card>
         </el-col>
       </el-row>
 
-      <el-table
-        :data="paginatedData"
-        border stripe
-        max-height="calc(100vh - 520px)"
-        @sort-change="handleSortChange"
-      >
-        <el-table-column label="排名" width="60" type="index" />
-        <el-table-column prop="emp_no" label="工号" width="120" sortable="custom" />
-        <el-table-column prop="name" label="姓名" width="90" sortable="custom" />
-        <el-table-column prop="team" label="班组" min-width="150" sortable="custom" />
-        <el-table-column prop="intention_count" label="意向单数量" width="110" sortable="custom" />
-        <el-table-column prop="recommend" label="推荐量" width="90" sortable="custom" />
-        <el-table-column prop="completed" label="成功推荐" width="100" sortable="custom" />
-        <el-table-column prop="success_rate" label="成功率(%)" width="110" sortable="custom">
-          <template #default="{ row }">
-            <span :style="successRateStyle(row.success_rate)">{{ formatRate(row.success_rate) }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
+      <el-row :gutter="20" v-if="tableData.length">
+        <el-col :span="8">
+          <el-card shadow="hover">
+            <Echart :options="teamChartOptions" height="360px" @click="handlePieClick" />
+          </el-card>
+        </el-col>
+        <el-col :span="16">
+          <el-table
+            :data="paginatedData"
+            border stripe
+            max-height="calc(100vh - 560px)"
+            @sort-change="handleSortChange"
+          >
+            <el-table-column label="排名" width="60" type="index" />
+            <el-table-column prop="emp_no" label="工号" width="120" sortable="custom" />
+            <el-table-column prop="name" label="姓名" width="90" sortable="custom" />
+            <el-table-column prop="team" label="班组" min-width="150" sortable="custom" />
+            <el-table-column prop="intention_count" label="意向单数量" width="110" sortable="custom" />
+            <el-table-column prop="recommend" label="推荐量" width="90" sortable="custom" />
+            <el-table-column prop="completed" label="成功推荐" width="100" sortable="custom" />
+            <el-table-column prop="success_rate" label="成功率(%)" width="110" sortable="custom">
+              <template #default="{ row }">
+                <span :style="successRateStyle(row.success_rate)">{{ formatRate(row.success_rate) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
 
-      <el-pagination
-        v-if="tableData.length > 0"
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        :total="sortedData.length"
-        layout="total, sizes, prev, pager, next, jumper"
-        style="margin-top: 15px; justify-content: flex-end"
-      />
+          <el-pagination
+            v-if="tableData.length > 0"
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="sortedData.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            style="margin-top: 15px; justify-content: flex-end"
+          />
+        </el-col>
+      </el-row>
     </el-card>
   </div>
 </template>
@@ -128,7 +132,7 @@ import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions } from '../utils/echarts'
-import { buildScatterOptions, ZOOM_THRESHOLD } from '../utils/broadbandScatter'
+import { buildScatterOptions } from '../utils/broadbandScatter'
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
@@ -252,7 +256,7 @@ const teamChartOptions = computed(() => {
 
 const scatterOptions = computed(() => buildScatterOptions(filteredData.value))
 
-const scatterHeight = computed(() => filteredData.value.length > ZOOM_THRESHOLD ? '380px' : '300px')
+const scatterHeight = '480px'
 
 function handlePieClick(params) {
   if (!params || !params.name) return

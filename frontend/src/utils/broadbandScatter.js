@@ -1,9 +1,5 @@
 import { CHART_COLORS } from './echarts'
 
-export const SHOW_ALL_LABEL_THRESHOLD = 20
-export const TOP_LABEL_COUNT = 12
-export const ZOOM_THRESHOLD = 60
-
 export function teamName(item) {
   return item.team || '未知班组'
 }
@@ -27,55 +23,36 @@ export function buildTeamMap(items) {
   return map
 }
 
-// 人数少时给所有人标姓名；人数多时只给推荐量 Top N 标姓名
-//（同推荐量按成功率降序、姓名升序）
-export function selectLabeledItems(items) {
-  if (items.length <= SHOW_ALL_LABEL_THRESHOLD) return items
-  return [...items]
-    .sort((a, b) =>
-      (b.recommend - a.recommend)
-      || ((b.success_rate || 0) - (a.success_rate || 0))
-      || String(a.name || '').localeCompare(String(b.name || ''))
-    )
-    .slice(0, TOP_LABEL_COUNT)
-}
-
 export function buildScatterOptions(items) {
   const teamMap = buildTeamMap(items)
-  const labeled = selectLabeledItems(items)
   const teamNames = Object.keys(teamMap)
 
-  const series = teamNames.map(team => ({
-    name: team,
-    type: 'scatter',
-    symbolSize: 12,
-    data: items.filter(item => teamName(item) === team).map(toPoint),
-    itemStyle: { color: CHART_COLORS[teamMap[team] % CHART_COLORS.length], opacity: 0.8 }
-  }))
+  const series = teamNames.map(team => {
+    const color = CHART_COLORS[teamMap[team] % CHART_COLORS.length]
+    return {
+      name: team,
+      type: 'scatter',
+      symbolSize: 12,
+      data: items.filter(item => teamName(item) === team).map(toPoint),
+      itemStyle: { color, opacity: 0.8 },
+      label: {
+        show: true,
+        fontSize: 13,
+        fontWeight: 600,
+        color,
+        position: 'top',
+        distance: 4,
+        textBorderColor: 'rgba(255,255,255,0.85)',
+        textBorderWidth: 2,
+        formatter: (params) => (params.data ?? params.value)?.[2]?.name ?? ''
+      },
+      labelLayout: { hideOverlap: true, moveOverlap: 'shiftY' }
+    }
+  })
 
-  const labelSeries = {
-    name: '',
-    type: 'scatter',
-    symbol: 'circle',
-    symbolSize: 0,
-    silent: true,
-    data: labeled.map(toPoint),
-    label: {
-      show: true,
-      fontSize: 9,
-      color: '#333',
-      position: 'top',
-      distance: 3,
-      formatter: (params) => (params.data ?? params.value)?.[2]?.name ?? ''
-    },
-    labelLayout: { hideOverlap: true }
-  }
-
-  const zoomEnabled = items.length > ZOOM_THRESHOLD
-
-  const options = {
+  return {
     title: {
-      text: zoomEnabled ? '推荐量-成功率散点图（人数较多，可滚轮缩放）' : '推荐量-成功率散点图',
+      text: '推荐量-成功率散点图（可滚轮缩放，以鼠标为中心）',
       left: 'center',
       textStyle: { fontSize: 14 }
     },
@@ -90,18 +67,14 @@ export function buildScatterOptions(items) {
       }
     },
     legend: { orient: 'horizontal', bottom: 0, data: teamNames },
-    grid: { left: '3%', right: '4%', bottom: zoomEnabled ? 90 : '12%', containLabel: true },
+    grid: { left: '12%', right: 70, bottom: 90, top: 50, containLabel: true },
     xAxis: { type: 'value', name: '推荐量', axisLabel: { rotate: 0 } },
     yAxis: { type: 'value', name: '成功率(%)', min: 0, max: 100 },
-    series: [...series, labelSeries]
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, yAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true },
+      { type: 'slider', xAxisIndex: 0, height: 16, bottom: 30 },
+      { type: 'slider', yAxisIndex: 0, orient: 'vertical', width: 14, right: 8, top: 30, bottom: 30 }
+    ],
+    series
   }
-
-  if (zoomEnabled) {
-    options.dataZoom = [
-      { type: 'inside', xAxisIndex: 0, yAxisIndex: 0 },
-      { type: 'slider', xAxisIndex: 0, height: 16, bottom: 30 }
-    ]
-  }
-
-  return options
 }
