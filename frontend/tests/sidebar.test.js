@@ -34,7 +34,7 @@ const minimalStubs = {
   'el-input': { template: '<input />' },
   'router-view': { template: '<div class="router-view-stub" />' },
   'router-link': { template: '<a><slot /></a>' },
-  'el-sub-menu': { template: '<div class="el-sub-menu-stub"><slot name="title" /><slot /></div>' },
+  'el-sub-menu': { template: '<div class="el-sub-menu-stub" :data-index="$attrs.index"><slot name="title" /><slot /></div>' },
   'el-menu-item-group': { template: '<div><slot /></div>' },
   'el-option': { template: '<div />' },
   Fold: { template: '<span class="fold-icon-stub" />' },
@@ -44,7 +44,9 @@ const minimalStubs = {
   Calendar: { template: '<span class="icon-calendar" />' },
   Clock: { template: '<span class="icon-clock" />' },
   Tickets: { template: '<span class="icon-tickets" />' },
+  DataBoard: { template: '<span class="icon-data-board" />' },
   DataAnalysis: { template: '<span class="icon-data-analysis" />' },
+  FolderOpened: { template: '<span class="icon-folder-opened" />' },
   Setting: { template: '<span class="icon-setting" />' },
   UserFilled: { template: '<span class="icon-user-filled" />' },
   Warning: { template: '<span class="icon-warning" />' },
@@ -138,8 +140,15 @@ describe('Main.vue Menu Grouping', () => {
   let wrapper
   let userStore
 
-  const SYSTEM_LABELS = ['系统管理', '用户管理', '角色管理', '绩效配置', '字段批注']
-  const TOP_LEVEL_LABELS = ['员工管理', '排班管理', '签到记录', '培训记录', '工作量详单', '工时预警设置', '考勤报表']
+  const SYSTEM_LABELS = ['系统管理', '用户管理', '角色管理', '工时预警设置', '绩效配置', '字段批注']
+  const DATA_LABELS = ['排班管理', '员工管理', '签到记录', '培训记录', '工作量详单']
+  const TOP_LEVEL_LABELS = ['排班调度', '团队管理', '考勤报表', '哟你通通']
+  const SYSTEM_PATHS = ['/system', '/users', '/roles', '/work-hour-settings', '/salary-settings', '/field-annotations']
+  const DATA_PATHS = ['/schedules', '/employees', '/checkins', '/training-records', '/workloads']
+
+  function submenuByIndex(index) {
+    return wrapper.findAll('.el-sub-menu-stub').find(s => s.attributes('data-index') === index)
+  }
 
   beforeEach(async () => {
     vi.mocked(useRoute).mockReturnValue({ path: '/' })
@@ -173,64 +182,105 @@ describe('Main.vue Menu Grouping', () => {
     })
   }
 
-  it('renders a 系统设置 submenu for admin users', () => {
-    const submenu = wrapper.find('.el-sub-menu-stub')
-    expect(submenu.exists()).toBe(true)
-    expect(submenu.text()).toContain('系统设置')
+  it('renders 系统设置 and 数据管理 submenus for admin users', () => {
+    expect(submenuByIndex('system').exists()).toBe(true)
+    expect(submenuByIndex('system').text()).toContain('系统设置')
+    expect(submenuByIndex('data').exists()).toBe(true)
+    expect(submenuByIndex('data').text()).toContain('数据管理')
+  })
+
+  it('places 数据管理 above 系统设置 in the menu', () => {
+    const menu = wrapper.find('.el-menu-stub')
+    const children = menu.element.children
+    const dataIdx = menuzIndex(children, 'data')
+    const sysIdx = menuzIndex(children, 'system')
+    expect(dataIdx).toBeGreaterThanOrEqual(0)
+    expect(sysIdx).toBeGreaterThanOrEqual(0)
+    expect(dataIdx).toBeLessThan(sysIdx)
   })
 
   it('keeps system pages inside the submenu instead of top level', () => {
-    const submenuText = wrapper.find('.el-sub-menu-stub').text()
+    const submenuText = submenuByIndex('system').text()
     for (const label of SYSTEM_LABELS) {
       expect(submenuText).toContain(label)
     }
 
-    const topLevel = wrapper.findAll('.el-menu-stub > .el-menu-item-stub')
-    const topLevelText = topLevel.map(i => i.text()).join('\n')
+    const topLevelText = topLevelTextOf(wrapper)
     for (const label of SYSTEM_LABELS) {
       expect(topLevelText).not.toContain(label)
     }
   })
 
-  it('keeps non-system pages at the top level', () => {
-    const topLevel = wrapper.findAll('.el-menu-stub > .el-menu-item-stub')
-    const topLevelText = topLevel.map(i => i.text()).join('\n')
+  it('keeps data pages inside the 数据管理 submenu instead of top level', () => {
+    const dataMenuText = submenuByIndex('data').text()
+    for (const label of DATA_LABELS) {
+      expect(dataMenuText).toContain(label)
+    }
+
+    const topLevelText = topLevelTextOf(wrapper)
+    for (const label of DATA_LABELS) {
+      expect(topLevelText).not.toContain(label)
+    }
+  })
+
+  it('keeps remaining pages at the top level', () => {
+    const topLevelText = topLevelTextOf(wrapper)
     for (const label of TOP_LEVEL_LABELS) {
       expect(topLevelText).toContain(label)
     }
   })
 
-  it('does not bind system pages to the top-level router menu', () => {
-    const topLevel = wrapper.findAll('.el-menu-stub > .el-menu-item-stub')
-    const indexes = topLevel.map(i => i.attributes('index'))
-    expect(indexes).not.toContain('/system')
-    expect(indexes).not.toContain('/users')
-    expect(indexes).not.toContain('/roles')
-    expect(indexes).not.toContain('/salary-settings')
-    expect(indexes).not.toContain('/field-annotations')
+  it('does not bind grouped pages to the top-level router menu', () => {
+    const indexes = wrapper.findAll('.el-menu-stub > .el-menu-item-stub').map(i => i.attributes('index'))
+    for (const p of [...SYSTEM_PATHS, ...DATA_PATHS]) {
+      expect(indexes).not.toContain(p)
+    }
   })
 
-  it('auto-opens the submenu when current route is a system page', async () => {
-    await mountAt('/field-annotations')
+  it('auto-opens the system submenu on a system page', async () => {
+    await mountAt('/work-hour-settings')
     expect(wrapper.find('.el-menu-stub').attributes('data-openeds')).toContain('system')
   })
 
-  it('does not auto-open the submenu on non-system pages', () => {
+  it('auto-opens the data submenu on a data page', async () => {
+    await mountAt('/workloads')
+    expect(wrapper.find('.el-menu-stub').attributes('data-openeds')).toContain('data')
+  })
+
+  it('does not auto-open any submenu on top-level pages', () => {
     const opened = wrapper.find('.el-menu-stub').attributes('data-openeds') || ''
     expect(opened).not.toContain('system')
+    expect(opened).not.toContain('data')
   })
 
-  it('hides the submenu when the user has no system permissions', async () => {
+  it('hides both submenus when the user has no permissions', async () => {
     userStore.user = { is_system: false, permissions: '{}' }
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.el-sub-menu-stub').exists()).toBe(false)
+    expect(wrapper.findAll('.el-sub-menu-stub').length).toBe(0)
   })
 
-  it('hides submenu when only non-system permissions are granted', async () => {
-    const perms = {}
-    perms['employees.view'] = true
-    userStore.user = { is_system: false, permissions: JSON.stringify(perms) }
+  it('shows only 数据管理 when only data permissions are granted', async () => {
+    userStore.user = { is_system: false, permissions: JSON.stringify({ 'employees.view': true }) }
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.el-sub-menu-stub').exists()).toBe(false)
+    expect(submenuByIndex('data').exists()).toBe(true)
+    expect(submenuByIndex('system')).toBeUndefined()
+  })
+
+  it('shows only 系统设置 when only system permissions are granted', async () => {
+    userStore.user = { is_system: false, permissions: JSON.stringify({ 'work_hour_settings.view': true }) }
+    await wrapper.vm.$nextTick()
+    expect(submenuByIndex('system').exists()).toBe(true)
+    expect(submenuByIndex('data')).toBeUndefined()
   })
 })
+
+function topLevelTextOf(wrapper) {
+  return wrapper.findAll('.el-menu-stub > .el-menu-item-stub').map(i => i.text()).join('\n')
+}
+
+function menuzIndex(children, index) {
+  for (let i = 0; i < children.length; i++) {
+    if (children[i].getAttribute('data-index') === index) return i
+  }
+  return -1
+}

@@ -18,42 +18,39 @@
           <el-icon><House /></el-icon>
           <span>{{ ui.labels.dashboard }}</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.canView('employees')" index="/employees">
-          <el-icon><User /></el-icon>
-          <span>员工管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('schedules')" index="/schedules">
-          <el-icon><Calendar /></el-icon>
-          <span>排班管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('checkins')" index="/checkins">
-          <el-icon><Clock /></el-icon>
-          <span>签到记录</span>
-        </el-menu-item>
         <el-menu-item v-if="userStore.canView('checkin_report')" index="/checkin-report">
           <el-icon><Tickets /></el-icon>
           <span>{{ ui.labels.checkin_report }}</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('training_records')" index="/training-records">
-          <el-icon><EditPen /></el-icon>
-          <span>培训记录</span>
-        </el-menu-item>
-        <el-menu-item v-if="userStore.canView('workload')" index="/workloads">
-          <el-icon><Document /></el-icon>
-          <span>工作量详单</span>
         </el-menu-item>
         <el-menu-item v-if="userStore.canView('workload_report')" index="/workload-report">
           <el-icon><DataBoard /></el-icon>
           <span>{{ ui.labels.workload_report }}</span>
         </el-menu-item>
-        <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
-          <el-icon><Warning /></el-icon>
-          <span>工时预警设置</span>
-        </el-menu-item>
         <el-menu-item v-if="userStore.canView('reports')" index="/reports">
           <el-icon><DataAnalysis /></el-icon>
           <span>考勤报表</span>
         </el-menu-item>
+        <el-sub-menu v-if="canViewData" index="data">
+          <template #title>
+            <el-icon><FolderOpened /></el-icon>
+            <span>数据管理</span>
+          </template>
+          <el-menu-item v-if="userStore.canView('schedules')" index="/schedules">
+            <span>排班管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('employees')" index="/employees">
+            <span>员工管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('checkins')" index="/checkins">
+            <span>签到记录</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('training_records')" index="/training-records">
+            <span>培训记录</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('workload')" index="/workloads">
+            <span>工作量详单</span>
+          </el-menu-item>
+        </el-sub-menu>
         <el-sub-menu v-if="canViewSystem" index="system">
           <template #title>
             <el-icon><Setting /></el-icon>
@@ -67,6 +64,9 @@
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('roles')" index="/roles">
             <span>角色管理</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
+            <span>工时预警设置</span>
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('salary_config')" index="/salary-settings">
             <span>绩效配置</span>
@@ -123,7 +123,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
-import { House, User, Calendar, Clock, Tickets, DataAnalysis, Setting, UserFilled, Warning, Management, Fold, Expand, Document, DataBoard, Coin, Edit, ChatDotRound, Tools } from '@element-plus/icons-vue'
+import { House, Tickets, DataBoard, DataAnalysis, FolderOpened, Setting, Fold, Expand, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AgentLauncher from '@/components/AgentLauncher.vue'
 
@@ -141,12 +141,28 @@ const SYSTEM_ITEMS = [
   { path: '/system', key: 'system' },
   { path: '/users', key: 'users' },
   { path: '/roles', key: 'roles' },
+  { path: '/work-hour-settings', key: 'work_hour_settings' },
   { path: '/salary-settings', key: 'salary_config' },
   { path: '/field-annotations', key: 'field_annotations' },
 ]
 const SYSTEM_PATHS = SYSTEM_ITEMS.map(i => i.path)
 const canViewSystem = computed(() => SYSTEM_ITEMS.some(i => userStore.canView(i.key)))
-const openedMenus = computed(() => (SYSTEM_PATHS.includes(activeMenu.value) ? ['system'] : []))
+
+const DATA_ITEMS = [
+  { path: '/schedules', key: 'schedules' },
+  { path: '/employees', key: 'employees' },
+  { path: '/checkins', key: 'checkins' },
+  { path: '/training-records', key: 'training_records' },
+  { path: '/workloads', key: 'workload' },
+]
+const DATA_PATHS = DATA_ITEMS.map(i => i.path)
+const canViewData = computed(() => DATA_ITEMS.some(i => userStore.canView(i.key)))
+
+const openedMenus = computed(() => {
+  if (SYSTEM_PATHS.includes(activeMenu.value)) return ['system']
+  if (DATA_PATHS.includes(activeMenu.value)) return ['data']
+  return []
+})
 
 const isCollapsed = ref(false)
 const sidebarWidth = computed(() => isCollapsed.value ? '64px' : '200px')
