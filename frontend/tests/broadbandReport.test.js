@@ -41,7 +41,8 @@ vi.mock('../src/stores/uiConfig', () => ({
 }))
 
 vi.mock('../src/utils/echarts', () => ({
-  createPieOptions: vi.fn(() => ({})),
+  createPieOptions: vi.fn(() => ({ type: 'pie' })),
+  createBarOptions: vi.fn(() => ({ type: 'bar', xAxis: {}, grid: {} })),
   CHART_COLORS: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#909399']
 }))
 
@@ -59,20 +60,22 @@ vi.mock('../src/components/Echart.vue', () => ({
 }))
 
 import { api } from '../src/stores/user'
+import { createPieOptions, createBarOptions } from '../src/utils/echarts'
 import BroadbandReport from '../src/views/BroadbandReport.vue'
 
 const items = [
   { emp_no: 'KF770001', name: '张三', team: '云网一组', intention_count: 3, recommend: 3, completed: 2, success_rate: 0.6667 },
   { emp_no: 'KF770002', name: '李四', team: '云网一组', intention_count: 2, recommend: 2, completed: 1, success_rate: 0.5 },
+  { emp_no: 'KF770003', name: '王五', team: '云网二组', intention_count: 3, recommend: 3, completed: 3, success_rate: 1 },
 ]
 
 const statsPayload = {
   stats: {
-    total_people: 2,
-    total_recommend: 5,
-    total_completed: 3,
-    avg_success_rate: 0.6,
-    teams: ['云网一组'],
+    total_people: 3,
+    total_recommend: 8,
+    total_completed: 6,
+    avg_success_rate: 0.7,
+    teams: ['云网一组', '云网二组'],
     classes: [],
     cities: []
   },
@@ -117,6 +120,9 @@ describe('宽带画像散点图点击放大/还原视图', () => {
   beforeEach(() => {
     sessionStorage.clear()
     localStorage.clear()
+    createPieOptions.mockClear()
+    createBarOptions.mockClear()
+    api.get.mockClear()
     api.get.mockImplementation((url) => {
       if (url === '/broadband/report') return Promise.resolve({ data: statsPayload })
       return Promise.resolve({ data: [] })
@@ -127,6 +133,14 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     return wrapper.findAll('.echart-stub')[0]
   }
 
+  function pieStub(wrapper) {
+    return wrapper.findAll('.echart-stub')[1]
+  }
+
+  function isHidden(el) {
+    return (el.attributes('style') || '').includes('display: none')
+  }
+
   it('初始：搜索栏与指标栏可见，散点图高 480px、自带标题显示', async () => {
     const wrapper = await mountPage()
     const forms = wrapper.findAll('.el-form-stub')
@@ -135,32 +149,32 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
+    expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
+    expect(wrapper.find('.stats-overlay').exists()).toBe(false)
   })
 
-  function isHidden(el) {
-    return (el.attributes('style') || '').includes('display: none')
-  }
-
-  it('点击散点图：搜索栏/指标栏隐藏，指标叠加在图上、高度整屏，再点还原', async () => {
+  it('点击散点图：搜索栏/指标栏隐藏，指标叠加在图上、高度整屏、只留一层卡片，再点还原', async () => {
     const wrapper = await mountPage()
     await scatterStub(wrapper).trigger('click', { componentType: 'series' })
     await flushPromises()
 
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(true))
     expect(isHidden(wrapper.find('.stats-row'))).toBe(true)
+    expect(wrapper.find('.stats-overlay').exists()).toBe(true)
+    expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(4)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('calc(100vh - 240px)')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('false')
-    expect(isHidden(wrapper.find('.stats-overlay'))).toBe(false)
-    expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(4)
+    expect(wrapper.findAll('.el-card-stub')).toHaveLength(2)
 
     await scatterStub(wrapper).trigger('click', { componentType: 'series' })
     await flushPromises()
 
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(false))
     expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
-    expect(isHidden(wrapper.find('.stats-overlay'))).toBe(true)
+    expect(wrapper.find('.stats-overlay').exists()).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
+    expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
   })
 
   it('点击图例不触发放大/还原', async () => {
@@ -170,6 +184,73 @@ describe('宽带画像散点图点击放大/还原视图', () => {
 
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(false))
     expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
+    expect(wrapper.find('.stats-overlay').exists()).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
+  })
+})
+
+describe('宽带画像饼图→组员柱形图（参照团队管理）', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
+    createPieOptions.mockClear()
+    createBarOptions.mockClear()
+    api.get.mockClear()
+    api.get.mockImplementation((url) => {
+      if (url === '/broadband/report') return Promise.resolve({ data: statsPayload })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  function scatterStub(wrapper) {
+    return wrapper.findAll('.echart-stub')[0]
+  }
+
+  function pieStub(wrapper) {
+    return wrapper.findAll('.echart-stub')[1]
+  }
+
+  it('初始：图表区域展示班组饼图，不触发柱形图', async () => {
+    const wrapper = await mountPage()
+    expect(createPieOptions).toHaveBeenCalledTimes(1)
+    expect(createPieOptions.mock.calls[0][0].map(d => d.name)).toEqual(['云网一组', '云网二组'])
+    expect(createBarOptions).not.toHaveBeenCalled()
+    expect(pieStub(wrapper).attributes('data-height')).toBe('360px')
+    expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
+  })
+
+  it('点击班组：切换为组员推荐量柱形图，且不再重新请求', async () => {
+    const wrapper = await mountPage()
+    await pieStub(wrapper).trigger('click', { componentType: 'series', name: '云网一组' })
+    await flushPromises()
+
+    expect(createBarOptions).toHaveBeenCalledTimes(1)
+    const [names, values, title] = createBarOptions.mock.calls[0]
+    expect(names).toEqual(['张三', '李四'])
+    expect(values).toEqual([3, 2])
+    expect(title).toBe('云网一组 成员推荐量')
+    expect(createPieOptions).toHaveBeenCalledTimes(1)
+    expect(api.get.mock.calls.filter(c => c[0] === '/broadband/report')).toHaveLength(1)
+  })
+
+  it('再次点击柱形图：回到班组饼图', async () => {
+    const wrapper = await mountPage()
+    await pieStub(wrapper).trigger('click', { componentType: 'series', name: '云网一组' })
+    await flushPromises()
+    await pieStub(wrapper).trigger('click', { componentType: 'series', name: '李四' })
+    await flushPromises()
+
+    expect(createPieOptions).toHaveBeenCalledTimes(2)
+    expect(createBarOptions).toHaveBeenCalledTimes(1)
+    expect(api.get.mock.calls.filter(c => c[0] === '/broadband/report')).toHaveLength(1)
+  })
+
+  it('点击空白（无 name）不触发切换', async () => {
+    const wrapper = await mountPage()
+    await pieStub(wrapper).trigger('click', { componentType: 'series' })
+    await flushPromises()
+
+    expect(createBarOptions).not.toHaveBeenCalled()
+    expect(createPieOptions).toHaveBeenCalledTimes(1)
   })
 })

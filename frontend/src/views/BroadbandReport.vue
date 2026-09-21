@@ -75,18 +75,19 @@
         </el-col>
       </el-row>
 
-      <el-row v-if="tableData.length" style="margin-bottom: 16px">
+      <el-row v-if="tableData.length" :style="{ marginBottom: scatterFocus ? '0' : '16px' }">
         <el-col :span="24">
-          <el-card shadow="hover">
-            <div class="scatter-wrap">
-              <div v-show="scatterFocus" class="stats-overlay" @click.stop>
-                <el-statistic title="总人数" :value="stats.total_people" />
-                <el-statistic title="推荐量(意向单)" :value="stats.total_recommend" :precision="0" />
-                <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
-                <el-statistic title="平均成功率(%)" :value="avgSuccessRate" :precision="2" />
-              </div>
-              <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
+          <div v-if="scatterFocus" class="scatter-wrap">
+            <div class="stats-overlay" @click.stop>
+              <el-statistic title="总人数" :value="stats.total_people" />
+              <el-statistic title="推荐量(意向单)" :value="stats.total_recommend" :precision="0" />
+              <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
+              <el-statistic title="平均成功率(%)" :value="avgSuccessRate" :precision="2" />
             </div>
+            <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
+          </div>
+          <el-card v-else shadow="hover">
+            <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
           </el-card>
         </el-col>
       </el-row>
@@ -139,7 +140,7 @@ import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
-import { createPieOptions } from '../utils/echarts'
+import { createPieOptions, createBarOptions } from '../utils/echarts'
 import { buildScatterOptions } from '../utils/broadbandScatter'
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
@@ -252,6 +253,23 @@ const teamChartData = computed(() => {
 })
 
 const teamChartOptions = computed(() => {
+  if (filterType.value === 'team' && filterValue.value) {
+    const data = tableData.value
+      .filter(d => (d.team || '未知班组') === filterValue.value)
+      .map(d => ({ name: d.name || '未知', value: d.recommend }))
+      .sort((a, b) => b.value - a.value)
+    if (!data.length) return {}
+    const options = createBarOptions(
+      data.map(d => d.name),
+      data.map(d => d.value),
+      `${filterValue.value} 成员推荐量`,
+      '姓名',
+      '推荐量'
+    )
+    options.xAxis.axisLabel = { rotate: 45, interval: 0 }
+    options.grid.bottom = '25%'
+    return options
+  }
   const data = teamChartData.value
   if (!data.length) return {}
   return createPieOptions(
@@ -274,17 +292,14 @@ const scatterOptions = computed(() => buildScatterOptions(filteredData.value, { 
 
 function handlePieClick(params) {
   if (!params || !params.name) return
-  const team = params.name
-  if (searchForm.team === team) {
-    // 再点同一班组：取消筛选，回到全部
-    searchForm.team = ''
+  if (filterType.value === 'team') {
     filterType.value = ''
     filterValue.value = ''
-  } else {
-    searchForm.team = team
-    filterType.value = 'team'
-    filterValue.value = team
+    currentPage.value = 1
+    return
   }
+  filterType.value = 'team'
+  filterValue.value = params.name
   currentPage.value = 1
 }
 

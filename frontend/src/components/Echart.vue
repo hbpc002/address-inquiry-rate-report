@@ -20,14 +20,43 @@ const chartRef = ref(null)
 let chartInstance = null
 let resizeObserver = null
 
+const CLICK_SLOP = 8
+let lastZrClick = null
+let downPos = null
+
+function onZrClick(params) {
+  lastZrClick = { time: Date.now(), params }
+}
+
+function onPointerDown(e) {
+  lastZrClick = null
+  if (e.button !== 0) return
+  downPos = { x: e.clientX, y: e.clientY }
+}
+
+function onNativeClick(e) {
+  if (!downPos) return
+  const dist = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y)
+  downPos = null
+  if (dist > CLICK_SLOP) return
+  if (lastZrClick && Date.now() - lastZrClick.time <= 150) {
+    emit('click', lastZrClick.params)
+    lastZrClick = null
+  } else {
+    emit('click', { componentType: null })
+  }
+}
+
 function initChart() {
   if (!chartRef.value) return
   chartInstance = echarts.init(chartRef.value)
   chartInstance.setOption(props.options, true)
 
   if (props.clickable) {
-    chartInstance.on('click', (params) => emit('click', params))
+    chartInstance.on('click', onZrClick)
     chartInstance.on('dblclick', (params) => emit('dblclick', params))
+    chartRef.value.addEventListener('pointerdown', onPointerDown)
+    chartRef.value.addEventListener('click', onNativeClick)
   }
 }
 
@@ -64,6 +93,10 @@ onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
+  }
+  if (chartRef.value) {
+    chartRef.value.removeEventListener('pointerdown', onPointerDown)
+    chartRef.value.removeEventListener('click', onNativeClick)
   }
   chartInstance?.dispose()
   window.removeEventListener('resize', resize)
