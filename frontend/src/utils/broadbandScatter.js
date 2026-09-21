@@ -67,11 +67,18 @@ export function buildScatterOptions(items) {
       }
     },
     legend: { orient: 'horizontal', bottom: 0, data: teamNames },
-    grid: { left: '12%', right: 70, bottom: 90, top: 50, containLabel: true },
+    grid: { left: 45, right: 70, bottom: 90, top: 50, containLabel: true },
     xAxis: { type: 'value', name: '推荐量', axisLabel: { rotate: 0 } },
     yAxis: { type: 'value', name: '成功率(%)', min: 0, max: 100 },
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0, yAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true },
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        zoomOnMouseWheel: true,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false
+      },
       { type: 'slider', xAxisIndex: 0, height: 16, bottom: 30 },
       { type: 'slider', yAxisIndex: 0, orient: 'vertical', width: 14, right: 8, top: 30, bottom: 30 }
     ],

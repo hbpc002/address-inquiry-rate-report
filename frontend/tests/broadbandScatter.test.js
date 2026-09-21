@@ -95,6 +95,7 @@ describe('broadbandScatter 散点图工具函数', () => {
     expect(inside.xAxisIndex).toBe(0)
     expect(inside.yAxisIndex).toBe(0)
     expect(inside.zoomOnMouseWheel).toBe(true)
+    expect(inside.moveOnMouseWheel).toBe(false)
     expect(inside.moveOnMouseMove).toBe(true)
 
     const xSlider = options.dataZoom.find(d => d.type === 'slider' && d.xAxisIndex === 0)
@@ -108,6 +109,7 @@ describe('broadbandScatter 散点图工具函数', () => {
 
     expect(options.grid.bottom).toBe(90)
     expect(options.grid.right).toBe(70)
+    expect(options.grid.left).toBe(45)
     expect(options.title.text).toContain('可滚轮缩放')
     expect(options.title.text).toContain('以鼠标为中心')
   })

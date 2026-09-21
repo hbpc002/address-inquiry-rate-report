@@ -10,7 +10,7 @@
         </div>
       </template>
 
-      <el-form inline>
+      <el-form v-show="!scatterFocus" inline>
         <el-form-item label="查询方式">
           <el-radio-group v-model="searchForm.type">
             <el-radio value="day">按天</el-radio>
@@ -20,7 +20,7 @@
         </el-form-item>
       </el-form>
 
-      <el-form inline>
+      <el-form v-show="!scatterFocus" inline>
         <el-form-item v-if="searchForm.type === 'day'" label="日期">
           <el-date-picker v-model="searchForm.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
         </el-form-item>
@@ -78,7 +78,15 @@
       <el-row v-if="tableData.length" style="margin-bottom: 16px">
         <el-col :span="24">
           <el-card shadow="hover">
-            <Echart :options="scatterOptions" :height="scatterHeight" />
+            <template #header>
+              <div class="card-header">
+                <span>散点图</span>
+                <span>
+                  <el-button type="primary" size="small" plain @click="toggleScatterFocus">{{ scatterFocus ? '还原' : '放大' }}</el-button>
+                </span>
+              </div>
+            </template>
+            <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
           </el-card>
         </el-col>
       </el-row>
@@ -256,7 +264,13 @@ const teamChartOptions = computed(() => {
 
 const scatterOptions = computed(() => buildScatterOptions(filteredData.value))
 
-const scatterHeight = '480px'
+const scatterFocus = ref(false)
+const scatterHeight = computed(() => (scatterFocus.value ? 'calc(100vh - 240px)' : '480px'))
+
+function toggleScatterFocus(params) {
+  if (params && params.componentType === 'legend') return
+  scatterFocus.value = !scatterFocus.value
+}
 
 function handlePieClick(params) {
   if (!params || !params.name) return
