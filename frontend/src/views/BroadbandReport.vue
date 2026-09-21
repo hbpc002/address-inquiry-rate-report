@@ -60,7 +60,7 @@
         </el-form-item>
       </el-form>
 
-      <el-row :gutter="20" class="stats-row">
+      <el-row :gutter="20" class="stats-row" v-show="!scatterFocus">
         <el-col :span="6">
           <el-statistic title="总人数" :value="stats.total_people" />
         </el-col>
@@ -78,15 +78,15 @@
       <el-row v-if="tableData.length" style="margin-bottom: 16px">
         <el-col :span="24">
           <el-card shadow="hover">
-            <template #header>
-              <div class="card-header">
-                <span>散点图</span>
-                <span>
-                  <el-button type="primary" size="small" plain @click="toggleScatterFocus">{{ scatterFocus ? '还原' : '放大' }}</el-button>
-                </span>
+            <div class="scatter-wrap">
+              <div v-show="scatterFocus" class="stats-overlay" @click.stop>
+                <el-statistic title="总人数" :value="stats.total_people" />
+                <el-statistic title="推荐量(意向单)" :value="stats.total_recommend" :precision="0" />
+                <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
+                <el-statistic title="平均成功率(%)" :value="avgSuccessRate" :precision="2" />
               </div>
-            </template>
-            <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
+              <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
+            </div>
           </el-card>
         </el-col>
       </el-row>
@@ -262,8 +262,6 @@ const teamChartOptions = computed(() => {
   )
 })
 
-const scatterOptions = computed(() => buildScatterOptions(filteredData.value))
-
 const scatterFocus = ref(false)
 const scatterHeight = computed(() => (scatterFocus.value ? 'calc(100vh - 240px)' : '480px'))
 
@@ -271,6 +269,8 @@ function toggleScatterFocus(params) {
   if (params && params.componentType === 'legend') return
   scatterFocus.value = !scatterFocus.value
 }
+
+const scatterOptions = computed(() => buildScatterOptions(filteredData.value, { showTitle: !scatterFocus.value }))
 
 function handlePieClick(params) {
   if (!params || !params.name) return
@@ -368,5 +368,22 @@ onMounted(() => {
 }
 .stats-row {
   margin-bottom: 16px;
+}
+.scatter-wrap {
+  position: relative;
+}
+.stats-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 </style>

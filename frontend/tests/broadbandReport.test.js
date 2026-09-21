@@ -54,7 +54,7 @@ vi.mock('../src/components/Echart.vue', () => ({
     name: 'Echart',
     props: ['options', 'height'],
     emits: ['click'],
-    template: '<div class="echart-stub" :data-height="height" @click="$emit(\'click\', $event)"></div>'
+    template: '<div class="echart-stub" :data-height="height" :data-title-show="String(options.title == null ? true : options.title.show)" @click="$emit(\'click\', $event)"></div>'
   }
 }))
 
@@ -127,31 +127,40 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     return wrapper.findAll('.echart-stub')[0]
   }
 
-  it('初始：搜索栏可见，散点图高度为 480px', async () => {
+  it('初始：搜索栏与指标栏可见，散点图高 480px、自带标题显示', async () => {
     const wrapper = await mountPage()
     const forms = wrapper.findAll('.el-form-stub')
     expect(forms).toHaveLength(2)
     forms.forEach((form) => expect(isHidden(form)).toBe(false))
+    expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
+    expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
   })
 
-  function isHidden(form) {
-    return (form.attributes('style') || '').includes('display: none')
+  function isHidden(el) {
+    return (el.attributes('style') || '').includes('display: none')
   }
 
-  it('点击散点图：隐藏搜索栏且高度接近整屏，再点还原', async () => {
+  it('点击散点图：搜索栏/指标栏隐藏，指标叠加在图上、高度整屏，再点还原', async () => {
     const wrapper = await mountPage()
     await scatterStub(wrapper).trigger('click', { componentType: 'series' })
     await flushPromises()
 
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(true))
+    expect(isHidden(wrapper.find('.stats-row'))).toBe(true)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('calc(100vh - 240px)')
+    expect(scatterStub(wrapper).attributes('data-title-show')).toBe('false')
+    expect(isHidden(wrapper.find('.stats-overlay'))).toBe(false)
+    expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(4)
 
     await scatterStub(wrapper).trigger('click', { componentType: 'series' })
     await flushPromises()
 
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(false))
+    expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
+    expect(isHidden(wrapper.find('.stats-overlay'))).toBe(true)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
+    expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
   })
 
   it('点击图例不触发放大/还原', async () => {
@@ -160,6 +169,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     await flushPromises()
 
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(false))
+    expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
   })
 })

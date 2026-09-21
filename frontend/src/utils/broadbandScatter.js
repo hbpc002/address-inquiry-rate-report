@@ -23,7 +23,7 @@ export function buildTeamMap(items) {
   return map
 }
 
-export function buildScatterOptions(items) {
+export function buildScatterOptions(items, opts = {}) {
   const teamMap = buildTeamMap(items)
   const teamNames = Object.keys(teamMap)
 
@@ -54,6 +54,7 @@ export function buildScatterOptions(items) {
     title: {
       text: '推荐量-成功率散点图（可滚轮缩放，以鼠标为中心）',
       left: 'center',
+      show: opts.showTitle !== false,
       textStyle: { fontSize: 14 }
     },
     tooltip: {
@@ -74,6 +75,12 @@ export function buildScatterOptions(items) {
       {
         type: 'inside',
         xAxisIndex: 0,
+        zoomOnMouseWheel: true,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false
+      },
+      {
+        type: 'inside',
         yAxisIndex: 0,
         zoomOnMouseWheel: true,
         moveOnMouseMove: true,

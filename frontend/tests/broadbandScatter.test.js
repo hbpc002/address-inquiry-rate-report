@@ -86,17 +86,27 @@ describe('broadbandScatter 散点图工具函数', () => {
     expect(name).toBe('甲')
   })
 
-  it('buildScatterOptions: 一直启用缩放，include X/Y 双轴与双滑块', () => {
+  it('buildScatterOptions: 一直启用缩放，X/Y 各一个 inside 实例以支持双向拖动', () => {
     const items = [makeEmp('a', '甲', '云网一组', 3, 1)]
     const options = buildScatterOptions(items)
     expect(options.dataZoom).toBeDefined()
 
-    const inside = options.dataZoom.find(d => d.type === 'inside')
-    expect(inside.xAxisIndex).toBe(0)
-    expect(inside.yAxisIndex).toBe(0)
-    expect(inside.zoomOnMouseWheel).toBe(true)
-    expect(inside.moveOnMouseWheel).toBe(false)
-    expect(inside.moveOnMouseMove).toBe(true)
+    const insideList = options.dataZoom.filter(d => d.type === 'inside')
+    expect(insideList).toHaveLength(2)
+
+    const xInside = insideList.find(d => d.xAxisIndex === 0)
+    expect(xInside).toBeDefined()
+    expect(xInside.yAxisIndex).toBeUndefined()
+
+    const yInside = insideList.find(d => d.yAxisIndex === 0)
+    expect(yInside).toBeDefined()
+    expect(yInside.xAxisIndex).toBeUndefined()
+
+    for (const inside of insideList) {
+      expect(inside.zoomOnMouseWheel).toBe(true)
+      expect(inside.moveOnMouseWheel).toBe(false)
+      expect(inside.moveOnMouseMove).toBe(true)
+    }
 
     const xSlider = options.dataZoom.find(d => d.type === 'slider' && d.xAxisIndex === 0)
     expect(xSlider).toBeDefined()
@@ -110,8 +120,15 @@ describe('broadbandScatter 散点图工具函数', () => {
     expect(options.grid.bottom).toBe(90)
     expect(options.grid.right).toBe(70)
     expect(options.grid.left).toBe(45)
+    expect(options.title.show).toBe(true)
     expect(options.title.text).toContain('可滚轮缩放')
     expect(options.title.text).toContain('以鼠标为中心')
+  })
+
+  it('buildScatterOptions: 展开时可以隐藏散点图自带标题', () => {
+    const items = [makeEmp('a', '甲', '云网一组', 3, 1)]
+    expect(buildScatterOptions(items).title.show).toBe(true)
+    expect(buildScatterOptions(items, { showTitle: false }).title.show).toBe(false)
   })
 
   it('buildScatterOptions: tooltip formatter 可从散点 meta 提取员工信息', () => {
