@@ -1,5 +1,5 @@
+import base64
 import os
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File
 from pydantic import BaseModel
@@ -31,11 +31,16 @@ DEFAULT_LAUNCHER = {
     "icon_scale": 100,
 }
 
-UPLOAD_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "uploads",
-)
 ALLOWED_ICON_EXT = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
+
+_ICON_MIME = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+}
 
 
 class ProviderModelIn(BaseModel):
@@ -222,11 +227,8 @@ async def upload_launcher_icon(
     content = await file.read()
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="图标图片不能超过 2MB")
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    fname = f"agent-icon-{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOAD_DIR, fname), "wb") as f:
-        f.write(content)
-    return {"url": f"/static/{fname}"}
+    mime = _ICON_MIME.get(ext, "application/octet-stream")
+    return {"url": f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"}
 
 
 @router.put("/{provider_id}", response_model=ProviderOut)

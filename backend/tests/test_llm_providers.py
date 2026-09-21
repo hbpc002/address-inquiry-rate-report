@@ -93,11 +93,47 @@ def test_launcher_icon_upload():
     )
     assert r.status_code == 200, r.text
     url = r.json()["url"]
-    assert url.startswith("/static/agent-icon-")
-    # 上传的文件可被静态服务访问
-    got = client.get(url)
-    assert got.status_code == 200
-    assert got.content == _PNG
+    # 图标不再落盘，直接返回可内嵌的 data URI
+    assert url.startswith("data:image/png;base64,")
+    assert base64.b64decode(url.split(",", 1)[1]) == _PNG
+
+
+def test_launcher_icon_not_written_to_disk():
+    uploads_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads"
+    )
+    before = set(
+        f for f in os.listdir(uploads_dir) if f.startswith("agent-icon-")
+    ) if os.path.isdir(uploads_dir) else set()
+    r = client.post(
+        "/api/llm-providers/launcher/icon",
+        files={"file": ("b.png", _PNG, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["url"].startswith("data:")
+    after = set(
+        f for f in os.listdir(uploads_dir) if f.startswith("agent-icon-")
+    ) if os.path.isdir(uploads_dir) else set()
+    assert after == before, "上传图标不应再写入 uploads 目录"
+
+
+def test_launcher_icon_data_uri_persists_in_config():
+    # 上传得到 data URI，作为 url 图标存入配置，再读回应原样一致（存 DB，不依赖文件系统）
+    r = client.post(
+        "/api/llm-providers/launcher/icon",
+        files={"file": ("c.png", _PNG, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    data_uri = r.json()["url"]
+    upd = {
+        "enabled": True, "label": "图标持久化", "icon_type": "url", "icon_value": data_uri,
+        "position": "top-right", "color": "#409EFF",
+    }
+    put = client.put("/api/llm-providers/launcher", json=upd)
+    assert put.status_code == 200, put.text
+    got = client.get("/api/llm-providers/launcher").json()
+    assert got["icon_type"] == "url"
+    assert got["icon_value"] == data_uri
 
 
 def test_launcher_icon_rejects_bad_type():
