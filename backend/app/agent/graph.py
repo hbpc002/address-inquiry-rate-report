@@ -37,16 +37,18 @@ MAX_HISTORY_MESSAGES = 12
 CONSECUTIVE_RUN_SQL_FAILURES = 2
 
 
-def _trim_history(state: dict) -> list:
+def _trim_history(state: dict, max_history: int = None) -> list:
     """压缩消息历史，控制每轮发给 LLM 的上下文大小（限流 TPM 友好）。
 
-    保留系统提示与最近的 MAX_HISTORY_MESSAGES 条消息。从头部整体裁掉最旧的
+    保留系统提示与最近的 max_history 条消息。从头部整体裁掉最旧的
     完整消息；若裁剪边界落在 (AIMessage.tool_calls, ToolMessage) 配对中间，
     则连同挂单的 ToolMessage 一起裁掉，避免提交给模型的历史出现缺失前文的
     工具结果。
     """
+    if max_history is None:
+        max_history = MAX_HISTORY_MESSAGES
     msgs = list(state["messages"])
-    if len(msgs) <= MAX_HISTORY_MESSAGES:
+    if len(msgs) <= max_history:
         return msgs
 
     system_idx = None
@@ -55,7 +57,7 @@ def _trim_history(state: dict) -> list:
             system_idx = i
             break
     head = system_idx + 1 if system_idx is not None else 0
-    start = max(head, len(msgs) - MAX_HISTORY_MESSAGES)
+    start = max(head, len(msgs) - max_history)
 
     if start > head:
         first_kept = msgs[start]
@@ -65,8 +67,8 @@ def _trim_history(state: dict) -> list:
 
     msgs = msgs[:head] + msgs[start:]
     # 仍超限则强制截到最近 N 条（极端情况下丢弃少量配对）
-    if len(msgs) > MAX_HISTORY_MESSAGES:
-        msgs = msgs[:head] + msgs[len(msgs) - MAX_HISTORY_MESSAGES:]
+    if len(msgs) > max_history:
+        msgs = msgs[:head] + msgs[len(msgs) - max_history:]
     return msgs
 
 
@@ -100,15 +102,19 @@ def _count_consecutive_run_sql_failures(state: dict) -> int:
     return count
 
 
-def build_graph(llm, tools):
+def build_graph(llm, tools, settings: dict = None):
+    settings = settings or {}
+    max_iterations = settings.get("max_iterations", MAX_ITERATIONS)
+    max_history = settings.get("max_history_messages", MAX_HISTORY_MESSAGES)
+    sql_fail_limit = settings.get("consecutive_run_sql_failures", CONSECUTIVE_RUN_SQL_FAILURES)
     tool_node = ToolNode(tools)
     llm_with_tools = llm.bind_tools(tools)
 
     def agent(state):
-        trimmed = _trim_history(state)
+        trimmed = _trim_history(state, max_history)
         # 连续 run_sql 失败时，注入指令让 LLM 放弃 SQL 转用报表工具
         sql_fails = _count_consecutive_run_sql_failures(state)
-        if sql_fails >= CONSECUTIVE_RUN_SQL_FAILURES:
+        if sql_fails >= sql_fail_limit:
             trimmed = trimmed + [
                 AIMessage(content=(
                     f"连续 {sql_fails} 次 run_sql 失败（表名或列名不正确）。"
@@ -127,10 +133,10 @@ def build_graph(llm, tools):
         if not getattr(last, "tool_calls", None):
             return END
         iteration_counter["n"] += 1
-        if iteration_counter["n"] >= MAX_ITERATIONS:
+        if iteration_counter["n"] >= max_iterations:
             return "force_finalize"
         # 连续 run_sql 失败超限，直接结束循环
-        if _count_consecutive_run_sql_failures(state) >= CONSECUTIVE_RUN_SQL_FAILURES + 1:
+        if _count_consecutive_run_sql_failures(state) >= sql_fail_limit + 1:
             return "force_finalize"
         return "tools"
 
@@ -147,7 +153,12 @@ def build_graph(llm, tools):
     return graph.compile()
 
 
-def initial_messages(question: str, data_range: str = "") -> list:
+def initial_messages(question: str, data_range: str = "", settings: dict = None) -> list:
     today = datetime.now().strftime("%Y-%m-%d")
-    prompt = SYSTEM_PROMPT.format(current_date=today, data_range=data_range)
+    settings = settings or {}
+    prompt_template = settings.get("system_prompt") or SYSTEM_PROMPT
+    try:
+        prompt = prompt_template.format(current_date=today, data_range=data_range)
+    except (KeyError, IndexError):
+        prompt = prompt_template
     return [SystemMessage(content=prompt), HumanMessage(content=question)]

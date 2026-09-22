@@ -13,17 +13,25 @@ from app.models.app_config import AppConfig
 from app.api.ui_config import DEFAULT_UI_LABELS
 
 _admin = {"id": 1, "username": "admin", "role": "admin", "is_system": True, "permissions": "{}"}
-app.dependency_overrides[get_current_user] = lambda: _admin
 client = TestClient(app)
+_prev_override = None
 
 
 def setup_module():
+    global _prev_override
     Base.metadata.drop_all(bind=engine)
     init_db()
+    _prev_override = app.dependency_overrides.get(get_current_user)
+    app.dependency_overrides[get_current_user] = lambda: _admin
 
 
 def teardown_module():
-    app.dependency_overrides.clear()
+    global _prev_override
+    if _prev_override is not None:
+        app.dependency_overrides[get_current_user] = _prev_override
+    else:
+        app.dependency_overrides.pop(get_current_user, None)
+    _prev_override = None
 
 
 def _restore_defaults():

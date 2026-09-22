@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.models.database import init_db
 from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads, salary_config, field_annotations, training_records
-from app.api import llm_providers, agent, ui_config, broadband
+from app.api import llm_providers, agent, ui_config, broadband, agent_settings
 from app.models.database import SessionLocal
 import asyncio
 import json
@@ -77,6 +77,7 @@ app.include_router(llm_providers.router)
 app.include_router(agent.router)
 app.include_router(ui_config.router)
 app.include_router(broadband.router)
+app.include_router(agent_settings.router)
 
 UPLOAD_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads"

@@ -17,6 +17,7 @@ from app.core.llm import (
 )
 from app.agent.tools import make_tools, _build_data_range
 from app.agent.graph import build_graph, initial_messages
+from app.agent.settings import get_settings
 
 # 模型生成工具调用（如 SQL）时 content 为空、无可视文本；节流地发 progress
 # 心跳，让前端在最长空白阶段仍有实时反馈。单位：秒。
@@ -56,8 +57,13 @@ async def agent_chat(
     models = fallback_models(db, provider, body.model)
     llm = build_fallback_model(provider, models)
     tools = make_tools(db)
-    graph = build_graph(llm, tools)
-    messages = initial_messages(body.message, data_range=_build_data_range(db))
+    agent_settings = get_settings(db)
+    graph = build_graph(llm, tools, settings=agent_settings)
+    messages = initial_messages(
+        body.message,
+        data_range=_build_data_range(db),
+        settings=agent_settings,
+    )
 
     async def event_stream():
         async for s in iter_sse_events(graph, llm, messages):

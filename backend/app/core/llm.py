@@ -19,7 +19,7 @@ def get_provider(db: Session, name: str = None) -> LLMProvider:
     if not provider:
         provider = db.query(LLMProvider).order_by(LLMProvider.id).first()
     if not provider:
-        raise NoProviderError("尚未配置任何模型提供商，请先在「模型配置」中添加")
+        raise NoProviderError("尚未配置任何模型提供商，请先在「智能体配置」中添加")
     return provider
 
 

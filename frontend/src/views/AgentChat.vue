@@ -87,13 +87,16 @@ const currentModels = computed(() => {
   return p && Array.isArray(p.models) ? p.models.map((m) => (typeof m === 'string' ? m : m.model)) : []
 })
 
-const suggestions = [
+const DEFAULT_SUGGESTIONS = [
   '2026-07 各班组出勤率排名',
   '最近一周谁工时最低',
   '导出 7 月考勤报表',
   '本月迟到次数最多的人',
 ]
-const promptItems = suggestions.map((label, i) => ({ key: String(i), label }))
+const suggestions = ref([...DEFAULT_SUGGESTIONS])
+const promptItems = computed(() =>
+  suggestions.value.map((label, i) => ({ key: String(i), label }))
+)
 
 function scrollBottom() {
   nextTick(() => {
@@ -133,9 +136,21 @@ async function loadProviders() {
   }
 }
 
+async function loadSuggestions() {
+  try {
+    const r = await api.get('/agent-settings')
+    if (r.data && Array.isArray(r.data.suggestions) && r.data.suggestions.length) {
+      suggestions.value = r.data.suggestions
+    }
+  } catch (e) {
+    /* 失败时使用默认快捷问题 */
+  }
+}
+
 onMounted(() => {
   store.activate()
   loadProviders()
+  loadSuggestions()
   scrollBottom()
 })
 </script>

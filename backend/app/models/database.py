@@ -148,6 +148,16 @@ def _migrate_db():
                 except Exception as e:
                     print(f"Failed to add column segment_details: {e}")
 
+        if 'app_configs' in tables:
+            try:
+                cfg_cols = {col['name']: col for col in inspector.get_columns('app_configs')}
+                cfg_type = str(cfg_cols.get('value', {}).get('type', ''))
+                if 'VARCHAR' in cfg_type.upper() or 'CHARACTER' in cfg_type.upper():
+                    db.execute(text("ALTER TABLE app_configs ALTER COLUMN value TYPE TEXT"))
+                    print("Altered app_configs.value to TEXT")
+            except Exception as e:
+                print(f"Failed to alter app_configs.value: {e}")
+
         if 'llm_provider_models' in tables:
             lp_cols = {col['name'] for col in inspector.get_columns('llm_provider_models')}
             if 'fallback_order' not in lp_cols:

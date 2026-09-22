@@ -121,8 +121,15 @@
         </el-card>
       </el-tab-pane>
 
-      <el-tab-pane v-if="userStore.hasPermission('agent.config')" label="模型配置" name="llm">
-        <LLMSettings />
+      <el-tab-pane v-if="userStore.hasPermission('agent.config')" label="智能体配置" name="llm">
+        <el-tabs v-model="agentSubTab">
+          <el-tab-pane label="模型提供商" name="providers">
+            <LLMSettings />
+          </el-tab-pane>
+          <el-tab-pane label="智能体设置" name="settings">
+            <AgentSettings />
+          </el-tab-pane>
+        </el-tabs>
       </el-tab-pane>
     </el-tabs>
 
@@ -150,6 +157,7 @@ import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import LLMSettings from './LLMSettings.vue'
+import AgentSettings from './AgentSettings.vue'
 import { UI_LABEL_ITEMS, UI_LABEL_KEYS } from '../utils/uiLabels'
 
 const userStore = useUserStore()
@@ -157,6 +165,7 @@ const uiConfig = useUiConfigStore()
 const uiLabelItems = UI_LABEL_ITEMS
 
 const activeTab = ref('logs')
+const agentSubTab = ref('providers')
 const logs = ref([])
 const changelogs = ref([])
 const manualCleanupMonths = ref(3)
