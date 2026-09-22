@@ -81,7 +81,9 @@ def _make_xlsx(rows: list[list], include_title=True) -> io.BytesIO:
               "呼入人工服务-人工服务-通话均长(秒)", "呼入人工服务-人工服务-服务后整理总时长(秒)",
               "人工服务-满意度-非常满意量", "人工服务-满意度-满意率",
               "呼入人工服务-工单-生成总量", "呼出服务-人工呼出呼叫量",
-              "服务量合计-通话量", "操作次数及时长-示忙次数"]
+              "服务量合计-通话量", "操作次数及时长-示忙次数",
+              "操作次数及时长-示忙时长(秒)", "操作次数及时长-休息次数",
+              "操作次数及时长-休息时长(秒)"]
     total_cols = 113
     padded_header = header + [""] * (total_cols - len(header))
     ws.append(padded_header)
@@ -973,6 +975,8 @@ class TestWorkloadMetricsFields:
                     "呼入人工服务-人工服务-通话次数": 1,
                     "呼入人工服务-人工服务-服务后整理均长(秒)": 2.5,
                     "呼出服务-服务后整理总时长(秒)": 5,
+                    "操作次数及时长-示忙时长(秒)": 30,
+                    "操作次数及时长-休息次数": 1,
                     "呼入人工服务-人工服务-通话时长0-3秒(含3秒)": 3,
                     " 人工服务-解决率-转解决情况调查率": 0.5,
                 }, import_batch="batch_seed"),
@@ -988,6 +992,8 @@ class TestWorkloadMetricsFields:
         assert "呼入人工服务-人工服务-通话次数" in fields
         assert "呼入人工服务-人工服务-服务后整理均长(秒)" in fields
         assert "呼出服务-服务后整理总时长(秒)" in fields
+        assert "操作次数及时长-示忙时长(秒)" in fields
+        assert "操作次数及时长-休息次数" in fields
         assert "呼入人工服务-人工服务-通话时长0-3秒(含3秒)" not in fields
         assert " 人工服务-解决率-转解决情况调查率" not in fields
 
