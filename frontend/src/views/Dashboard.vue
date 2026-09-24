@@ -76,7 +76,7 @@
                 <el-radio-button value="freq">频次</el-radio-button>
               </el-radio-group>
             </div>
-            <Echart v-if="stateTab === 'trend'" :options="dailyStateOptions" :height="320" @click="handleDailyStateClick" />
+            <Echart v-if="stateTab === 'trend'" ref="stateChartRef" :options="dailyStateOptions" :height="320" @click="handleDailyStateClick" />
             <Echart v-else :options="teamStateOptions" :height="300" @click="handleTeamStateClick" />
           </ChartPanel>
         </el-card>
@@ -242,6 +242,7 @@ const stateDayItems = ref([])
 const stateTeamDetailVisible = ref(false)
 const stateTeamDetailTitle = ref('')
 const stateTeamPersons = ref([])
+const stateChartRef = ref(null)
 
 function statusType(s) {
   const m = { '正常': 'success', '迟到': 'warning', '缺勤': 'danger', '早退': 'warning', '请假': 'info', '休息': '' }
@@ -428,8 +429,8 @@ const dailyStateOptions = computed(() => {
     series: [
       { name: '示忙次数', type: 'bar', data: data.map(d => d.busy_count), itemStyle: { color: '#5470c6' } },
       { name: '休息次数', type: 'bar', data: data.map(d => d.rest_count), itemStyle: { color: '#91cc75' } },
-      { name: '示忙时长(h)', type: 'line', yAxisIndex: 1, data: data.map(d => +(d.busy_seconds / 3600).toFixed(2)), smooth: true, itemStyle: { color: '#ee6666' }, areaStyle: { opacity: 0.1 } },
-      { name: '休息时长(h)', type: 'line', yAxisIndex: 1, data: data.map(d => +(d.rest_seconds / 3600).toFixed(2)), smooth: true, itemStyle: { color: '#fac858' }, areaStyle: { opacity: 0.1 } },
+      { name: '示忙时长(h)', type: 'line', yAxisIndex: 1, data: data.map(d => +(d.busy_seconds / 3600).toFixed(2)), smooth: true, itemStyle: { color: '#ee6666' }, areaStyle: { opacity: 0.1 }, silent: true },
+      { name: '休息时长(h)', type: 'line', yAxisIndex: 1, data: data.map(d => +(d.rest_seconds / 3600).toFixed(2)), smooth: true, itemStyle: { color: '#fac858' }, areaStyle: { opacity: 0.1 }, silent: true },
     ],
   }
 })
@@ -565,9 +566,27 @@ function groupStateByTeam(persons) {
   }))
 }
 
+function resolveStateClickIndex(params, pixelToIndex) {
+  if (!params) return null
+  if (params.componentType === 'series' && typeof params.dataIndex === 'number') {
+    return params.dataIndex
+  }
+  if (params.componentType == null && typeof params.offsetX === 'number' && typeof params.offsetY === 'number' && typeof pixelToIndex === 'function') {
+    return pixelToIndex(params.offsetX, params.offsetY)
+  }
+  return null
+}
+
 async function handleDailyStateClick(params) {
-  if (!params || params.componentType !== 'series') return
-  const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
+  const idx = resolveStateClickIndex(params, (x, y) => {
+    const chart = stateChartRef.value?.getInstance?.()
+    if (!chart) return null
+    if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null
+    const converted = chart.convertFromPixel({ xAxisIndex: 0 }, [x, y])
+    if (converted == null || Number.isNaN(converted)) return null
+    return Math.round(converted)
+  })
+  if (idx == null) return
   const entry = dailyStateTrend.value[idx]
   if (!entry || !entry.date) return
   stateDetailDate.value = entry.date

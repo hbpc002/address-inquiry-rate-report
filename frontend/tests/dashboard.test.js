@@ -325,3 +325,79 @@ describe('dashboard - buildTeamStateSeries', () => {
     expect(series[1].data).toEqual([0, 1.5])
   })
 })
+
+// ---- 趋势图点击：时长线 silent 穿透 + 空白坐标下钻 ----
+
+function buildDailyStateSeriesWithSilent(data) {
+  return [
+    { name: '示忙次数', type: 'bar', data: data.map(d => d.busy_count) },
+    { name: '休息次数', type: 'bar', data: data.map(d => d.rest_count) },
+    { name: '示忙时长(h)', type: 'line', silent: true, data: data.map(d => +(d.busy_seconds / 3600).toFixed(2)) },
+    { name: '休息时长(h)', type: 'line', silent: true, data: data.map(d => +(d.rest_seconds / 3600).toFixed(2)) },
+  ]
+}
+
+function resolveStateClickIndex(params, pixelToIndex) {
+  if (!params) return null
+  if (params.componentType === 'series' && typeof params.dataIndex === 'number') {
+    return params.dataIndex
+  }
+  if (params.componentType == null && typeof params.offsetX === 'number' && typeof params.offsetY === 'number' && typeof pixelToIndex === 'function') {
+    return pixelToIndex(params.offsetX, params.offsetY)
+  }
+  return null
+}
+
+describe('dashboard - daily state line silent', () => {
+  const data = [
+    { date: '2026-06-28', busy_count: 10, busy_seconds: 10800, rest_count: 3, rest_seconds: 2400 },
+  ]
+
+  it('both duration line series are silent so clicks pass through to bars', () => {
+    const series = buildDailyStateSeriesWithSilent(data)
+    const lines = series.filter(s => s.type === 'line')
+    expect(lines).toHaveLength(2)
+    expect(lines.every(s => s.silent === true)).toBe(true)
+  })
+
+  it('bar series remain interactive (not silent)', () => {
+    const series = buildDailyStateSeriesWithSilent(data)
+    const bars = series.filter(s => s.type === 'bar')
+    expect(bars.every(s => !s.silent)).toBe(true)
+  })
+})
+
+describe('dashboard - resolveStateClickIndex', () => {
+  it('returns dataIndex for series click', () => {
+    expect(resolveStateClickIndex({ componentType: 'series', dataIndex: 7 })).toBe(7)
+  })
+
+  it('returns converted index for blank grid click with coordinates', () => {
+    const pixelToIndex = (x, y) => Math.round(x / 10)
+    expect(resolveStateClickIndex({ componentType: null, offsetX: 35, offsetY: 100 }, pixelToIndex)).toBe(4)
+  })
+
+  it('returns null when blank click has no coordinates', () => {
+    expect(resolveStateClickIndex({ componentType: null }, () => 3)).toBeNull()
+  })
+
+  it('returns null when pixel converter returns null (outside grid)', () => {
+    expect(resolveStateClickIndex({ componentType: null, offsetX: 1, offsetY: 2 }, () => null)).toBeNull()
+  })
+
+  it('returns null for missing params', () => {
+    expect(resolveStateClickIndex(null, () => 0)).toBeNull()
+    expect(resolveStateClickIndex(undefined, () => 0)).toBeNull()
+  })
+
+  it('returns null for legend click', () => {
+    expect(resolveStateClickIndex({ componentType: 'legend', dataIndex: 2 }, () => 5)).toBeNull()
+  })
+
+  it('does not call pixel converter for series click', () => {
+    let called = false
+    const idx = resolveStateClickIndex({ componentType: 'series', dataIndex: 3 }, () => { called = true; return 9 })
+    expect(idx).toBe(3)
+    expect(called).toBe(false)
+  })
+})

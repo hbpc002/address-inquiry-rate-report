@@ -43,7 +43,7 @@ function onNativeClick(e) {
     emit('click', lastZrClick.params)
     lastZrClick = null
   } else {
-    emit('click', { componentType: null })
+    emit('click', { componentType: null, offsetX: e.offsetX, offsetY: e.offsetY })
   }
 }
 

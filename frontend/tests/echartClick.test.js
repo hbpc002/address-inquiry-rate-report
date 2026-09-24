@@ -63,7 +63,7 @@ describe('Echart 点击灵敏度（原生 DOM 点击 + 位移容差）', () => {
     expect(emitted[0][0]).toEqual(params)
   })
 
-  it('干净点击但无 zrender 参数：emit { componentType: null }', async () => {
+  it('干净点击但无 zrender 参数：emit { componentType: null, offsetX, offsetY }', async () => {
     const wrapper = await mountEchart()
 
     pointerDown(wrapper.element, 100, 100)
@@ -71,7 +71,10 @@ describe('Echart 点击灵敏度（原生 DOM 点击 + 位移容差）', () => {
 
     const emitted = wrapper.emitted('click')
     expect(emitted).toHaveLength(1)
-    expect(emitted[0][0]).toEqual({ componentType: null })
+    const payload = emitted[0][0]
+    expect(payload.componentType).toBeNull()
+    expect(typeof payload.offsetX).toBe('number')
+    expect(typeof payload.offsetY).toBe('number')
   })
 
   it('拖动（位移超过容差）不触发 click，避免与平移冲突', async () => {
