@@ -56,6 +56,33 @@
       </el-col>
     </el-row>
 
+    <el-row :gutter="12" style="margin-top:20px">
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span>休息/示忙分析</span>
+              <el-radio-group v-model="stateTab" size="small">
+                <el-radio-button value="trend">总体趋势</el-radio-button>
+                <el-radio-button value="team">班组对比</el-radio-button>
+              </el-radio-group>
+            </div>
+          </template>
+          <ChartPanel fullscreenable>
+            <div v-if="stateTab === 'team'" style="display:flex;justify-content:flex-end;margin-bottom:4px">
+              <el-radio-group v-model="stateMetric" size="small">
+                <el-radio-button value="count">次数</el-radio-button>
+                <el-radio-button value="duration">时长</el-radio-button>
+                <el-radio-button value="freq">频次</el-radio-button>
+              </el-radio-group>
+            </div>
+            <Echart v-if="stateTab === 'trend'" :options="dailyStateOptions" :height="320" @click="handleDailyStateClick" />
+            <Echart v-else :options="teamStateOptions" :height="300" @click="handleTeamStateClick" />
+          </ChartPanel>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-dialog v-model="trendDetailVisible" :title="'工时明细 - ' + trendDetailDate" width="900px">
       <el-table :data="trendDetailData" border stripe max-height="500">
         <el-table-column prop="emp_no" label="工号" width="100" />
@@ -117,6 +144,49 @@
       <div v-else style="text-align:center;padding:40px;color:#999">该日无产量数据</div>
       <template #footer><el-button @click="dailyProdDetailVisible = false">关闭</el-button></template>
     </el-dialog>
+
+    <el-dialog v-model="stateDetailVisible" :title="'示忙休息明细 - ' + stateDetailDate" width="900px">
+      <el-tabs v-model="stateDetailTab">
+        <el-tab-pane label="班组汇总" name="team">
+          <el-table :data="stateTeamSummary" border stripe max-height="460">
+            <el-table-column prop="team" label="班组" min-width="140" />
+            <el-table-column prop="busy_count" label="示忙次数" width="90" sortable />
+            <el-table-column prop="busy_hours" label="示忙时长(h)" width="100" sortable />
+            <el-table-column prop="rest_count" label="休息次数" width="90" sortable />
+            <el-table-column prop="rest_hours" label="休息时长(h)" width="100" sortable />
+            <el-table-column prop="freq" label="频次(次/人)" width="100" sortable />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="个人明细" name="person">
+          <el-table :data="statePersonDetail" border stripe max-height="460">
+            <el-table-column prop="name" label="姓名" width="80" />
+            <el-table-column prop="account" label="账号" width="110" />
+            <el-table-column prop="team_desc" label="班组" min-width="140" />
+            <el-table-column prop="busy_count" label="示忙次数" width="90" sortable />
+            <el-table-column prop="busy_hours" label="示忙时长(h)" width="100" sortable />
+            <el-table-column prop="rest_count" label="休息次数" width="90" sortable />
+            <el-table-column prop="rest_hours" label="休息时长(h)" width="100" sortable />
+            <el-table-column prop="freq" label="频次(次/人)" width="100" />
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
+      <template #footer><el-button @click="stateDetailVisible = false">关闭</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="stateTeamDetailVisible" :title="stateTeamDetailTitle" width="900px">
+      <el-table :data="stateTeamPersons" border stripe max-height="500">
+        <el-table-column prop="name" label="姓名" width="80" />
+        <el-table-column prop="account" label="账号" width="110" />
+        <el-table-column prop="team_desc" label="班组" min-width="140" />
+        <el-table-column prop="busy_count" label="示忙次数" width="90" sortable />
+        <el-table-column prop="busy_hours" label="示忙时长(h)" width="100" sortable />
+        <el-table-column prop="rest_count" label="休息次数" width="90" sortable />
+        <el-table-column prop="rest_hours" label="休息时长(h)" width="100" sortable />
+        <el-table-column prop="freq" label="频次(次/人)" width="100" />
+      </el-table>
+      <div v-if="!stateTeamPersons.length" style="text-align:center;padding:40px;color:#999">该班组当月无数据</div>
+      <template #footer><el-button @click="stateTeamDetailVisible = false">关闭</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
@@ -160,6 +230,18 @@ const currentChangelog = ref(null)
 const dailyProdDetailVisible = ref(false)
 const dailyProdDetailDate = ref('')
 const dailyProdDetailData = ref([])
+
+const dailyStateTrend = ref([])
+const monthlyReport = ref([])
+const stateTab = ref('trend')
+const stateMetric = ref('count')
+const stateDetailVisible = ref(false)
+const stateDetailDate = ref('')
+const stateDetailTab = ref('team')
+const stateDayItems = ref([])
+const stateTeamDetailVisible = ref(false)
+const stateTeamDetailTitle = ref('')
+const stateTeamPersons = ref([])
 
 function statusType(s) {
   const m = { '正常': 'success', '迟到': 'warning', '缺勤': 'danger', '早退': 'warning', '请假': 'info', '休息': '' }
@@ -314,6 +396,82 @@ const dailyProdOptions = computed(() => {
   }
 })
 
+const dailyStateOptions = computed(() => {
+  const data = dailyStateTrend.value
+  const dates = data.map(d => d.date.slice(5))
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const idx = params[0].dataIndex
+        const d = data[idx]
+        if (!d) return ''
+        let s = `<b>${d.date}</b><br/>`
+        const order = ['示忙次数', '休息次数', '示忙时长(h)', '休息时长(h)']
+        const pMap = {}
+        params.forEach(p => { pMap[p.seriesName] = p })
+        order.forEach(name => {
+          const p = pMap[name]
+          if (p) s += `${p.marker} ${name}：${p.value}<br/>`
+        })
+        s += `<span style="color:#999;font-size:12px">频次：示忙 ${d.busy_freq} 次/人 | 休息 ${d.rest_freq} 次/人 | 人数：${d.people_count}</span>`
+        return s
+      }
+    },
+    legend: { data: ['示忙次数', '休息次数', '示忙时长(h)', '休息时长(h)'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '22%', containLabel: true },
+    xAxis: { type: 'category', data: dates },
+    yAxis: [
+      { type: 'value', name: '次数' },
+      { type: 'value', name: '时长(h)', position: 'right' },
+    ],
+    series: [
+      { name: '示忙次数', type: 'bar', data: data.map(d => d.busy_count), itemStyle: { color: '#5470c6' } },
+      { name: '休息次数', type: 'bar', data: data.map(d => d.rest_count), itemStyle: { color: '#91cc75' } },
+      { name: '示忙时长(h)', type: 'line', yAxisIndex: 1, data: data.map(d => +(d.busy_seconds / 3600).toFixed(2)), smooth: true, itemStyle: { color: '#ee6666' }, areaStyle: { opacity: 0.1 } },
+      { name: '休息时长(h)', type: 'line', yAxisIndex: 1, data: data.map(d => +(d.rest_seconds / 3600).toFixed(2)), smooth: true, itemStyle: { color: '#fac858' }, areaStyle: { opacity: 0.1 } },
+    ],
+  }
+})
+
+const teamStateSummary = computed(() => {
+  const persons = monthlyReport.value.map(extractStatePerson)
+  return groupStateByTeam(persons).sort((a, b) => b.busy_count - a.busy_count)
+})
+
+const teamStateOptions = computed(() => {
+  const teams = teamStateSummary.value.slice(0, 12)
+  const metric = stateMetric.value
+  const busyData = teams.map(t => metric === 'count' ? t.busy_count : metric === 'duration' ? t.busy_hours : +(t.busy_count / (t.people || 1)).toFixed(2))
+  const restData = teams.map(t => metric === 'count' ? t.rest_count : metric === 'duration' ? t.rest_hours : +(t.rest_count / (t.people || 1)).toFixed(2))
+  const unit = metric === 'count' ? '次' : metric === 'duration' ? 'h' : '次/人'
+  const teamMap = {}
+  teams.forEach(t => { teamMap[t.team] = t })
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const t = teamMap[params[0].name]
+        if (!t) return ''
+        let s = `<b>${t.team}</b>（${t.people} 人）<br/>`
+        params.forEach(p => { s += `${p.marker} ${p.seriesName}：${p.value} ${unit}<br/>` })
+        return s
+      }
+    },
+    legend: { data: ['示忙', '休息'], bottom: 0 },
+    grid: { left: '3%', right: '6%', bottom: 30, containLabel: true },
+    xAxis: { type: 'value' },
+    yAxis: { type: 'category', data: teams.map(t => t.team).reverse(), axisLabel: { interval: 0 } },
+    series: [
+      { name: '示忙', type: 'bar', data: busyData.slice().reverse(), itemStyle: { color: '#5470c6' } },
+      { name: '休息', type: 'bar', data: restData.slice().reverse(), itemStyle: { color: '#91cc75' } },
+    ],
+  }
+})
+
+const stateTeamSummary = computed(() => groupStateByTeam(stateDayItems.value))
+const statePersonDetail = computed(() => stateDayItems.value.map(p => ({ ...p, freq: 1 })))
+
 async function handleTrendClick(params) {
   const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
   const date = dailyTrend.value[idx]?.date
@@ -360,6 +518,86 @@ async function handleDailyProdClick(params) {
     dailyProdDetailData.value = []
   }
   dailyProdDetailVisible.value = true
+}
+
+const STATE_FIELDS = {
+  busy_count: '操作次数及时长-示忙次数',
+  busy_seconds: '操作次数及时长-示忙时长(秒)',
+  rest_count: '操作次数及时长-休息次数',
+  rest_seconds: '操作次数及时长-休息时长(秒)',
+}
+
+function extractStatePerson(item) {
+  const m = item.aggregated_metrics || {}
+  const busyCount = m[STATE_FIELDS.busy_count] || 0
+  const restCount = m[STATE_FIELDS.rest_count] || 0
+  return {
+    account: item.account,
+    name: item.name,
+    team_desc: item.team_desc,
+    busy_count: busyCount,
+    busy_hours: +(((m[STATE_FIELDS.busy_seconds] || 0) / 3600)).toFixed(2),
+    rest_count: restCount,
+    rest_hours: +(((m[STATE_FIELDS.rest_seconds] || 0) / 3600)).toFixed(2),
+    freq: 1,
+  }
+}
+
+function groupStateByTeam(persons) {
+  const map = {}
+  persons.forEach(p => {
+    const team = p.team_desc || '未知班组'
+    if (!map[team]) map[team] = { team, busy_count: 0, busy_hours: 0, rest_count: 0, rest_hours: 0, _people: new Set() }
+    map[team].busy_count += p.busy_count
+    map[team].busy_hours = +(map[team].busy_hours + p.busy_hours).toFixed(2)
+    map[team].rest_count += p.rest_count
+    map[team].rest_hours = +(map[team].rest_hours + p.rest_hours).toFixed(2)
+    map[team]._people.add(p.account)
+  })
+  return Object.values(map).map(t => ({
+    team: t.team,
+    busy_count: t.busy_count,
+    busy_hours: t.busy_hours,
+    rest_count: t.rest_count,
+    rest_hours: t.rest_hours,
+    people: t._people.size,
+    freq: t._people.size ? +(t.busy_count / t._people.size).toFixed(2) : 0,
+  }))
+}
+
+async function handleDailyStateClick(params) {
+  if (!params || params.componentType !== 'series') return
+  const idx = typeof params.dataIndex === 'number' ? params.dataIndex : 0
+  const entry = dailyStateTrend.value[idx]
+  if (!entry || !entry.date) return
+  stateDetailDate.value = entry.date
+  stateDetailTab.value = 'team'
+  try {
+    const r = await api.get('/workloads/report', { params: { start_date: entry.date, end_date: entry.date } })
+    stateDayItems.value = (r.data.items || []).map(extractStatePerson)
+  } catch {
+    stateDayItems.value = []
+  }
+  stateDetailVisible.value = true
+}
+
+async function handleTeamStateClick(params) {
+  if (!params || params.componentType !== 'series' || !params.name) return
+  const teamName = params.name
+  let items = monthlyReport.value
+  if (!items.length) {
+    try {
+      const r = await api.get('/workloads/report', { params: yearMonth.value ? { year_month: yearMonth.value } : {} })
+      items = r.data.items || []
+      monthlyReport.value = items
+    } catch { items = [] }
+  }
+  const persons = items
+    .filter(i => (i.team_desc || '未知班组') === teamName)
+    .map(extractStatePerson)
+  stateTeamDetailTitle.value = `${teamName} - ${yearMonth.value || '本月'} 个人明细`
+  stateTeamPersons.value = persons
+  stateTeamDetailVisible.value = true
 }
 
 function onMonthChange() {
@@ -414,9 +652,25 @@ async function loadTeamProduction() {
   } catch { teamProduction.value = [] }
 }
 
+async function loadDailyStateTrend() {
+  try {
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/workloads/daily-state-trend', { params })
+    dailyStateTrend.value = r.data || []
+  } catch { dailyStateTrend.value = [] }
+}
+
+async function loadMonthlyReport() {
+  try {
+    const params = yearMonth.value ? { year_month: yearMonth.value } : {}
+    const r = await api.get('/workloads/report', { params })
+    monthlyReport.value = r.data.items || []
+  } catch { monthlyReport.value = [] }
+}
+
 async function loadAll() {
   await loadStats()
-  await Promise.all([loadTeams(), loadChangelog(), loadDailyTrend(), loadTeamHours(), loadDailyProduction(), loadTeamProduction()])
+  await Promise.all([loadTeams(), loadChangelog(), loadDailyTrend(), loadTeamHours(), loadDailyProduction(), loadTeamProduction(), loadDailyStateTrend(), loadMonthlyReport()])
 }
 
 function exportDashboard() {

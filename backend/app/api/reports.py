@@ -759,6 +759,34 @@ def export_dashboard(
         writer.writerow(["班组", "人数", "通话量", "工单量", "呼出量"])
         for team, data in team_prod.items():
             writer.writerow([team, len(data["_people"]), data["通话量"], data["工单量"], data["呼出量"]])
+        writer.writerow([])
+
+    # === Section 6: Daily State Trend (示忙/休息) ===
+    writer.writerow(["== 每日示忙/休息趋势 =="])
+    if emp_accounts:
+        state_daily = {}
+        for r in records:
+            d = r.date.isoformat()
+            if d not in state_daily:
+                state_daily[d] = {"示忙次数": 0, "示忙时长(h)": 0.0, "休息次数": 0, "休息时长(h)": 0.0, "人数": set()}
+            m = r.metrics or {}
+            state_daily[d]["示忙次数"] += m.get("操作次数及时长-示忙次数", 0) or 0
+            state_daily[d]["示忙时长(h)"] += (m.get("操作次数及时长-示忙时长(秒)", 0) or 0) / 3600
+            state_daily[d]["休息次数"] += m.get("操作次数及时长-休息次数", 0) or 0
+            state_daily[d]["休息时长(h)"] += (m.get("操作次数及时长-休息时长(秒)", 0) or 0) / 3600
+            state_daily[d]["人数"].add(r.account)
+        writer.writerow(["日期", "示忙次数", "示忙时长(h)", "示忙频次(次/人)", "休息次数", "休息时长(h)", "休息频次(次/人)", "人数"])
+        for day_num in range(1, last_day + 1):
+            d = date(year, month, day_num).isoformat()
+            entry = state_daily.get(d, {"示忙次数": 0, "示忙时长(h)": 0.0, "休息次数": 0, "休息时长(h)": 0.0, "人数": set()})
+            people = len(entry["人数"])
+            writer.writerow([
+                d, entry["示忙次数"], round(entry["示忙时长(h)"], 2),
+                round(entry["示忙次数"] / people, 2) if people else 0,
+                entry["休息次数"], round(entry["休息时长(h)"], 2),
+                round(entry["休息次数"] / people, 2) if people else 0,
+                people,
+            ])
 
     filename = f"dashboard_{year}_{month:02d}.csv"
     output.seek(0)

@@ -624,6 +624,82 @@ def get_team_production(
     return result
 
 
+@router.get("/daily-state-trend")
+def get_daily_state_trend(
+    year_month: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """按日汇总示忙/休息次数、时长与频次（频次=次数/有数据人数）"""
+    if year_month:
+        parts = year_month.split("-")
+        year, month = int(parts[0]), int(parts[1])
+    else:
+        now = datetime.now()
+        year, month = now.year, now.month
+    start = date(year, month, 1)
+    _, last_day = monthrange(year, month)
+    end = date(year, month, last_day)
+
+    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    if not emp_accounts:
+        return _fill_state_daily_empty(year, month, last_day)
+
+    records = db.query(Workload).filter(
+        Workload.date >= start,
+        Workload.date <= end,
+        Workload.account.in_(emp_accounts),
+    ).all()
+
+    daily = {}
+    for r in records:
+        d = r.date.isoformat()
+        if d not in daily:
+            daily[d] = {"busy_count": 0, "busy_seconds": 0, "rest_count": 0, "rest_seconds": 0, "_people": set()}
+        m = r.metrics or {}
+        daily[d]["busy_count"] += m.get("操作次数及时长-示忙次数", 0) or 0
+        daily[d]["busy_seconds"] += m.get("操作次数及时长-示忙时长(秒)", 0) or 0
+        daily[d]["rest_count"] += m.get("操作次数及时长-休息次数", 0) or 0
+        daily[d]["rest_seconds"] += m.get("操作次数及时长-休息时长(秒)", 0) or 0
+        daily[d]["_people"].add(r.account)
+
+    result = []
+    for day_num in range(1, last_day + 1):
+        d = date(year, month, day_num).isoformat()
+        if d in daily:
+            entry = daily[d]
+            people = len(entry["_people"])
+            result.append({
+                "date": d,
+                "busy_count": entry["busy_count"],
+                "busy_seconds": entry["busy_seconds"],
+                "rest_count": entry["rest_count"],
+                "rest_seconds": entry["rest_seconds"],
+                "people_count": people,
+                "busy_freq": round(entry["busy_count"] / people, 2) if people else 0,
+                "rest_freq": round(entry["rest_count"] / people, 2) if people else 0,
+            })
+        else:
+            result.append({
+                "date": d, "busy_count": 0, "busy_seconds": 0,
+                "rest_count": 0, "rest_seconds": 0, "people_count": 0,
+                "busy_freq": 0, "rest_freq": 0,
+            })
+    return result
+
+
+def _fill_state_daily_empty(year: int, month: int, last_day: int) -> list:
+    result = []
+    for day_num in range(1, last_day + 1):
+        d = date(year, month, day_num).isoformat()
+        result.append({
+            "date": d, "busy_count": 0, "busy_seconds": 0,
+            "rest_count": 0, "rest_seconds": 0, "people_count": 0,
+            "busy_freq": 0, "rest_freq": 0,
+        })
+    return result
+
+
 @router.get("/report/export")
 def export_workload_report(
     start_date: Optional[str] = None,

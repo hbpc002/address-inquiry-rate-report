@@ -1142,6 +1142,104 @@ class TestWorkloadTeamProduction:
         assert resp.status_code == 200
 
 
+class TestDailyStateTrend:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            _create_test_employees(db)
+            records = [
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                         team_desc="热线一组",
+                         metrics={"操作次数及时长-示忙次数": 4, "操作次数及时长-示忙时长(秒)": 7200,
+                                  "操作次数及时长-休息次数": 2, "操作次数及时长-休息时长(秒)": 1800}, import_batch="b1"),
+                Workload(date=date(2026, 6, 28), province="广西", account="STTR00002", name="李四", emp_no="1002",
+                         team_desc="热线二组",
+                         metrics={"操作次数及时长-示忙次数": 6, "操作次数及时长-示忙时长(秒)": 3600,
+                                  "操作次数及时长-休息次数": 1, "操作次数及时长-休息时长(秒)": 600}, import_batch="b1"),
+                Workload(date=date(2026, 6, 29), province="广西", account="STTR00001", name="张三", emp_no="1001",
+                         team_desc="热线一组",
+                         metrics={"操作次数及时长-示忙次数": 3, "操作次数及时长-示忙时长(秒)": 1800,
+                                  "操作次数及时长-休息次数": 0, "操作次数及时长-休息时长(秒)": 0}, import_batch="b2"),
+            ]
+            for r in records:
+                db.add(r)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_returns_all_dates_in_month(self):
+        resp = client.get("/api/workloads/daily-state-trend", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 30
+
+    def test_aggregates_daily_sums_and_freq(self):
+        resp = client.get("/api/workloads/daily-state-trend", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        day28 = next(d for d in data if d["date"] == "2026-06-28")
+        assert day28["busy_count"] == 10
+        assert day28["busy_seconds"] == 10800
+        assert day28["rest_count"] == 3
+        assert day28["rest_seconds"] == 2400
+        assert day28["people_count"] == 2
+        assert day28["busy_freq"] == 5.0
+        assert day28["rest_freq"] == 1.5
+        day29 = next(d for d in data if d["date"] == "2026-06-29")
+        assert day29["busy_count"] == 3
+        assert day29["people_count"] == 1
+        assert day29["busy_freq"] == 3.0
+        assert day29["rest_freq"] == 0
+
+    def test_zero_fills_empty_days(self):
+        resp = client.get("/api/workloads/daily-state-trend", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        day01 = next(d for d in data if d["date"] == "2026-06-01")
+        assert day01["busy_count"] == 0
+        assert day01["busy_seconds"] == 0
+        assert day01["rest_count"] == 0
+        assert day01["rest_seconds"] == 0
+        assert day01["people_count"] == 0
+        assert day01["busy_freq"] == 0
+        assert day01["rest_freq"] == 0
+
+    def test_no_data_month_returns_zeroes(self):
+        resp = client.get("/api/workloads/daily-state-trend", params={"year_month": "2025-01"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 31
+        assert all(d["busy_count"] == 0 and d["rest_count"] == 0 for d in data)
+
+    def test_excludes_resigned_employee(self):
+        db = SessionLocal()
+        try:
+            from app.models.employee import Employee
+            resigned = Employee(emp_no="STTR0099", name="离职员工", team="热线三组", status="离职")
+            db.add(resigned)
+            db.add(Workload(
+                date=date(2026, 6, 28), province="广西", account="STTR0099",
+                name="离职员工", emp_no="1099", team_desc="热线三组",
+                metrics={"操作次数及时长-示忙次数": 100, "操作次数及时长-示忙时长(秒)": 99999}, import_batch="b_resigned"
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/workloads/daily-state-trend", params={"year_month": "2026-06"})
+        assert resp.status_code == 200
+        data = resp.json()
+        day28 = next(d for d in data if d["date"] == "2026-06-28")
+        assert day28["busy_count"] == 10
+        assert day28["people_count"] == 2
+
+    def test_no_year_month_defaults_to_current(self):
+        resp = client.get("/api/workloads/daily-state-trend")
+        assert resp.status_code == 200
+
+
 class TestWorkloadExport:
 
     def setup_method(self):
