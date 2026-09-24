@@ -1,11 +1,27 @@
 import { CHART_COLORS } from './echarts'
 
+export const SCATTER_AXIS_FIELDS = {
+  recommend: { label: '推荐量', suffix: '', toValue: item => item.recommend, min: 0 },
+  completed: { label: '成功推荐', suffix: '', toValue: item => item.completed, min: 0 },
+  success_rate: {
+    label: '成功率(%)',
+    suffix: '%',
+    toValue: item => +((item.success_rate || 0) * 100).toFixed(1),
+    min: 0,
+    max: 100
+  }
+}
+
+export function axisValue(item, field) {
+  return (SCATTER_AXIS_FIELDS[field] || SCATTER_AXIS_FIELDS.recommend).toValue(item)
+}
+
 export function teamName(item) {
   return item.team || '未知班组'
 }
 
-export function toPoint(item) {
-  return [item.recommend, +((item.success_rate || 0) * 100).toFixed(1), {
+export function toPoint(item, xField = 'recommend', yField = 'success_rate') {
+  return [axisValue(item, xField), axisValue(item, yField), {
     emp_no: item.emp_no,
     name: item.name,
     team: item.team,
@@ -26,6 +42,10 @@ export function buildTeamMap(items) {
 export function buildScatterOptions(items, opts = {}) {
   const teamMap = buildTeamMap(items)
   const teamNames = Object.keys(teamMap)
+  const xField = opts.xField || 'recommend'
+  const yField = opts.yField || 'success_rate'
+  const xDim = SCATTER_AXIS_FIELDS[xField] || SCATTER_AXIS_FIELDS.recommend
+  const yDim = SCATTER_AXIS_FIELDS[yField] || SCATTER_AXIS_FIELDS.success_rate
 
   const series = teamNames.map(team => {
     const color = CHART_COLORS[teamMap[team] % CHART_COLORS.length]
@@ -33,7 +53,7 @@ export function buildScatterOptions(items, opts = {}) {
       name: team,
       type: 'scatter',
       symbolSize: 12,
-      data: items.filter(item => teamName(item) === team).map(toPoint),
+      data: items.filter(item => teamName(item) === team).map(item => toPoint(item, xField, yField)),
       itemStyle: { color, opacity: 0.8 },
       label: {
         show: true,
@@ -64,13 +84,13 @@ export function buildScatterOptions(items, opts = {}) {
         const meta = params.data?.[2] || {}
         const x = params.data?.[0]
         const y = params.data?.[1]
-        return `${meta.name || ''} (${meta.emp_no || ''})\n${meta.team || ''}\n推荐量: ${x ?? 0}\n成功率: ${(y ?? 0).toFixed(1)}%\n成功推荐: ${meta.completed ?? 0}`
+        return `${meta.name || ''} (${meta.emp_no || ''})\n${meta.team || ''}\n${xDim.label}: ${x ?? 0}${xDim.suffix || ''}\n${yDim.label}: ${y ?? 0}${yDim.suffix || ''}\n成功推荐: ${meta.completed ?? 0}`
       }
     },
     legend: { orient: 'horizontal', bottom: 0, data: teamNames },
     grid: { left: 45, right: 70, bottom: 90, top: 50, containLabel: true },
-    xAxis: { type: 'value', name: '推荐量', axisLabel: { rotate: 0 } },
-    yAxis: { type: 'value', name: '成功率(%)', min: 0, max: 100 },
+    xAxis: { type: 'value', name: xDim.label, min: xDim.min, max: xDim.max, axisLabel: { rotate: 0 } },
+    yAxis: { type: 'value', name: yDim.label, min: yDim.min, max: yDim.max },
     dataZoom: [
       {
         type: 'inside',

@@ -87,6 +87,16 @@
             <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
           </div>
           <el-card v-else shadow="hover">
+            <div class="scatter-toolbar">
+              <span class="scatter-toolbar-item">X轴</span>
+              <el-select v-model="scatterAxes.x" class="scatter-axis-select">
+                <el-option v-for="(f, key) in SCATTER_AXIS_FIELDS" :key="key" :label="f.label" :value="key" />
+              </el-select>
+              <span class="scatter-toolbar-item">Y轴</span>
+              <el-select v-model="scatterAxes.y" class="scatter-axis-select">
+                <el-option v-for="(f, key) in SCATTER_AXIS_FIELDS" :key="key" :label="f.label" :value="key" />
+              </el-select>
+            </div>
             <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
           </el-card>
         </el-col>
@@ -141,7 +151,7 @@ import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import Echart from '../components/Echart.vue'
 import { createPieOptions, createBarOptions } from '../utils/echarts'
-import { buildScatterOptions } from '../utils/broadbandScatter'
+import { buildScatterOptions, SCATTER_AXIS_FIELDS } from '../utils/broadbandScatter'
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
@@ -288,7 +298,36 @@ function toggleScatterFocus(params) {
   scatterFocus.value = !scatterFocus.value
 }
 
-const scatterOptions = computed(() => buildScatterOptions(filteredData.value, { showTitle: !scatterFocus.value }))
+const SCATTER_AXES_KEY = 'broadband-report-scatter-axes'
+
+function loadScatterAxes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SCATTER_AXES_KEY) || 'null')
+    if (saved && SCATTER_AXIS_FIELDS[saved.x] && SCATTER_AXIS_FIELDS[saved.y] && saved.x !== saved.y) {
+      return { x: saved.x, y: saved.y }
+    }
+  } catch { /* fall through to defaults */ }
+  return { x: 'recommend', y: 'success_rate' }
+}
+
+const scatterAxes = reactive(loadScatterAxes())
+
+watch(() => [scatterAxes.x, scatterAxes.y], ([nx, ny], [ox, oy]) => {
+  if (nx === ny) {
+    if (ox !== nx) {
+      scatterAxes.y = ox
+    } else if (oy !== ny) {
+      scatterAxes.x = oy
+    }
+  }
+  localStorage.setItem(SCATTER_AXES_KEY, JSON.stringify(scatterAxes))
+})
+
+const scatterOptions = computed(() => buildScatterOptions(filteredData.value, {
+  showTitle: !scatterFocus.value,
+  xField: scatterAxes.x,
+  yField: scatterAxes.y
+}))
 
 function handlePieClick(params) {
   if (!params || !params.name) return
@@ -386,6 +425,19 @@ onMounted(() => {
 }
 .scatter-wrap {
   position: relative;
+}
+.scatter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+.scatter-toolbar-item {
+  font-size: 13px;
+  color: #606266;
+}
+.scatter-axis-select {
+  width: 120px;
 }
 .stats-overlay {
   position: absolute;

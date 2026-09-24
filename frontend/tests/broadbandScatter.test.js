@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   teamName,
+  axisValue,
   toPoint,
   buildTeamMap,
   buildScatterOptions
@@ -136,7 +137,60 @@ describe('broadbandScatter 散点图工具函数', () => {
     const tooltipText = options.tooltip.formatter({ data: [4, 75.0, { name: '甲', emp_no: 'a', team: '云网一组', recommend: 4, completed: 3 }] })
     expect(tooltipText).toContain('甲 (a)')
     expect(tooltipText).toContain('推荐量: 4')
-    expect(tooltipText).toContain('成功率: 75.0%')
+    expect(tooltipText).toContain('成功率(%): 75%')
     expect(tooltipText).toContain('成功推荐: 3')
+  })
+
+  describe('自定义轴（推荐量/成功推荐/成功率）', () => {
+    it('axisValue 按字段取整与百分比换算', () => {
+      const item = makeEmp('a', '甲', '云网一组', 4, 0.75)
+      expect(axisValue(item, 'recommend')).toBe(4)
+      expect(axisValue(item, 'completed')).toBe(3)
+      expect(axisValue(item, 'success_rate')).toBe(75.0)
+      expect(axisValue(item, 'unknown')).toBe(4)
+    })
+
+    it('toPoint 支持自定义 X/Y 字段', () => {
+      const item = makeEmp('a', '甲', '云网一组', 4, 0.75)
+      const point = toPoint(item, 'completed', 'recommend')
+      expect(point[0]).toBe(3)
+      expect(point[1]).toBe(4)
+      expect(point[2]).toMatchObject({ name: '甲', completed: 3 })
+    })
+
+    it('buildScatterOptions 自定义轴名与数据坐标', () => {
+      const options = buildScatterOptions(
+        [makeEmp('a', '甲', '云网一组', 5, 0.6), makeEmp('b', '乙', '云网一组', 2, 0.5)],
+        { xField: 'completed', yField: 'recommend' }
+      )
+      expect(options.xAxis.name).toBe('成功推荐')
+      expect(options.yAxis.name).toBe('推荐量')
+      expect(options.xAxis.min).toBe(0)
+      expect(options.xAxis.max).toBeUndefined()
+      expect(options.yAxis.max).toBeUndefined()
+      const pts = options.series[0].data
+      expect(pts[0][0]).toBe(3)
+      expect(pts[0][1]).toBe(5)
+      expect(pts[1][0]).toBe(1)
+      expect(pts[1][1]).toBe(2)
+    })
+
+    it('成功率作为 Y 轴时保留 0-100 区间与 % 后缀', () => {
+      const options = buildScatterOptions([makeEmp('a', '甲', '云网一组', 4, 0.5)])
+      expect(options.yAxis.name).toBe('成功率(%)')
+      expect(options.yAxis.min).toBe(0)
+      expect(options.yAxis.max).toBe(100)
+      const text = options.tooltip.formatter({ data: [4, 50, { name: '甲', completed: 2 }] })
+      expect(text).toContain('成功率(%): 50%')
+    })
+
+    it('默认参数保持推荐量×成功率输出不变', () => {
+      const options = buildScatterOptions([makeEmp('a', '甲', '云网一组', 4, 0.25)])
+      expect(options.xAxis.name).toBe('推荐量')
+      expect(options.yAxis.name).toBe('成功率(%)')
+      expect(options.series[0].data[0]).toEqual([4, 25.0, {
+        emp_no: 'a', name: '甲', team: '云网一组', recommend: 4, completed: 1
+      }])
+    })
   })
 })

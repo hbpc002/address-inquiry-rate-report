@@ -55,7 +55,7 @@ vi.mock('../src/components/Echart.vue', () => ({
     name: 'Echart',
     props: ['options', 'height'],
     emits: ['click'],
-    template: '<div class="echart-stub" :data-height="height" :data-title-show="String(options.title == null ? true : options.title.show)" @click="$emit(\'click\', $event)"></div>'
+    template: '<div class="echart-stub" :data-height="height" :data-title-show="String(options.title == null ? true : options.title.show)" :data-x="String(options.xAxis == null ? \'\' : options.xAxis.name)" :data-y="String(options.yAxis == null ? \'\' : options.yAxis.name)" @click="$emit(\'click\', $event)"></div>'
   }
 }))
 
@@ -93,12 +93,16 @@ const stubs = {
   'el-form': { template: '<form class="el-form-stub"><slot /></form>' },
   'el-form-item': { props: ['label'], template: '<div class="el-form-item-stub"><span class="el-form-item-label">{{ label }}</span><slot /></div>' },
   'el-input': { template: '<input type="text" class="el-input-stub" />' },
-  'el-option': { template: '<div class="el-option-stub" />' },
+  'el-option': { props: ['value', 'label'], template: '<option class="el-option-stub" :value="value">{{ label }}</option>' },
   'el-pagination': { template: '<div class="el-pagination-stub" />' },
   'el-radio': { props: ['value'], template: '<label class="el-radio-stub"><slot /></label>' },
   'el-radio-group': { template: '<div class="el-radio-group-stub"><slot /></div>' },
   'el-row': { template: '<div class="el-row-stub"><slot /></div>' },
-  'el-select': { template: '<div class="el-select-stub"><slot /></div>' },
+  'el-select': {
+    props: ['modelValue'],
+    emits: ['update:modelValue'],
+    template: '<select class="el-select-stub" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>'
+  },
   'el-statistic': {
     props: ['title', 'value', 'precision'],
     template: '<div class="el-statistic-stub" :data-title="title"><span>{{ title }}</span><span>{{ value }}</span><slot name="suffix" /></div>'
@@ -141,7 +145,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     return (el.attributes('style') || '').includes('display: none')
   }
 
-  it('初始：搜索栏与指标栏可见，散点图高 480px、自带标题显示', async () => {
+  it('初始：搜索栏与指标栏可见，散点图高 480px、自带标题显示、轴选择器可见', async () => {
     const wrapper = await mountPage()
     const forms = wrapper.findAll('.el-form-stub')
     expect(forms).toHaveLength(2)
@@ -149,6 +153,10 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
+    expect(scatterStub(wrapper).attributes('data-x')).toBe('推荐量')
+    expect(scatterStub(wrapper).attributes('data-y')).toBe('成功率(%)')
+    expect(wrapper.findAll('.scatter-axis-select')).toHaveLength(2)
+    expect(wrapper.find('.scatter-toolbar').exists()).toBe(true)
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
     expect(wrapper.find('.stats-overlay').exists()).toBe(false)
   })
@@ -164,6 +172,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(4)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('calc(100vh - 240px)')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('false')
+    expect(wrapper.find('.scatter-toolbar').exists()).toBe(false)
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(2)
 
     await scatterStub(wrapper).trigger('click', { componentType: 'series' })
@@ -252,5 +261,80 @@ describe('宽带画像饼图→组员柱形图（参照团队管理）', () => {
 
     expect(createBarOptions).not.toHaveBeenCalled()
     expect(createPieOptions).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('宽带画像散点图自定义轴与持久化', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    localStorage.clear()
+    api.get.mockClear()
+    api.get.mockImplementation((url) => {
+      if (url === '/broadband/report') return Promise.resolve({ data: statsPayload })
+      return Promise.resolve({ data: [] })
+    })
+  })
+
+  function scatterStub(wrapper) {
+    return wrapper.findAll('.echart-stub')[0]
+  }
+
+  function axisSelects(wrapper) {
+    return wrapper.findAll('.scatter-axis-select')
+  }
+
+  async function pickAxis(wrapper, index, value) {
+    const select = axisSelects(wrapper)[index]
+    select.element.value = value
+    await select.trigger('change')
+    await flushPromises()
+  }
+
+  it('切换 X 轴为成功推荐：轴名与本地缓存同步更新', async () => {
+    const wrapper = await mountPage()
+    await pickAxis(wrapper, 0, 'completed')
+
+    expect(scatterStub(wrapper).attributes('data-x')).toBe('成功推荐')
+    expect(scatterStub(wrapper).attributes('data-y')).toBe('成功率(%)')
+    expect(JSON.parse(localStorage.getItem('broadband-report-scatter-axes'))).toEqual({
+      x: 'completed',
+      y: 'success_rate'
+    })
+  })
+
+  it('切换 Y 轴为成功推荐：仅 Y 轴名更新，X 不变', async () => {
+    const wrapper = await mountPage()
+    await pickAxis(wrapper, 1, 'completed')
+
+    expect(scatterStub(wrapper).attributes('data-x')).toBe('推荐量')
+    expect(scatterStub(wrapper).attributes('data-y')).toBe('成功推荐')
+  })
+
+  it('把 X 选成与 Y 相同维度时自动交换两轴', async () => {
+    const wrapper = await mountPage()
+    await pickAxis(wrapper, 0, 'success_rate')
+
+    expect(scatterStub(wrapper).attributes('data-x')).toBe('成功率(%)')
+    expect(scatterStub(wrapper).attributes('data-y')).toBe('推荐量')
+  })
+
+  it('重新进入页面恢复持久化的轴选择', async () => {
+    localStorage.setItem('broadband-report-scatter-axes', JSON.stringify({ x: 'completed', y: 'recommend' }))
+    const wrapper = await mountPage()
+
+    expect(scatterStub(wrapper).attributes('data-x')).toBe('成功推荐')
+    expect(scatterStub(wrapper).attributes('data-y')).toBe('推荐量')
+  })
+
+  it('本地缓存为非法 JSON 或无效字段时回退到默认 推荐量×成功率', async () => {
+    localStorage.setItem('broadband-report-scatter-axes', '{bad json')
+    const wrapperA = await mountPage()
+    expect(scatterStub(wrapperA).attributes('data-x')).toBe('推荐量')
+    expect(scatterStub(wrapperA).attributes('data-y')).toBe('成功率(%)')
+
+    localStorage.setItem('broadband-report-scatter-axes', JSON.stringify({ x: 'same', y: 'same' }))
+    const wrapperB = await mountPage()
+    expect(scatterStub(wrapperB).attributes('data-x')).toBe('推荐量')
+    expect(scatterStub(wrapperB).attributes('data-y')).toBe('成功率(%)')
   })
 })
