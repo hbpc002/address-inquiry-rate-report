@@ -26,7 +26,8 @@ export function toPoint(item, xField = 'recommend', yField = 'success_rate') {
     name: item.name,
     team: item.team,
     recommend: item.recommend,
-    completed: item.completed
+    completed: item.completed,
+    success_rate: item.success_rate
   }]
 }
 
@@ -82,9 +83,7 @@ export function buildScatterOptions(items, opts = {}) {
       confine: true,
       formatter: (params) => {
         const meta = params.data?.[2] || {}
-        const x = params.data?.[0]
-        const y = params.data?.[1]
-        return `${meta.name || ''} (${meta.emp_no || ''})\n${meta.team || ''}\n${xDim.label}: ${x ?? 0}${xDim.suffix || ''}\n${yDim.label}: ${y ?? 0}${yDim.suffix || ''}\n成功推荐: ${meta.completed ?? 0}`
+        return `${meta.name || ''} (${meta.emp_no || ''})\n${meta.team || ''}\n推荐量: ${meta.recommend ?? 0}\n成功率: ${+(((meta.success_rate ?? 0) * 100).toFixed(1))}%\n成功推荐: ${meta.completed ?? 0}`
       }
     },
     legend: { orient: 'horizontal', bottom: 0, data: teamNames },

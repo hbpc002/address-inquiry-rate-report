@@ -132,12 +132,12 @@ describe('broadbandScatter 散点图工具函数', () => {
     expect(buildScatterOptions(items, { showTitle: false }).title.show).toBe(false)
   })
 
-  it('buildScatterOptions: tooltip formatter 可从散点 meta 提取员工信息', () => {
+  it('buildScatterOptions: tooltip formatter 固定展示三维度信息', () => {
     const options = buildScatterOptions([makeEmp('a', '甲', '云网一组', 4, 0.75)])
-    const tooltipText = options.tooltip.formatter({ data: [4, 75.0, { name: '甲', emp_no: 'a', team: '云网一组', recommend: 4, completed: 3 }] })
+    const tooltipText = options.tooltip.formatter({ data: [4, 75.0, { name: '甲', emp_no: 'a', team: '云网一组', recommend: 4, completed: 3, success_rate: 0.75 }] })
     expect(tooltipText).toContain('甲 (a)')
     expect(tooltipText).toContain('推荐量: 4')
-    expect(tooltipText).toContain('成功率(%): 75%')
+    expect(tooltipText).toContain('成功率: 75%')
     expect(tooltipText).toContain('成功推荐: 3')
   })
 
@@ -175,13 +175,15 @@ describe('broadbandScatter 散点图工具函数', () => {
       expect(pts[1][1]).toBe(2)
     })
 
-    it('成功率作为 Y 轴时保留 0-100 区间与 % 后缀', () => {
+    it('成功率作为 Y 轴时保留 0-100 区间，tooltip 仍固定三维度', () => {
       const options = buildScatterOptions([makeEmp('a', '甲', '云网一组', 4, 0.5)])
       expect(options.yAxis.name).toBe('成功率(%)')
       expect(options.yAxis.min).toBe(0)
       expect(options.yAxis.max).toBe(100)
-      const text = options.tooltip.formatter({ data: [4, 50, { name: '甲', completed: 2 }] })
-      expect(text).toContain('成功率(%): 50%')
+      const text = options.tooltip.formatter({ data: [2, 50, { name: '甲', recommend: 4, completed: 2, success_rate: 0.5 }] })
+      expect(text).toContain('推荐量: 4')
+      expect(text).toContain('成功率: 50%')
+      expect(text).toContain('成功推荐: 2')
     })
 
     it('默认参数保持推荐量×成功率输出不变', () => {
@@ -189,7 +191,7 @@ describe('broadbandScatter 散点图工具函数', () => {
       expect(options.xAxis.name).toBe('推荐量')
       expect(options.yAxis.name).toBe('成功率(%)')
       expect(options.series[0].data[0]).toEqual([4, 25.0, {
-        emp_no: 'a', name: '甲', team: '云网一组', recommend: 4, completed: 1
+        emp_no: 'a', name: '甲', team: '云网一组', recommend: 4, completed: 1, success_rate: 0.25
       }])
     })
   })
