@@ -71,6 +71,9 @@
           <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
         </el-col>
         <el-col :span="6">
+          <el-statistic title="总积分" :value="stats.total_points" :precision="0" />
+        </el-col>
+        <el-col :span="6">
           <el-statistic title="平均成功率(%)" :value="avgSuccessRate" :precision="2" />
         </el-col>
       </el-row>
@@ -82,6 +85,7 @@
               <el-statistic title="总人数" :value="stats.total_people" />
               <el-statistic title="推荐量(意向单)" :value="stats.total_recommend" :precision="0" />
               <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
+              <el-statistic title="总积分" :value="stats.total_points" :precision="0" />
               <el-statistic title="平均成功率(%)" :value="avgSuccessRate" :precision="2" />
             </div>
             <Echart :options="scatterOptions" :height="scatterHeight" @click="toggleScatterFocus" />
@@ -122,6 +126,7 @@
             <el-table-column prop="intention_count" label="意向单数量" width="110" sortable="custom" />
             <el-table-column prop="recommend" label="推荐量" width="90" sortable="custom" />
             <el-table-column prop="completed" label="成功推荐" width="100" sortable="custom" />
+            <el-table-column prop="points" label="积分" width="90" sortable="custom" />
             <el-table-column prop="success_rate" label="成功率(%)" width="110" sortable="custom">
               <template #default="{ row }">
                 <span :style="successRateStyle(row.success_rate)">{{ formatRate(row.success_rate) }}</span>
@@ -182,6 +187,7 @@ const stats = reactive({
   total_people: 0,
   total_recommend: 0,
   total_completed: 0,
+  total_points: 0,
   avg_success_rate: 0,
   teams: [],
   classes: [],

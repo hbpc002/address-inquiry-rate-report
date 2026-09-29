@@ -64,9 +64,9 @@ import { createPieOptions, createBarOptions } from '../src/utils/echarts'
 import BroadbandReport from '../src/views/BroadbandReport.vue'
 
 const items = [
-  { emp_no: 'KF770001', name: '张三', team: '云网一组', intention_count: 3, recommend: 3, completed: 2, success_rate: 0.6667 },
-  { emp_no: 'KF770002', name: '李四', team: '云网一组', intention_count: 2, recommend: 2, completed: 1, success_rate: 0.5 },
-  { emp_no: 'KF770003', name: '王五', team: '云网二组', intention_count: 3, recommend: 3, completed: 3, success_rate: 1 },
+  { emp_no: 'KF770001', name: '张三', team: '云网一组', intention_count: 3, recommend: 3, completed: 2, success_rate: 0.6667, points: 26 },
+  { emp_no: 'KF770002', name: '李四', team: '云网一组', intention_count: 2, recommend: 2, completed: 1, success_rate: 0.5, points: 14 },
+  { emp_no: 'KF770003', name: '王五', team: '云网二组', intention_count: 3, recommend: 3, completed: 3, success_rate: 1, points: 36 },
 ]
 
 const statsPayload = {
@@ -74,6 +74,7 @@ const statsPayload = {
     total_people: 3,
     total_recommend: 8,
     total_completed: 6,
+    total_points: 76,
     avg_success_rate: 0.7,
     teams: ['云网一组', '云网二组'],
     classes: [],
@@ -108,7 +109,10 @@ const stubs = {
     template: '<div class="el-statistic-stub" :data-title="title"><span>{{ title }}</span><span>{{ value }}</span><slot name="suffix" /></div>'
   },
   'el-table': { template: '<table class="el-table-stub"><slot /></table>' },
-  'el-table-column': { template: '<col class="el-table-column-stub" />' }
+  'el-table-column': {
+    props: ['prop', 'label'],
+    template: '<col class="el-table-column-stub" :data-prop="prop != null ? String(prop) : \'\'" :data-label="label != null ? String(label) : \'\'" />'
+  }
 }
 
 async function mountPage() {
@@ -157,6 +161,11 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(scatterStub(wrapper).attributes('data-y')).toBe('成功率(%)')
     expect(wrapper.findAll('.scatter-axis-select')).toHaveLength(2)
     expect(wrapper.find('.scatter-toolbar').exists()).toBe(true)
+    const statItems = wrapper.find('.stats-row').findAll('.el-statistic-stub')
+    expect(statItems).toHaveLength(5)
+    expect(statItems.some(s => s.attributes('data-title') === '总积分')).toBe(true)
+    expect(statItems.find(s => s.attributes('data-title') === '总积分').text()).toContain('76')
+    expect(wrapper.findAll('.el-table-column-stub').some(c => c.attributes('data-prop') === 'points')).toBe(true)
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
     expect(wrapper.find('.stats-overlay').exists()).toBe(false)
   })
@@ -169,7 +178,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     wrapper.findAll('.el-form-stub').forEach((form) => expect(isHidden(form)).toBe(true))
     expect(isHidden(wrapper.find('.stats-row'))).toBe(true)
     expect(wrapper.find('.stats-overlay').exists()).toBe(true)
-    expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(4)
+    expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(5)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('calc(100vh - 240px)')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('false')
     expect(wrapper.find('.scatter-toolbar').exists()).toBe(false)
@@ -316,6 +325,18 @@ describe('宽带画像散点图自定义轴与持久化', () => {
 
     expect(scatterStub(wrapper).attributes('data-x')).toBe('成功率(%)')
     expect(scatterStub(wrapper).attributes('data-y')).toBe('推荐量')
+  })
+
+  it('可选积分维度：切换 Y 轴为积分', async () => {
+    const wrapper = await mountPage()
+    await pickAxis(wrapper, 1, 'points')
+
+    expect(scatterStub(wrapper).attributes('data-x')).toBe('推荐量')
+    expect(scatterStub(wrapper).attributes('data-y')).toBe('积分')
+    expect(JSON.parse(localStorage.getItem('broadband-report-scatter-axes'))).toEqual({
+      x: 'recommend',
+      y: 'points'
+    })
   })
 
   it('重新进入页面恢复持久化的轴选择', async () => {

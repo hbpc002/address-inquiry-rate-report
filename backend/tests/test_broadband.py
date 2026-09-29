@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.seamless_order import SeamlessOrder
 from app.models.employee import Employee
+from app.models.salary_config import SalaryConfig
 from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
@@ -322,6 +323,8 @@ class TestBroadbandReport:
         assert stats["total_recommend"] == 5
         assert stats["total_completed"] == 3
         assert stats["avg_success_rate"] == round(3 / 5, 4)
+        # 积分 = 推荐量×2 + 成功推荐×10
+        assert stats["total_points"] == 5 * 2 + 3 * 10
 
         items = {i["emp_no"]: i for i in data["items"]}
         zs = items["KF770001"]
@@ -330,12 +333,49 @@ class TestBroadbandReport:
         assert zs["intention_count"] == 4
         assert zs["completed"] == 3
         assert zs["success_rate"] == round(3 / 4, 4)
+        assert zs["points"] == 4 * 2 + 3 * 10
         assert zs["team"] == "云网一组"
 
         ls = items["KF770002"]
         assert ls["recommend"] == 1
         assert ls["completed"] == 0
         assert ls["success_rate"] == 0
+        assert ls["points"] == 1 * 2 + 0 * 10
+
+    def test_report_points_respects_custom_config(self):
+        db = SessionLocal()
+        original = None
+        try:
+            row = db.query(SalaryConfig).filter(SalaryConfig.rule_key == "points_formula").first()
+            if row:
+                original = row.rule_data
+                row.rule_data = '{"recommend_coeff": 1, "completed_coeff": 100}'
+            else:
+                db.add(SalaryConfig(rule_key="points_formula",
+                                    rule_data='{"recommend_coeff": 1, "completed_coeff": 100}'))
+            db.commit()
+        finally:
+            db.close()
+
+        try:
+            resp = client.get("/api/broadband/report", params={"start_date": "2026-06-28", "end_date": "2026-06-29"})
+            data = resp.json()
+            items = {i["emp_no"]: i for i in data["items"]}
+            assert items["KF770001"]["points"] == 4 * 1 + 3 * 100
+            assert items["KF770002"]["points"] == 1 * 1 + 0 * 100
+            assert data["stats"]["total_points"] == (4 + 300) + 1
+        finally:
+            db = SessionLocal()
+            try:
+                row = db.query(SalaryConfig).filter(SalaryConfig.rule_key == "points_formula").first()
+                if row:
+                    if original is None:
+                        db.delete(row)
+                    else:
+                        row.rule_data = original
+                db.commit()
+            finally:
+                db.close()
 
     def test_report_dedupes_by_order_no(self):
         db = SessionLocal()
@@ -417,8 +457,10 @@ class TestBroadbandReport:
         assert resp.status_code == 200
         content = resp.content.decode("utf-8")
         lines = content.strip().splitlines()
-        assert lines[0] == "工号,姓名,班组,部门,意向单数量,推荐量,成功推荐,成功率(%)"
+        assert lines[0] == "工号,姓名,班组,部门,意向单数量,推荐量,成功推荐,成功率(%),积分"
         assert any("KF770001" in line and "3" in line.split(",")[6] for line in lines)
+        zs_line = next(line for line in lines if "KF770001" in line)
+        assert zs_line.split(",")[8] == "38"
 
     def test_report_month_resolves_full_month(self):
         resp = client.get("/api/broadband/report", params={"year_month": "2026-06"})

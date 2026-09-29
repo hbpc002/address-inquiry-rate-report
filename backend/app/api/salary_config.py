@@ -68,6 +68,10 @@ DEFAULT_CONFIGS = {
                 "enabled": True
             }
         ]
+    },
+    "points_formula": {
+        "recommend_coeff": 2,
+        "completed_coeff": 10
     }
 }
 

@@ -87,7 +87,18 @@
           </el-table-column>
         </el-table>
 
-        <el-form-item style="margin-top: 16px">
+        <el-divider content-position="left">积分设置</el-divider>
+          <el-form-item label="推荐量系数">
+            <el-input-number v-model="pointsForm.recommend_coeff" :min="0" :max="100" :step="0.5" :precision="1" size="small" />
+          </el-form-item>
+          <el-form-item label="成功推荐系数">
+            <el-input-number v-model="pointsForm.completed_coeff" :min="0" :max="100" :step="0.5" :precision="1" size="small" />
+          </el-form-item>
+          <p class="formula-hint">
+            积分 = 推荐量 × {{ pointsForm.recommend_coeff }} + 成功推荐 × {{ pointsForm.completed_coeff }}
+          </p>
+
+          <el-form-item style="margin-top: 16px">
           <el-button type="primary" @click="saveConfig" :loading="saving">保存配置</el-button>
           <el-button @click="resetConfig">重置为默认</el-button>
         </el-form-item>
@@ -167,6 +178,8 @@ const COMMON_FIELDS = [
   { value: '呼入人工服务-解决率-解决率', label: '解决率' },
 ]
 
+const DEFAULT_POINTS_FORMULA = { recommend_coeff: 2, completed_coeff: 10 }
+
 const callTiers = ref(JSON.parse(JSON.stringify(DEFAULT_CALL_TIERS)))
 const satSalary = reactive({
   field_e: '',
@@ -177,6 +190,10 @@ const callGapTargets = ref([2000, 2500, 3000])
 const satDiff = reactive({
   coeff_a: 19,
   coeff_b: 20
+})
+const pointsForm = reactive({
+  recommend_coeff: DEFAULT_POINTS_FORMULA.recommend_coeff,
+  completed_coeff: DEFAULT_POINTS_FORMULA.completed_coeff
 })
 const metricTargets = ref([])
 const metricFields = ref([])
@@ -293,6 +310,9 @@ async function loadConfig() {
         satDiff.coeff_b = item.rule_data.coeff_b ?? 20
       } else if (item.rule_key === 'metric_targets') {
         metricTargets.value = item.rule_data.targets || []
+      } else if (item.rule_key === 'points_formula') {
+        pointsForm.recommend_coeff = item.rule_data.recommend_coeff ?? DEFAULT_POINTS_FORMULA.recommend_coeff
+        pointsForm.completed_coeff = item.rule_data.completed_coeff ?? DEFAULT_POINTS_FORMULA.completed_coeff
       }
     }
   } catch {
@@ -307,7 +327,8 @@ function getDefaults() {
     callTiers: JSON.parse(JSON.stringify(DEFAULT_CALL_TIERS)),
     satSalary: { field_e: '呼入人工服务-满意度-非常满意量', field_f: '呼入人工服务-满意度-满意量', coefficient: 0.5 },
     callGapTargets: [2000, 2500, 3000],
-    satDiff: { coeff_a: 19, coeff_b: 20 }
+    satDiff: { coeff_a: 19, coeff_b: 20 },
+    pointsForm: { ...DEFAULT_POINTS_FORMULA }
   }
 }
 
@@ -318,6 +339,7 @@ function resetConfig() {
   callGapTargets.value = def.callGapTargets
   satDiff.coeff_a = def.satDiff.coeff_a
   satDiff.coeff_b = def.satDiff.coeff_b
+  Object.assign(pointsForm, def.pointsForm)
   metricTargets.value = JSON.parse(JSON.stringify(DEFAULT_METRIC_TARGETS))
   ElMessage.info('已重置为默认值，点击"保存配置"生效')
 }
@@ -330,6 +352,7 @@ async function saveConfig() {
     await api.put('/salary-config/call_gap_targets', { rule_data: { targets: callGapTargets.value.map(Number) } })
     await api.put('/salary-config/sat_diff', { rule_data: { coeff_a: satDiff.coeff_a, coeff_b: satDiff.coeff_b } })
     await api.put('/salary-config/metric_targets', { rule_data: { targets: metricTargets.value } })
+    await api.put('/salary-config/points_formula', { rule_data: { recommend_coeff: pointsForm.recommend_coeff, completed_coeff: pointsForm.completed_coeff } })
     ElMessage.success('配置已保存')
   } catch (e) {
     ElMessage.error('保存失败: ' + (e.response?.data?.detail || e.message))

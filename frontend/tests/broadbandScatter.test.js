@@ -158,6 +158,18 @@ describe('broadbandScatter 散点图工具函数', () => {
       expect(point[2]).toMatchObject({ name: '甲', completed: 3 })
     })
 
+    it('积分维度按 item.points 取值，可作 X/Y 轴', () => {
+      const item = { ...makeEmp('a', '甲', '云网一组', 4, 0.75), points: 99 }
+      expect(axisValue(item, 'points')).toBe(99)
+      const options = buildScatterOptions([item], { xField: 'points', yField: 'recommend' })
+      expect(options.xAxis.name).toBe('积分')
+      expect(options.xAxis.min).toBe(0)
+      expect(options.xAxis.max).toBeUndefined()
+      expect(options.yAxis.name).toBe('推荐量')
+      expect(options.series[0].data[0][0]).toBe(99)
+      expect(options.series[0].data[0][1]).toBe(4)
+    })
+
     it('buildScatterOptions 自定义轴名与数据坐标', () => {
       const options = buildScatterOptions(
         [makeEmp('a', '甲', '云网一组', 5, 0.6), makeEmp('b', '乙', '云网一组', 2, 0.5)],

@@ -49,7 +49,13 @@ def test_metric_targets_ti_dan_lv():
 def test_all_default_configs_have_required_keys():
     required_keys = {
         "call_salary_tiers", "sat_salary", "call_gap_targets",
-        "sat_diff", "metric_targets"
+        "sat_diff", "metric_targets", "points_formula"
     }
     for key in required_keys:
         assert key in DEFAULT_CONFIGS, f"Missing key: {key}"
+
+
+def test_default_points_formula():
+    formula = DEFAULT_CONFIGS["points_formula"]
+    assert formula["recommend_coeff"] == 2
+    assert formula["completed_coeff"] == 10

@@ -5,6 +5,7 @@ from typing import Optional
 from datetime import datetime, date, timedelta
 from calendar import monthrange
 import uuid
+import json
 import pandas as pd
 import io
 import math
@@ -13,10 +14,29 @@ import csv
 from app.models.database import get_db
 from app.models.seamless_order import SeamlessOrder
 from app.models.employee import Employee
+from app.models.salary_config import SalaryConfig
 from app.utils.logger import log_operation
 from app.core.security import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/broadband", tags=["宽带营销"])
+
+DEFAULT_POINTS_FORMULA = {"recommend_coeff": 2, "completed_coeff": 10}
+
+
+def _points_formula(db: Session) -> dict:
+    row = db.query(SalaryConfig).filter(SalaryConfig.rule_key == "points_formula").first()
+    if row:
+        data = json.loads(row.rule_data)
+    else:
+        data = dict(DEFAULT_POINTS_FORMULA)
+    return {
+        "recommend_coeff": float(data.get("recommend_coeff") or DEFAULT_POINTS_FORMULA["recommend_coeff"]),
+        "completed_coeff": float(data.get("completed_coeff") or DEFAULT_POINTS_FORMULA["completed_coeff"]),
+    }
+
+
+def _calc_points(recommend, completed, formula) -> int:
+    return round(recommend * formula["recommend_coeff"] + completed * formula["completed_coeff"])
 
 # 表头行号（0 起）：新客服无缝订单原始表第 3 行为表头
 HEADER_ROW = 2
@@ -345,6 +365,7 @@ def get_report(
         if r.is_completed == "是":
             agg[key]["completed"] += 1
 
+    formula = _points_formula(db)
     items = []
     for key, data in agg.items():
         recommend = data["recommend"]
@@ -360,6 +381,7 @@ def get_report(
             "recommend": recommend,
             "completed": completed,
             "success_rate": round(completed / recommend, 4) if recommend > 0 else 0,
+            "points": _calc_points(recommend, completed, formula),
         })
 
     items.sort(key=lambda x: (x["recommend"], x["success_rate"]), reverse=True)
@@ -367,6 +389,7 @@ def get_report(
     total_people = len(items)
     total_recommend = sum(i["recommend"] for i in items)
     total_completed = sum(i["completed"] for i in items)
+    total_points = sum(i["points"] for i in items)
 
     emp_nos_in_range = list(agg.keys())
     if emp_nos_in_range:
@@ -386,6 +409,7 @@ def get_report(
             "total_people": total_people,
             "total_recommend": total_recommend,
             "total_completed": total_completed,
+            "total_points": total_points,
             "avg_success_rate": round(total_completed / total_recommend, 4) if total_recommend > 0 else 0,
             "teams": teams,
             "classes": sorted(filter(None, classes)),
@@ -463,11 +487,13 @@ def export_report(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["工号", "姓名", "班组", "部门", "意向单数量", "推荐量", "成功推荐", "成功率(%)"])
+    formula = _points_formula(db)
+    writer.writerow(["工号", "姓名", "班组", "部门", "意向单数量", "推荐量", "成功推荐", "成功率(%)", "积分"])
     for key, d in agg.items():
         rate = round(d["completed"] / d["recommend"] * 100, 2) if d["recommend"] > 0 else 0
         writer.writerow([d["emp_no"], d["name"], d["team"], d["dept"],
-                         d["recommend"], d["recommend"], d["completed"], rate])
+                         d["recommend"], d["recommend"], d["completed"], rate,
+                         _calc_points(d["recommend"], d["completed"], formula)])
 
     filename = f"broadband_report_{start}_{end}.csv"
     output.seek(0)

@@ -3,6 +3,7 @@ import { CHART_COLORS } from './echarts'
 export const SCATTER_AXIS_FIELDS = {
   recommend: { label: '推荐量', suffix: '', toValue: item => item.recommend, min: 0 },
   completed: { label: '成功推荐', suffix: '', toValue: item => item.completed, min: 0 },
+  points: { label: '积分', suffix: '', toValue: item => item.points, min: 0 },
   success_rate: {
     label: '成功率(%)',
     suffix: '%',
