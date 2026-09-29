@@ -377,7 +377,6 @@ def get_report(
             "dept": data["dept"],
             "role": data["role"],
             "class_name": data["class_name"],
-            "intention_count": recommend,
             "recommend": recommend,
             "completed": completed,
             "success_rate": round(completed / recommend, 4) if recommend > 0 else 0,
@@ -488,11 +487,11 @@ def export_report(
     output = io.StringIO()
     writer = csv.writer(output)
     formula = _points_formula(db)
-    writer.writerow(["工号", "姓名", "班组", "部门", "意向单数量", "推荐量", "成功推荐", "成功率(%)", "积分"])
+    writer.writerow(["工号", "姓名", "班组", "部门", "推荐量", "成功推荐", "成功率(%)", "积分"])
     for key, d in agg.items():
         rate = round(d["completed"] / d["recommend"] * 100, 2) if d["recommend"] > 0 else 0
         writer.writerow([d["emp_no"], d["name"], d["team"], d["dept"],
-                         d["recommend"], d["recommend"], d["completed"], rate,
+                         d["recommend"], d["completed"], rate,
                          _calc_points(d["recommend"], d["completed"], formula)])
 
     filename = f"broadband_report_{start}_{end}.csv"

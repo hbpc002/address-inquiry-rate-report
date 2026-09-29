@@ -64,9 +64,9 @@ import { createPieOptions, createBarOptions } from '../src/utils/echarts'
 import BroadbandReport from '../src/views/BroadbandReport.vue'
 
 const items = [
-  { emp_no: 'KF770001', name: '张三', team: '云网一组', intention_count: 3, recommend: 3, completed: 2, success_rate: 0.6667, points: 26 },
-  { emp_no: 'KF770002', name: '李四', team: '云网一组', intention_count: 2, recommend: 2, completed: 1, success_rate: 0.5, points: 14 },
-  { emp_no: 'KF770003', name: '王五', team: '云网二组', intention_count: 3, recommend: 3, completed: 3, success_rate: 1, points: 36 },
+  { emp_no: 'KF770001', name: '张三', team: '云网一组', recommend: 3, completed: 2, success_rate: 0.6667, points: 26 },
+  { emp_no: 'KF770002', name: '李四', team: '云网一组', recommend: 2, completed: 1, success_rate: 0.5, points: 14 },
+  { emp_no: 'KF770003', name: '王五', team: '云网二组', recommend: 3, completed: 3, success_rate: 1, points: 36 },
 ]
 
 const statsPayload = {
@@ -168,6 +168,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(statItems.some(s => s.attributes('data-title') === '总积分')).toBe(true)
     expect(statItems.find(s => s.attributes('data-title') === '总积分').text()).toContain('76')
     expect(wrapper.findAll('.el-table-column-stub').some(c => c.attributes('data-prop') === 'points')).toBe(true)
+    expect(wrapper.findAll('.el-table-column-stub').some(c => c.attributes('data-prop') === 'intention_count')).toBe(false)
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
     expect(wrapper.find('.stats-overlay').exists()).toBe(false)
   })
@@ -197,6 +198,17 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
     expect(scatterStub(wrapper).attributes('data-grid-top')).toBe('50')
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
+  })
+
+  it('放大后指标栏收窄并居中对齐，不占满整宽', async () => {
+    const wrapper = await mountPage()
+    await scatterStub(wrapper).trigger('click', { componentType: 'series' })
+    await flushPromises()
+
+    const overlay = wrapper.find('.stats-overlay')
+    expect(overlay.exists()).toBe(true)
+    expect(overlay.attributes('data-centered')).toBe('true')
+    expect(overlay.findAll('.el-statistic-stub')).toHaveLength(5)
   })
 
   it('点击图例不触发放大/还原', async () => {

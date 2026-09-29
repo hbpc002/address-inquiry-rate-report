@@ -330,7 +330,6 @@ class TestBroadbandReport:
         zs = items["KF770001"]
         assert zs["name"] == "张三"
         assert zs["recommend"] == 4
-        assert zs["intention_count"] == 4
         assert zs["completed"] == 3
         assert zs["success_rate"] == round(3 / 4, 4)
         assert zs["points"] == 4 * 2 + 3 * 10
@@ -457,10 +456,10 @@ class TestBroadbandReport:
         assert resp.status_code == 200
         content = resp.content.decode("utf-8")
         lines = content.strip().splitlines()
-        assert lines[0] == "工号,姓名,班组,部门,意向单数量,推荐量,成功推荐,成功率(%),积分"
-        assert any("KF770001" in line and "3" in line.split(",")[6] for line in lines)
+        assert lines[0] == "工号,姓名,班组,部门,推荐量,成功推荐,成功率(%),积分"
+        assert any("KF770001" in line and "3" in line.split(",")[5] for line in lines)
         zs_line = next(line for line in lines if "KF770001" in line)
-        assert zs_line.split(",")[8] == "38"
+        assert zs_line.split(",")[7] == "38"
 
     def test_report_month_resolves_full_month(self):
         resp = client.get("/api/broadband/report", params={"year_month": "2026-06"})

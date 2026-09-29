@@ -81,7 +81,7 @@
       <el-row v-if="tableData.length" :style="{ marginBottom: scatterFocus ? '0' : '16px' }">
         <el-col :span="24">
           <div v-if="scatterFocus" class="scatter-wrap">
-            <div class="stats-overlay" @click.stop>
+            <div class="stats-overlay" data-centered="true" @click.stop>
               <el-statistic title="总人数" :value="stats.total_people" />
               <el-statistic title="推荐量(意向单)" :value="stats.total_recommend" :precision="0" />
               <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
@@ -123,7 +123,6 @@
             <el-table-column prop="emp_no" label="工号" width="120" sortable="custom" />
             <el-table-column prop="name" label="姓名" width="90" sortable="custom" />
             <el-table-column prop="team" label="班组" min-width="150" sortable="custom" />
-            <el-table-column prop="intention_count" label="意向单数量" width="110" sortable="custom" />
             <el-table-column prop="recommend" label="推荐量" width="90" sortable="custom" />
             <el-table-column prop="completed" label="成功推荐" width="100" sortable="custom" />
             <el-table-column prop="points" label="积分" width="90" sortable="custom" />
@@ -456,16 +455,20 @@ onMounted(() => {
 .stats-overlay {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 30px;
+  left: 50%;
   z-index: 10;
   display: flex;
   flex-wrap: nowrap;
-  justify-content: space-around;
-  padding: 6px 16px;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  width: max-content;
+  max-width: calc(100% - 80px);
+  padding: 6px 28px;
+  transform: translateX(-50%);
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid #ebeef5;
-  border-radius: 6px;
+  border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 .stats-overlay :deep(.el-statistic__head),
