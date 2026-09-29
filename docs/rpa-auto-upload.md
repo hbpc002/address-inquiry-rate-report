@@ -1,24 +1,24 @@
 # RPA 自动下载文件上传入库 - 对接说明
 
 > 适用对象：弘玑 Cyclone RPA 流程配置人员
-> 目标：RPA 下载「排班出勤情况」xlsx 和「签入签出查询」CSV 后，自动调用系统 HTTP 接口入库，替代人工页面上传。
+> 目标：RPA 下载「排班出勤情况」xlsx、「签入签出查询」CSV、「客服代表工作量」xlsx、「新客服无缝订单-原始表」xlsx 后，自动调用系统 HTTP 接口入库，替代人工页面上传。
 > 后端无需任何改造，全部使用现有接口。
 
 ## 一、前置准备（一次性）
 
 | 事项 | 说明 |
 |------|------|
-| 专用账号 | 管理员在「用户管理」创建 `rpa_bot`，角色分配 **manager**（默认含 `schedules.upload`、`checkins.upload` 权限）。禁止共用个人账号 |
+| 专用账号 | 管理员在「用户管理」创建 `rpa_bot`，角色分配 **manager**（默认含 `schedules.upload`、`checkins.upload`、`workload.upload`、`broadband.upload` 权限）。禁止共用个人账号 |
 | API 地址 | 如 `http://<服务器IP>:8000`，或经 nginx 的 `https://<域名>`。RPA 机器需能直连 |
 | 密码保管 | RPA 中通过密码库/凭据组件存储，不要明文写在流程里 |
 
 ## 二、调用顺序（必须严格遵守）
 
 ```
-下载文件 ──► ① 登录拿token ──► ② 上传排班xlsx ──► ③ 上传签到CSV ──► ④ 上传工作量详单xlsx ──► ⑤ 校验结果
+下载文件 ──► ① 登录拿token ──► ② 上传排班xlsx ──► ③ 上传签到CSV ──► ④ 上传工作量详单xlsx ──► ⑤ 上传无缝订单原始表xlsx ──► ⑥ 校验结果
 ```
 
-**排班必须先于签到上传**：签到导入完成后系统会按当天排班自动重算考勤日报（迟到/早退/工时），先有排班才能保证口径正确。工作量详单与考勤计算无依赖，放最后即可。
+**排班必须先于签到上传**：签到导入完成后系统会按当天排班自动重算考勤日报（迟到/早退/工时），先有排班才能保证口径正确。工作量详单与考勤计算无依赖；无缝订单原始表只影响「宽带营销画像」报表，与前三者均无依赖，放最后即可。
 
 ## 三、接口规格
 
@@ -83,6 +83,20 @@ username=rpa_bot&password=******
 { "count": 62, "batch": "e5f6g7h8" }
 ```
 
+### ⑤ 上传宽带营销原始数据（.XLSX）
+
+- `POST {API_BASE}/api/broadband/orders/import`
+- Content-Type: `multipart/form-data`，字段名固定为 **`file`**
+- 即「新客服无缝订单-原始表.XLSX」（**Sheet_0，第 3 行为表头**），.XLSX/.xlsx 均可
+- 系统按下单日期（`下单日期`，格式 `YYYY-MM-DD`）逐日去重，文件内相同「新客服无缝订单号」只保留首次出现
+- 权限：需要 `broadband.upload`（无缝订单-导入）。若 rpa_bot 用的自定义角色，请在角色管理里勾选该权限
+
+成功响应 200：
+
+```json
+{ "count": 5866, "batch": "a1b2c3d4" }
+```
+
 ## 四、幂等性与重跑
 
 | 接口 | 覆盖策略 | 重复上传同一文件 |
@@ -90,6 +104,7 @@ username=rpa_bot&password=******
 | 排班导入 | 按 xlsx 内覆盖到的日期，先删旧排班再插入 | 安全，数据不重复 |
 | 签到导入 | 按签到时间所在日期，先删旧记录再插入 | 安全，数据不重复 |
 | 工作量导入 | 按详单内覆盖到的日期，先删旧记录再插入 | 安全，数据不重复 |
+| 无缝订单导入 | 按文件内覆盖到的下单日期，先删旧记录再插入 | 安全，数据不重复 |
 
 因此 RPA 失败后**直接整段重跑即可**，无需人工清理数据。
 
@@ -132,9 +147,23 @@ python rpa\upload_to_system.py http://<服务器IP>:8000 rpa_bot <密码> "D:\do
 
 退出码 0=成功、1=失败；stdout 最后一行为 `RESULT: {...}` JSON。
 
+### 宽带营销原始数据（独立脚本）
+
+无缝订单与前三类文件无依赖，用**独立脚本** `rpa/upload_broadband_orders.py`，不改动 `upload_to_system.py`，可在同一条流程里单独再加一个「调用代码块」组件（顺序任意）。
+
+- `args` 留空：改脚本顶部 `CONFIG` 的 `api_base`/账号密码/`orders_file`
+- `args` 传列表：`["https://<服务器IP>", "rpa_bot", "<密码>", "新客服无缝订单-原始表.XLSX路径"]`
+- 输出结果：`{"success": true/false, "login": "ok", "orders_upload": {"count": 5866, "batch": "a1b2c3d4"}}`，失败时含 `error` 字段
+
+命令行自测：
+
+```
+python rpa\upload_broadband_orders.py http://<服务器IP>:8000 rpa_bot <密码> "D:\download\新客服无缝订单-原始表.XLSX"
+```
+
 ### 结果处理
 
-- `RESULT` 中 `schedule_upload.message` / `checkin_upload.count` 存在即导入成功，可写入 RPA 日志
+- `RESULT` 中 `schedule_upload.message` / `checkin_upload.count` / `orders_upload.count` 存在即导入成功，可写入 RPA 日志
 - `success=false` 时按第五节错误处理策略告警/重试（脚本本身无重试，重试交给 RPA 调度）
 - 每次运行脚本内部重新登录，token 24 小时时效不影响每日调度
 
@@ -152,6 +181,7 @@ export RPA_USER=rpa_bot RPA_PASS='******'
 
 ```bash
 python3 rpa/upload_to_system.py http://<服务器IP>:8000 rpa_bot <密码> "排班.xlsx" "签到.csv" "工作量.xlsx"
+python3 rpa/upload_broadband_orders.py http://<服务器IP>:8000 rpa_bot <密码> "新客服无缝订单-原始表.XLSX"
 ```
 
 验收清单：
@@ -161,5 +191,7 @@ python3 rpa/upload_to_system.py http://<服务器IP>:8000 rpa_bot <密码> "排�
 - [ ] 「签到记录」出现当日明细（count 与脚本一致）
 - [ ] 「工作量详单」出现对应日期的指标数据
 - [ ] 「考勤日报」状态/工时已自动计算
-- [ ] 「操作日志」可见 rpa_bot 的 import_checkins / import_attendance_report / import_workloads 记录
+- [ ] 「无缝订单」出现对应下单日期的订单数据
+- [ ] 「宽带营销画像」推荐量/成功推荐/积分/成功率已重算
+- [ ] 「操作日志」可见 rpa_bot 的 import_checkins / import_attendance_report / import_workloads / import_broadband_orders 记录
 - [ ] 同一文件重复执行一遍，页面数据无重复无报错
