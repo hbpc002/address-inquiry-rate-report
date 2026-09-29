@@ -87,7 +87,7 @@
           </el-table-column>
         </el-table>
 
-        <el-divider content-position="left">积分设置</el-divider>
+        <el-divider content-position="left">宽带营销积分设置</el-divider>
           <el-form-item label="推荐量系数">
             <el-input-number v-model="pointsForm.recommend_coeff" :min="0" :max="100" :step="0.5" :precision="1" size="small" />
           </el-form-item>
@@ -95,7 +95,7 @@
             <el-input-number v-model="pointsForm.completed_coeff" :min="0" :max="100" :step="0.5" :precision="1" size="small" />
           </el-form-item>
           <p class="formula-hint">
-            积分 = 推荐量 × {{ pointsForm.recommend_coeff }} + 成功推荐 × {{ pointsForm.completed_coeff }}
+            宽带营销积分 = 推荐量 × {{ pointsForm.recommend_coeff }} + 成功推荐 × {{ pointsForm.completed_coeff }}
           </p>
 
           <el-form-item style="margin-top: 16px">

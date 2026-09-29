@@ -88,7 +88,7 @@ export function buildScatterOptions(items, opts = {}) {
       }
     },
     legend: { orient: 'horizontal', bottom: 0, data: teamNames },
-    grid: { left: 45, right: 70, bottom: 90, top: 50, containLabel: true },
+    grid: { left: 45, right: 70, bottom: 90, top: opts.gridTop ?? 50, containLabel: true },
     xAxis: { type: 'value', name: xDim.label, min: xDim.min, max: xDim.max, axisLabel: { rotate: 0 } },
     yAxis: { type: 'value', name: yDim.label, min: yDim.min, max: yDim.max },
     dataZoom: [

@@ -132,6 +132,13 @@ describe('broadbandScatter 散点图工具函数', () => {
     expect(buildScatterOptions(items, { showTitle: false }).title.show).toBe(false)
   })
 
+  it('buildScatterOptions: gridTop 可覆盖绘图区上边距（默认 50）', () => {
+    const items = [makeEmp('a', '甲', '云网一组', 3, 1)]
+    expect(buildScatterOptions(items).grid.top).toBe(50)
+    expect(buildScatterOptions(items, { gridTop: 66 }).grid.top).toBe(66)
+    expect(buildScatterOptions(items, { gridTop: 0 }).grid.top).toBe(0)
+  })
+
   it('buildScatterOptions: tooltip formatter 固定展示三维度信息', () => {
     const options = buildScatterOptions([makeEmp('a', '甲', '云网一组', 4, 0.75)])
     const tooltipText = options.tooltip.formatter({ data: [4, 75.0, { name: '甲', emp_no: 'a', team: '云网一组', recommend: 4, completed: 3, success_rate: 0.75 }] })

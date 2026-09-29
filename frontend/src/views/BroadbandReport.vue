@@ -60,22 +60,22 @@
         </el-form-item>
       </el-form>
 
-      <el-row :gutter="20" class="stats-row" v-show="!scatterFocus">
-        <el-col :span="6">
+      <el-row class="stats-row" v-show="!scatterFocus">
+        <div class="stat-item">
           <el-statistic title="总人数" :value="stats.total_people" />
-        </el-col>
-        <el-col :span="6">
+        </div>
+        <div class="stat-item">
           <el-statistic title="推荐量(意向单)" :value="stats.total_recommend" :precision="0" />
-        </el-col>
-        <el-col :span="6">
+        </div>
+        <div class="stat-item">
           <el-statistic title="成功推荐" :value="stats.total_completed" :precision="0" />
-        </el-col>
-        <el-col :span="6">
+        </div>
+        <div class="stat-item">
           <el-statistic title="总积分" :value="stats.total_points" :precision="0" />
-        </el-col>
-        <el-col :span="6">
+        </div>
+        <div class="stat-item">
           <el-statistic title="平均成功率(%)" :value="avgSuccessRate" :precision="2" />
-        </el-col>
+        </div>
       </el-row>
 
       <el-row v-if="tableData.length" :style="{ marginBottom: scatterFocus ? '0' : '16px' }">
@@ -331,6 +331,7 @@ watch(() => [scatterAxes.x, scatterAxes.y], ([nx, ny], [ox, oy]) => {
 
 const scatterOptions = computed(() => buildScatterOptions(filteredData.value, {
   showTitle: !scatterFocus.value,
+  gridTop: scatterFocus.value ? 66 : 50,
   xField: scatterAxes.x,
   yField: scatterAxes.y
 }))
@@ -427,7 +428,14 @@ onMounted(() => {
   align-items: center;
 }
 .stats-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 20px;
   margin-bottom: 16px;
+}
+.stat-item {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .scatter-wrap {
   position: relative;
@@ -447,16 +455,21 @@ onMounted(() => {
 }
 .stats-overlay {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: 0;
+  left: 0;
+  right: 30px;
   z-index: 10;
   display: flex;
+  flex-wrap: nowrap;
   justify-content: space-around;
-  padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.92);
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid #ebeef5;
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.stats-overlay :deep(.el-statistic__head),
+.stats-overlay :deep(.el-statistic__content) {
+  white-space: nowrap;
 }
 </style>

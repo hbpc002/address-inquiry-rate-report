@@ -55,7 +55,7 @@ vi.mock('../src/components/Echart.vue', () => ({
     name: 'Echart',
     props: ['options', 'height'],
     emits: ['click'],
-    template: '<div class="echart-stub" :data-height="height" :data-title-show="String(options.title == null ? true : options.title.show)" :data-x="String(options.xAxis == null ? \'\' : options.xAxis.name)" :data-y="String(options.yAxis == null ? \'\' : options.yAxis.name)" @click="$emit(\'click\', $event)"></div>'
+    template: '<div class="echart-stub" :data-height="height" :data-title-show="String(options.title == null ? true : options.title.show)" :data-grid-top="String(options.grid == null ? \'\' : options.grid.top)" :data-x="String(options.xAxis == null ? \'\' : options.xAxis.name)" :data-y="String(options.yAxis == null ? \'\' : options.yAxis.name)" @click="$emit(\'click\', $event)"></div>'
   }
 }))
 
@@ -157,10 +157,12 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(isHidden(wrapper.find('.stats-row'))).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
+    expect(scatterStub(wrapper).attributes('data-grid-top')).toBe('50')
     expect(scatterStub(wrapper).attributes('data-x')).toBe('推荐量')
     expect(scatterStub(wrapper).attributes('data-y')).toBe('成功率(%)')
     expect(wrapper.findAll('.scatter-axis-select')).toHaveLength(2)
     expect(wrapper.find('.scatter-toolbar').exists()).toBe(true)
+    expect(wrapper.find('.stats-row').findAll('.stat-item')).toHaveLength(5)
     const statItems = wrapper.find('.stats-row').findAll('.el-statistic-stub')
     expect(statItems).toHaveLength(5)
     expect(statItems.some(s => s.attributes('data-title') === '总积分')).toBe(true)
@@ -181,6 +183,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(wrapper.find('.stats-overlay').findAll('.el-statistic-stub')).toHaveLength(5)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('calc(100vh - 240px)')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('false')
+    expect(scatterStub(wrapper).attributes('data-grid-top')).toBe('66')
     expect(wrapper.find('.scatter-toolbar').exists()).toBe(false)
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(2)
 
@@ -192,6 +195,7 @@ describe('宽带画像散点图点击放大/还原视图', () => {
     expect(wrapper.find('.stats-overlay').exists()).toBe(false)
     expect(scatterStub(wrapper).attributes('data-height')).toBe('480px')
     expect(scatterStub(wrapper).attributes('data-title-show')).toBe('true')
+    expect(scatterStub(wrapper).attributes('data-grid-top')).toBe('50')
     expect(wrapper.findAll('.el-card-stub')).toHaveLength(3)
   })
 
