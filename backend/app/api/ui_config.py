@@ -23,6 +23,10 @@ DEFAULT_UI_LABELS = {
     "checkin_report": "排班调度",
     "workload_report": "团队管理",
     "broadband_report": "宽带营销画像",
+    "marketing_report": "营销统计",
+    "marketing_overall_report": "总体营销",
+    "marketing_orders": "营销明细",
+    "marketing_settings": "营销设置",
     "reports": "考勤报表",
     "menu_data": "数据管理",
     "schedules": "排班管理",
@@ -48,6 +52,10 @@ class UILabelsIn(BaseModel):
     checkin_report: Optional[str] = None
     workload_report: Optional[str] = None
     broadband_report: Optional[str] = None
+    marketing_report: Optional[str] = None
+    marketing_overall_report: Optional[str] = None
+    marketing_orders: Optional[str] = None
+    marketing_settings: Optional[str] = None
     reports: Optional[str] = None
     menu_data: Optional[str] = None
     schedules: Optional[str] = None

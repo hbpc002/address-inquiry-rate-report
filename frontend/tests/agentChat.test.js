@@ -21,7 +21,7 @@ describe('agentChat store 持久化', () => {
   it('水合：从 localStorage 恢复对话并清除残留 loading', async () => {
     const { useAgentChatStore } = await import('@/stores/agentChat')
     localStorage.setItem(
-      'agent_chat',
+      'agent_chat_anonymous',
       JSON.stringify({
         bubbleItems: [{ id: 'a1', placement: 'start', content: 'hi', loading: true, thoughtItems: [] }],
         thoughtSeq: 3,
@@ -30,6 +30,7 @@ describe('agentChat store 持久化', () => {
       })
     )
     const store = useAgentChatStore()
+    store.activate()
     expect(store.bubbleItems.length).toBe(1)
     expect(store.bubbleItems[0].loading).toBe(false)
     expect(store.bubbleItems[0].content).toBe('hi')
@@ -41,6 +42,7 @@ describe('agentChat store 持久化', () => {
   it('发送后把对话写回 localStorage', async () => {
     const { useAgentChatStore } = await import('@/stores/agentChat')
     const store = useAgentChatStore()
+    store.activate()
     const sse =
       'data: ' + JSON.stringify({ type: 'token', content: '你好' }) + '\n\n' +
       'data: ' + JSON.stringify({ type: 'tool_start', name: 'query', input: { a: 1 } }) + '\n\n' +
@@ -68,7 +70,7 @@ describe('agentChat store 持久化', () => {
     expect(store.bubbleItems[1].content).toBe('你好')
     expect(store.bubbleItems[1].thoughtItems.length).toBe(1)
     expect(store.bubbleItems[1].thoughtItems[0].status).toBe('success')
-    const saved = JSON.parse(localStorage.getItem('agent_chat'))
+    const saved = JSON.parse(localStorage.getItem('agent_chat_anonymous'))
     expect(saved.bubbleItems.length).toBe(2)
     expect(saved.bubbleItems[1].content).toBe('你好')
   })

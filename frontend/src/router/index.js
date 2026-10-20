@@ -66,6 +66,30 @@ const routes = [
         meta: { permission: 'broadband_report.view' }
       },
       {
+        path: 'marketing-orders',
+        name: 'MarketingDetails',
+        component: () => import('../views/MarketingDetails.vue'),
+        meta: { permission: 'marketing.view' }
+      },
+      {
+        path: 'marketing-report',
+        name: 'MarketingReport',
+        component: () => import('../views/MarketingReport.vue'),
+        meta: { permission: 'marketing_report.view' }
+      },
+      {
+        path: 'marketing-overall',
+        name: 'MarketingOverallReport',
+        component: () => import('../views/MarketingOverallReport.vue'),
+        meta: { permission: 'marketing_overall.view' }
+      },
+      {
+        path: 'marketing-settings',
+        name: 'MarketingSettings',
+        component: () => import('../views/MarketingSettings.vue'),
+        meta: { permission: 'marketing_settings.view' }
+      },
+      {
         path: 'work-hour-settings',
         name: 'WorkHourSettings',
         component: () => import('../views/WorkHourSettings.vue'),

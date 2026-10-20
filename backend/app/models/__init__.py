@@ -13,6 +13,7 @@ from app.models.salary_config import SalaryConfig
 from app.models.field_annotation import FieldAnnotation
 from app.models.training_record import TrainingRecord
 from app.models.seamless_order import SeamlessOrder
+from app.models.marketing_detail import MarketingDetail
 from app.models.llm_provider import LLMProvider, LLMProviderModel
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "FieldAnnotation",
     "TrainingRecord",
     "SeamlessOrder",
+    "MarketingDetail",
     "LLMProvider",
     "LLMProviderModel",
 ]

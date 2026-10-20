@@ -30,6 +30,14 @@
           <el-icon><DataLine /></el-icon>
           <span>{{ ui.labels.broadband_report }}</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('marketing_report')" index="/marketing-report">
+          <el-icon><DataLine /></el-icon>
+          <span>{{ ui.labels.marketing_report }}</span>
+        </el-menu-item>
+        <el-menu-item v-if="userStore.canView('marketing_overall')" index="/marketing-overall">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>{{ ui.labels.marketing_overall_report }}</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.canView('reports')" index="/reports">
           <el-icon><DataAnalysis /></el-icon>
           <span>{{ ui.labels.reports }}</span>
@@ -57,6 +65,9 @@
           <el-menu-item v-if="userStore.canView('broadband')" index="/broadband-orders">
             <span>{{ ui.labels.broadband_orders }}</span>
           </el-menu-item>
+          <el-menu-item v-if="userStore.canView('marketing')" index="/marketing-orders">
+            <span>{{ ui.labels.marketing_orders }}</span>
+          </el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canViewSystem" index="system">
           <template #title>
@@ -80,6 +91,9 @@
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('field_annotations')" index="/field-annotations">
             <span>{{ ui.labels.field_annotations }}</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('marketing_settings')" index="/marketing-settings">
+            <span>{{ ui.labels.marketing_settings }}</span>
           </el-menu-item>
         </el-sub-menu>
         <el-menu-item v-if="userStore.hasPermission('agent.use')" index="/agent">
@@ -151,6 +165,7 @@ const SYSTEM_ITEMS = [
   { path: '/work-hour-settings', key: 'work_hour_settings' },
   { path: '/salary-settings', key: 'salary_config' },
   { path: '/field-annotations', key: 'field_annotations' },
+  { path: '/marketing-settings', key: 'marketing_settings' },
 ]
 const SYSTEM_PATHS = SYSTEM_ITEMS.map(i => i.path)
 const canViewSystem = computed(() => SYSTEM_ITEMS.some(i => userStore.canView(i.key)))
@@ -162,6 +177,7 @@ const DATA_ITEMS = [
   { path: '/training-records', key: 'training_records' },
   { path: '/workloads', key: 'workload' },
   { path: '/broadband-orders', key: 'broadband' },
+  { path: '/marketing-orders', key: 'marketing' },
 ]
 const DATA_PATHS = DATA_ITEMS.map(i => i.path)
 const canViewData = computed(() => DATA_ITEMS.some(i => userStore.canView(i.key)))

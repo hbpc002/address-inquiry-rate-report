@@ -34,3 +34,19 @@ describe('菜单名称重命名', () => {
     expect(PERMISSION_REGISTRY.agent.label).toBe('哟你通通')
   })
 })
+
+
+describe('营销统计权限', () => {
+  it('包含营销明细、营销统计、总体营销与营销设置权限', () => {
+    expect(PERMISSION_REGISTRY.marketing.permissions.view).toBe('查看')
+    expect(PERMISSION_REGISTRY.marketing.permissions.upload).toBe('导入')
+    expect(PERMISSION_REGISTRY.marketing.permissions.delete).toBe('删除')
+    expect(PERMISSION_REGISTRY.marketing_report.permissions.export).toBe('导出')
+    expect(PERMISSION_REGISTRY.marketing_overall.permissions.export).toBe('导出')
+    expect(PERMISSION_REGISTRY.marketing_settings.permissions.edit).toBe('编辑')
+    const keys = getAllPermissionKeys()
+    for (const key of ['marketing.view', 'marketing.upload', 'marketing.delete', 'marketing_report.view', 'marketing_report.export', 'marketing_overall.view', 'marketing_overall.export', 'marketing_settings.view', 'marketing_settings.edit']) {
+      expect(keys).toContain(key)
+    }
+  })
+})

@@ -72,6 +72,35 @@ PERMISSION_REGISTRY = {
             "export": "导出",
         },
     },
+    "marketing": {
+        "label": "营销明细",
+        "permissions": {
+            "view": "查看",
+            "upload": "导入",
+            "delete": "删除",
+        },
+    },
+    "marketing_report": {
+        "label": "营销统计",
+        "permissions": {
+            "view": "查看",
+            "export": "导出",
+        },
+    },
+    "marketing_overall": {
+        "label": "总体营销",
+        "permissions": {
+            "view": "查看",
+            "export": "导出",
+        },
+    },
+    "marketing_settings": {
+        "label": "营销设置",
+        "permissions": {
+            "view": "查看",
+            "edit": "编辑",
+        },
+    },
     "reports": {
         "label": "考勤报表",
         "permissions": {

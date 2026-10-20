@@ -7,6 +7,10 @@ const EXPECTED = [
   ['checkin_report', '排班调度'],
   ['workload_report', '团队管理'],
   ['broadband_report', '宽带营销画像'],
+  ['marketing_report', '营销统计'],
+  ['marketing_overall_report', '总体营销'],
+  ['marketing_orders', '营销明细'],
+  ['marketing_settings', '营销设置'],
   ['reports', '考勤报表'],
   ['menu_data', '数据管理'],
   ['schedules', '排班管理'],
@@ -26,7 +30,7 @@ const EXPECTED = [
 ]
 
 describe('uiLabels 元数据清单', () => {
-  it('包含全部 21 个菜单可配置项', () => {
+  it('包含全部 25 个菜单可配置项', () => {
     expect(UI_LABEL_ITEMS.map((item) => item.key)).toEqual(EXPECTED.map(([key]) => key))
   })
 

@@ -1210,6 +1210,7 @@ def get_default_permissions(role_name):
 | v1.1 | 2026-04-24 | 新增员工导入功能 |
 | v1.2 | 2026-06-23 | 新增考勤报表导入接口，替代原排班导入；新增遵时率/通话时长/整理时长/工时利用率/班表出勤率字段 |
 | v1.3 | 2026-08-17 | 签入签出报表遵时率/工时利用率/班表出勤率改为系统重算（汇总与逐日明细同口径，见 8.1） |
+| v1.4 | 2026-10-20 | 新增营销明细导入、营销统计、总体营销报表、营销设置及带样式 Excel 导出 |
 
 ---
 
@@ -1289,3 +1290,64 @@ def get_default_permissions(role_name):
 - **月度汇总**：按人按月统计工时
 - **自定义时间段**：跨日期范围统计
 - **班组排名**：按班组统计汇总
+---
+
+## 十六、营销统计模块
+
+### 16.1 功能入口
+
+| 菜单 | 路由 | 权限 | 说明 |
+|------|------|------|------|
+| 营销明细 | `/marketing-orders` | `marketing.view` / `marketing.upload` / `marketing.delete` | 导入、筛选、删除营销明细 |
+| 营销统计 | `/marketing-report` | `marketing_report.view` / `marketing_report.export` | 员工、班组、自定义分组、产品、日期多维统计 |
+| 总体营销 | `/marketing-overall` | `marketing_overall.view` / `marketing_overall.export` | 固定 9 列总体营销表及带样式 Excel 导出 |
+| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 组织分组规则、总体营销行分类规则 |
+
+### 16.2 明细导入规则
+
+- 兼容新版英文表头和旧版中文表头，自动识别标题行后的表头。
+- 新版关键字段：`KF_ID`、`RESERVE6`、`FINISH_DATE`、`SERVICE_TYPE`、`VALID_TYPE`、`PRODUCT_ID`、`PRODUCT_NAME`、`LH_QH`。
+- 旧版关键字段：`客服id`、`预留字段6`、`CBSS订单竣工时间`、`重点业务分类`、`叠加包有效期`、`产品ID`、`产品名称`、`来话去话`。
+- `KF_ID` 对应员工工号 `emp_no`；匹配不到时保留工号，姓名/班组留空。
+- 按竣工日期覆盖同日数据；文件内按 `trade_id + product_id + product_name + service_type + valid_type` 去重。
+- 统计按产品行计数，不按 CBSS 订单去重。
+
+### 16.3 业务分类
+
+| 原字段 | 规则 | 统计分类 |
+|--------|------|----------|
+| `SERVICE_TYPE=叠加包` | `VALID_TYPE=日包/月包/长期`，空值归为未定义 | 叠加包-日包/月包/长期包/未定义 |
+| `SERVICE_TYPE=套餐适配` | - | 套餐变更 |
+| `LH_QH` | 来话/去话 | 来话量/去话量 |
+
+### 16.4 自定义分组
+
+- 营销设置中按优先级配置分组规则，支持包含、等于、前缀、后缀、正则匹配。
+- 第一条命中规则生效，未命中归入默认分组（默认“未分组”）。
+- 支持按组织机构 `RESERVE6`、受理渠道、岗位性质、发展渠道、业务分类等字段配置总体营销行分类。
+
+### 16.5 总体营销表
+
+- 固定 14 个数据行：线上直办 6 行（含小计）、办理工单 1 行、营销工单 6 行（含小计）、降套维系 1 行，另有底部合计行。
+- 首期仅统计叠加包和套餐变更多个业务列；宽带新装、移网、终端保留为 0。
+- H 列自动求和，I 列按当前行合计/总计计算占比；分母为 0 时使用绿色提示。
+- 未命中行分类的数据不计入固定表，仅在页面和接口中提示未分类数量。
+- 导出的 `.xlsx` 包含表头红字、分区底色、合并单元格、网格线和公式。
+
+### 16.6 主要 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/marketing/details/import` | 导入营销明细 |
+| GET | `/api/marketing/details` | 分页查询明细 |
+| DELETE | `/api/marketing/details/by-date` | 按竣工日期删除 |
+| DELETE | `/api/marketing/details/import/{batch}` | 按导入批次删除 |
+| DELETE | `/api/marketing/details/{id}` | 删除单条明细 |
+| GET/PUT | `/api/marketing/group-rules` | 读取/保存组织分组规则 |
+| GET/PUT | `/api/marketing/overall-row-rules` | 读取/保存总体营销行分类规则 |
+| GET | `/api/marketing/organizations` | 组织机构命中预览 |
+| GET | `/api/marketing/row-rule-preview` | 未分类取值预览 |
+| GET | `/api/marketing/report` | 营销多维统计 |
+| GET | `/api/marketing/report/export` | CSV 导出 |
+| GET | `/api/marketing/overall-report` | 总体营销数据 |
+| GET | `/api/marketing/overall-report/export` | 总体营销 Excel 导出 |

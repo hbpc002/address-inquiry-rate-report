@@ -8,7 +8,11 @@ describe('Roles page - permission registry', () => {
     expect(groups).toContain('agent')
     expect(groups).toContain('broadband')
     expect(groups).toContain('broadband_report')
-    expect(groups.length).toBe(18)
+    expect(groups).toContain('marketing')
+    expect(groups).toContain('marketing_report')
+    expect(groups).toContain('marketing_overall')
+    expect(groups).toContain('marketing_settings')
+    expect(groups.length).toBe(22)
   })
 
   it('getAllPermissionKeys should include salary_config.view', () => {
