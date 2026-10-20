@@ -25,10 +25,9 @@ from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/marketing", tags=["营销统计"])
 
-GROUP_CONFIG_KEY = "marketing_group_rules"
 OVERALL_CONFIG_KEY = "marketing_overall_row_rules"
-DEFAULT_GROUP_CONFIG = {"default_group": "未分组", "rules": []}
 DEFAULT_OVERALL_CONFIG = {"rules": []}
+UNCLASSIFIED_GROUP = "未分组"
 MATCH_TYPES = {"contains", "equals", "prefix", "suffix", "regex"}
 
 OVERALL_SECTIONS = [
@@ -104,20 +103,6 @@ FIELD_ALIASES = {
     "lh_qh": ("LH_QH", "来话去话"),
     "is_zero": ("IS_ZERO", "0元/非0元"),
 }
-
-
-class GroupRule(BaseModel):
-    id: Optional[str] = None
-    group_name: str = ""
-    match_type: str = "contains"
-    pattern: str = ""
-    priority: int = 0
-    enabled: bool = True
-
-
-class GroupRulesIn(BaseModel):
-    default_group: str = "未分组"
-    rules: List[GroupRule] = []
 
 
 class OverallRowRule(BaseModel):
@@ -266,10 +251,6 @@ def _set_config(db: Session, key: str, data: Dict[str, Any]):
         db.add(AppConfig(key=key, value=serialized))
 
 
-def _group_config(db: Session) -> Dict[str, Any]:
-    return _get_config(db, GROUP_CONFIG_KEY, DEFAULT_GROUP_CONFIG)
-
-
 def _overall_config(db: Session) -> Dict[str, Any]:
     return _get_config(db, OVERALL_CONFIG_KEY, DEFAULT_OVERALL_CONFIG)
 
@@ -287,21 +268,6 @@ def _clean_rules(rules: List[Any]) -> List[Dict[str, Any]]:
         data["enabled"] = bool(data.get("enabled", True))
         result.append(data)
     return result
-
-
-def _classify_group(org_name: str, config: Dict[str, Any], cache: Dict[str, str]) -> str:
-    if org_name in cache:
-        return cache[org_name]
-    default_group = str(config.get("default_group") or "未分组")
-    rules = [r for r in config.get("rules", []) if r.get("enabled", True)]
-    rules = sorted(enumerate(rules), key=lambda pair: (int(pair[1].get("priority") or 0), pair[0]))
-    group = default_group
-    for _, rule in rules:
-        if _rule_match(org_name, rule):
-            group = str(rule.get("group_name") or "").strip() or default_group
-            break
-    cache[org_name] = group
-    return group
 
 
 def _detail_value(detail: MarketingDetail, field: str) -> str:
@@ -490,7 +456,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         MarketingDetail.finish_date <= end,
     ).all()
     emps = _emp_map(db)
-    config = _group_config(db)
+    config = _overall_config(db)
     group_cache: Dict[str, str] = {}
 
     prepared = []
@@ -500,7 +466,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     all_products = set()
     for detail in details:
         emp = emps.get(_norm_emp_no(detail.kf_id))
-        group = _classify_group(detail.org_name or "", config, group_cache)
+        group = _classify_overall_row(detail, config, group_cache) or UNCLASSIFIED_GROUP
         prepared.append((detail, emp, group))
         all_groups.add(group)
         all_teams.add(emp.team if emp and emp.team else "未匹配班组")
@@ -895,7 +861,7 @@ def get_details(
     ).offset((page - 1) * limit).limit(limit).all()
 
     emps = _emp_map(db)
-    config = _group_config(db)
+    config = _overall_config(db)
     cache: Dict[str, str] = {}
     result = []
     for detail in items:
@@ -906,7 +872,7 @@ def get_details(
             "name": emp.name if emp else "",
             "team": emp.team if emp else "",
             "dept": emp.dept if emp else "",
-            "group_name": _classify_group(detail.org_name or "", config, cache),
+            "group_name": _classify_overall_row(detail, config, cache) or UNCLASSIFIED_GROUP,
             "org_name": detail.org_name,
             "data_type": detail.data_type,
             "pos_sequence": detail.pos_sequence,
@@ -971,31 +937,6 @@ def delete_detail(
     return {"message": "删除成功"}
 
 
-@router.get("/group-rules", response_model=dict)
-def get_group_rules(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    require_permission(current_user, "marketing_settings.view")
-    return _group_config(db)
-
-
-@router.put("/group-rules", response_model=dict)
-def update_group_rules(
-    body: GroupRulesIn,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    require_permission(current_user, "marketing_settings.edit")
-    data = {
-        "default_group": body.default_group.strip() or "未分组",
-        "rules": _clean_rules(body.rules),
-    }
-    _set_config(db, GROUP_CONFIG_KEY, data)
-    db.commit()
-    return _group_config(db)
-
-
 @router.get("/overall-row-rules", response_model=dict)
 def get_overall_row_rules(
     db: Session = Depends(get_db),
@@ -1030,17 +971,18 @@ def get_organizations(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_settings.view")
-    rows = db.query(
-        MarketingDetail.org_name, func.count(MarketingDetail.id)
-    ).group_by(MarketingDetail.org_name).order_by(func.count(MarketingDetail.id).desc()).limit(limit).all()
-    config = _group_config(db)
+    config = _overall_config(db)
     cache: Dict[str, str] = {}
-    return {
-        "items": [
-            {"org_name": org or "", "count": count, "group_name": _classify_group(org or "", config, cache)}
-            for org, count in rows
-        ]
-    }
+    counter: Dict[tuple, int] = {}
+    for detail in db.query(MarketingDetail).all():
+        row_label = _classify_overall_row(detail, config, cache) or UNCLASSIFIED_GROUP
+        key = (detail.org_name or "", row_label)
+        counter[key] = counter.get(key, 0) + 1
+    items = [
+        {"org_name": org_name, "count": count, "row_label": row_label}
+        for (org_name, row_label), count in sorted(counter.items(), key=lambda item: item[1], reverse=True)[:limit]
+    ]
+    return {"items": items}
 
 
 @router.get("/row-rule-preview", response_model=dict)
@@ -1147,7 +1089,7 @@ def export_report(
         for item in data["teams"]:
             writer.writerow([item.get("team"), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
     elif dimension == "group":
-        writer.writerow(["自定义分组", "人数"] + common)
+        writer.writerow(["行分类", "人数"] + common)
         for item in data["groups"]:
             writer.writerow([item.get("group_name"), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
     elif dimension == "product":
@@ -1159,7 +1101,7 @@ def export_report(
         for item in data["days"]:
             writer.writerow([item.get("date")] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
     else:
-        writer.writerow(["工号", "姓名", "班组", "部门", "自定义分组"] + common)
+        writer.writerow(["工号", "姓名", "班组", "部门", "行分类"] + common)
         for item in data["employees"]:
             writer.writerow([item.get("kf_id"), item.get("name"), item.get("team"), item.get("dept"), item.get("group_name")] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
 

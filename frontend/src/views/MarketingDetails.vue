@@ -43,7 +43,7 @@
         <el-table-column prop="kf_id" label="客服工号" width="120" />
         <el-table-column prop="name" label="姓名" width="80" />
         <el-table-column prop="team" label="班组" min-width="120" />
-        <el-table-column prop="group_name" label="自定义分组" width="110" />
+        <el-table-column prop="group_name" label="行分类" width="150" />
         <el-table-column prop="org_name" label="组织机构" min-width="200" show-overflow-tooltip />
         <el-table-column prop="trade_id" label="CBSS订单号" width="150" />
         <el-table-column prop="service_type" label="重点业务" width="90" />

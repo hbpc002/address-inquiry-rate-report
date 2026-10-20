@@ -7,122 +7,90 @@
         </div>
       </template>
 
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="组织分组规则" name="group">
-          <el-alert
-            type="info"
-            :closable="false"
-            title="用于营销统计中的“自定义分组”筛选和员工维度展示。按优先级从小到大匹配，第一条命中生效；未命中归入默认分组。"
-            style="margin-bottom: 12px"
-          />
-          <el-form inline>
-            <el-form-item label="默认分组">
-              <el-input v-model="groupConfig.default_group" placeholder="未分组" style="width: 180px" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="addGroupRule">新增规则</el-button>
-              <el-button type="success" :loading="savingGroup" @click="saveGroupRules">保存</el-button>
-            </el-form-item>
-          </el-form>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="总体营销行分类规则同时用于总体营销表和营销统计的“行分类”。按优先级从小到大匹配，第一条命中生效；未命中归入“未分组”。"
+        style="margin-bottom: 12px"
+      />
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="正则匹配提示"
+        style="margin-bottom: 16px"
+      >
+        <template #default>
+          匹配方式选择“正则”时，匹配内容需填写正则表达式，例如：<code>热线|营销</code>、<code>^广西.*分公司$</code>；支持
+          <code>\d</code>、<code>.*</code>、<code>|</code>、<code>[]</code> 等常用语法，匹配不区分大小写。
+        </template>
+      </el-alert>
 
-          <el-table :data="groupConfig.rules" border stripe>
-            <el-table-column label="启用" width="70" align="center">
-              <template #default="{ row }"><el-switch v-model="row.enabled" size="small" /></template>
-            </el-table-column>
-            <el-table-column label="目标分组" min-width="150">
-              <template #default="{ row }"><el-input v-model="row.group_name" placeholder="如：维系组" /></template>
-            </el-table-column>
-            <el-table-column label="匹配方式" width="130">
-              <template #default="{ row }">
-                <el-select v-model="row.match_type" style="width: 100%">
-                  <el-option v-for="item in MATCH_TYPES" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="匹配内容" min-width="220">
-              <template #default="{ row }"><el-input v-model="row.pattern" placeholder="如：维系" /></template>
-            </el-table-column>
-            <el-table-column label="优先级" width="110">
-              <template #default="{ row }"><el-input-number v-model="row.priority" :min="0" :max="9999" size="small" /></template>
-            </el-table-column>
-            <el-table-column label="操作" width="80" align="center">
-              <template #default="{ $index }">
-                <el-button type="danger" link @click="groupConfig.rules.splice($index, 1)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+      <el-form inline>
+        <el-form-item>
+          <el-button type="primary" @click="addRule">新增规则</el-button>
+          <el-button type="success" :loading="saving" @click="saveRules">保存</el-button>
+        </el-form-item>
+        <el-form-item label="未分类产品行">
+          <el-tag type="warning">{{ preview.unclassified }}</el-tag>
+        </el-form-item>
+      </el-form>
 
-          <el-divider content-position="left">组织命中预览</el-divider>
-          <el-table :data="organizations" border stripe max-height="320">
-            <el-table-column prop="org_name" label="组织机构（RESERVE6）" min-width="420" show-overflow-tooltip />
-            <el-table-column prop="count" label="明细行数" width="100" />
-            <el-table-column prop="group_name" label="命中分组" width="140" />
-          </el-table>
-        </el-tab-pane>
+      <el-table :data="config.rules" border stripe max-height="360">
+        <el-table-column label="启用" width="70" align="center">
+          <template #default="{ row }"><el-switch v-model="row.enabled" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="归入行" min-width="170">
+          <template #default="{ row }">
+            <el-select v-model="row.row_label" filterable style="width: 100%">
+              <el-option v-for="label in ROW_LABELS" :key="label" :label="label" :value="label" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="匹配字段" width="170">
+          <template #default="{ row }">
+            <el-select v-model="row.field" style="width: 100%">
+              <el-option v-for="item in OVERALL_FIELDS" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="匹配方式" width="140">
+          <template #default="{ row }">
+            <el-select v-model="row.match_type" style="width: 100%">
+              <el-option v-for="item in MATCH_TYPES" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="匹配内容" min-width="220">
+          <template #default="{ row }">
+            <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" />
+            <div v-if="row.match_type === 'regex'" class="regex-hint">正则例：热线|营销</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="优先级" width="110">
+          <template #default="{ row }"><el-input-number v-model="row.priority" :min="0" :max="9999" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center">
+          <template #default="{ $index }">
+            <el-button type="danger" link @click="config.rules.splice($index, 1)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <el-tab-pane label="总体营销行分类规则" name="overall">
-          <el-alert
-            type="info"
-            :closable="false"
-            title="用于总体营销表：将营销明细归类到线上直办/营销工单的子项、办理工单或降套维系。按优先级第一条命中生效；未命中数据只在表外提示。"
-            style="margin-bottom: 12px"
-          />
-          <el-form inline>
-            <el-form-item>
-              <el-button type="primary" @click="addOverallRule">新增规则</el-button>
-              <el-button type="success" :loading="savingOverall" @click="saveOverallRules">保存</el-button>
-            </el-form-item>
-            <el-form-item label="未分类产品行">
-              <el-tag type="warning">{{ preview.unclassified }}</el-tag>
-            </el-form-item>
-          </el-form>
+      <el-divider content-position="left">组织机构命中行分类预览</el-divider>
+      <el-table :data="organizations" border stripe max-height="320">
+        <el-table-column prop="org_name" label="组织机构（RESERVE6）" min-width="420" show-overflow-tooltip />
+        <el-table-column prop="count" label="明细行数" width="100" />
+        <el-table-column prop="row_label" label="命中行分类" width="160" />
+      </el-table>
 
-          <el-table :data="overallConfig.rules" border stripe max-height="360">
-            <el-table-column label="启用" width="70" align="center">
-              <template #default="{ row }"><el-switch v-model="row.enabled" size="small" /></template>
-            </el-table-column>
-            <el-table-column label="归入行" min-width="170">
-              <template #default="{ row }">
-                <el-select v-model="row.row_label" filterable style="width: 100%">
-                  <el-option v-for="label in ROW_LABELS" :key="label" :label="label" :value="label" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="匹配字段" width="170">
-              <template #default="{ row }">
-                <el-select v-model="row.field" style="width: 100%">
-                  <el-option v-for="item in OVERALL_FIELDS" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="匹配方式" width="120">
-              <template #default="{ row }">
-                <el-select v-model="row.match_type" style="width: 100%">
-                  <el-option v-for="item in MATCH_TYPES" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="匹配内容" min-width="200">
-              <template #default="{ row }"><el-input v-model="row.pattern" placeholder="如：热线运营组" /></template>
-            </el-table-column>
-            <el-table-column label="优先级" width="110">
-              <template #default="{ row }"><el-input-number v-model="row.priority" :min="0" :max="9999" size="small" /></template>
-            </el-table-column>
-            <el-table-column label="操作" width="80" align="center">
-              <template #default="{ $index }">
-                <el-button type="danger" link @click="overallConfig.rules.splice($index, 1)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <el-divider content-position="left">未分类取值预览</el-divider>
-          <el-table :data="preview.samples" border stripe max-height="300">
-            <el-table-column prop="field" label="字段" width="180" />
-            <el-table-column prop="value" label="取值" min-width="360" show-overflow-tooltip />
-            <el-table-column prop="count" label="行数" width="90" />
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
+      <el-divider content-position="left">未分类取值预览</el-divider>
+      <el-table :data="preview.samples" border stripe max-height="300">
+        <el-table-column prop="field" label="字段" width="180" />
+        <el-table-column prop="value" label="取值" min-width="360" show-overflow-tooltip />
+        <el-table-column prop="count" label="行数" width="90" />
+      </el-table>
     </el-card>
   </div>
 </template>
@@ -134,11 +102,8 @@ import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 
 const ui = useUiConfigStore()
-const activeTab = ref('group')
-const savingGroup = ref(false)
-const savingOverall = ref(false)
-const groupConfig = reactive({ default_group: '未分组', rules: [] })
-const overallConfig = reactive({ rules: [] })
+const saving = ref(false)
+const config = reactive({ rules: [] })
 const organizations = ref([])
 const preview = reactive({ unclassified: 0, samples: [] })
 
@@ -147,7 +112,7 @@ const MATCH_TYPES = [
   { value: 'equals', label: '等于' },
   { value: 'prefix', label: '前缀' },
   { value: 'suffix', label: '后缀' },
-  { value: 'regex', label: '正则' }
+  { value: 'regex', label: '正则（表达式）' }
 ]
 
 const ROW_LABELS = [
@@ -168,19 +133,12 @@ const OVERALL_FIELDS = [
   { value: 'tb_region_name', label: '通报区域' }
 ]
 
-function addGroupRule() {
-  groupConfig.rules.push({
-    id: '',
-    group_name: '',
-    match_type: 'contains',
-    pattern: '',
-    priority: 10,
-    enabled: true
-  })
+function patternPlaceholder(row) {
+  return row.match_type === 'regex' ? '正则表达式，如：热线|营销' : '如：热线运营组'
 }
 
-function addOverallRule() {
-  overallConfig.rules.push({
+function addRule() {
+  config.rules.push({
     id: '',
     row_label: '线上直办-热线',
     field: 'org_name',
@@ -191,15 +149,9 @@ function addOverallRule() {
   })
 }
 
-async function loadGroupRules() {
-  const res = await api.get('/marketing/group-rules')
-  groupConfig.default_group = res.data.default_group || '未分组'
-  groupConfig.rules = res.data.rules || []
-}
-
-async function loadOverallRules() {
+async function loadRules() {
   const res = await api.get('/marketing/overall-row-rules')
-  overallConfig.rules = res.data.rules || []
+  config.rules = res.data.rules || []
 }
 
 async function loadPreviews() {
@@ -216,40 +168,23 @@ async function loadPreviews() {
   }
 }
 
-async function saveGroupRules() {
-  savingGroup.value = true
+async function saveRules() {
+  saving.value = true
   try {
-    await api.put('/marketing/group-rules', {
-      default_group: groupConfig.default_group,
-      rules: groupConfig.rules
-    })
-    ElMessage.success('组织分组规则已保存')
-    await loadGroupRules()
-    await loadPreviews()
-  } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '保存失败')
-  } finally {
-    savingGroup.value = false
-  }
-}
-
-async function saveOverallRules() {
-  savingOverall.value = true
-  try {
-    await api.put('/marketing/overall-row-rules', { rules: overallConfig.rules })
+    await api.put('/marketing/overall-row-rules', { rules: config.rules })
     ElMessage.success('总体营销行分类规则已保存')
-    await loadOverallRules()
+    await loadRules()
     await loadPreviews()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '保存失败')
   } finally {
-    savingOverall.value = false
+    saving.value = false
   }
 }
 
 onMounted(async () => {
   try {
-    await Promise.all([loadGroupRules(), loadOverallRules()])
+    await loadRules()
     await loadPreviews()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
@@ -262,5 +197,11 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.regex-hint {
+  margin-top: 2px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
 }
 </style>

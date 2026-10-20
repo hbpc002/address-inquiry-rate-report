@@ -28,8 +28,8 @@
         <el-form-item v-if="searchForm.type === 'range'" label="结束日期">
           <el-date-picker v-model="searchForm.end_date" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
-        <el-form-item label="自定义分组">
-          <el-select v-model="searchForm.group_name" placeholder="全部分组" clearable filterable style="width: 140px">
+        <el-form-item label="行分类">
+          <el-select v-model="searchForm.group_name" placeholder="全部行分类" clearable filterable style="width: 160px">
             <el-option v-for="g in options.groups" :key="g" :label="g" :value="g" />
           </el-select>
         </el-form-item>
@@ -75,7 +75,7 @@
       <el-tabs v-model="dimension" @tab-change="loadData">
         <el-tab-pane label="员工" name="employee" />
         <el-tab-pane label="班组" name="team" />
-        <el-tab-pane label="自定义分组" name="group" />
+        <el-tab-pane label="行分类" name="group" />
         <el-tab-pane label="产品" name="product" />
         <el-tab-pane label="按日趋势" name="day" />
       </el-tabs>
@@ -86,14 +86,14 @@
           <el-table-column prop="name" label="姓名" width="90" />
           <el-table-column prop="team" label="班组" min-width="130" />
           <el-table-column prop="dept" label="部门" min-width="160" show-overflow-tooltip />
-          <el-table-column prop="group_name" label="自定义分组" min-width="110" />
+          <el-table-column prop="group_name" label="行分类" min-width="140" />
         </template>
         <template v-else-if="dimension === 'team'">
           <el-table-column prop="team" label="班组" min-width="180" />
           <el-table-column prop="people" label="人数" width="80" />
         </template>
         <template v-else-if="dimension === 'group'">
-          <el-table-column prop="group_name" label="自定义分组" min-width="160" />
+          <el-table-column prop="group_name" label="行分类" min-width="160" />
           <el-table-column prop="people" label="人数" width="80" />
         </template>
         <template v-else-if="dimension === 'product'">

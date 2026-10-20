@@ -1299,9 +1299,9 @@ def get_default_permissions(role_name):
 | 菜单 | 路由 | 权限 | 说明 |
 |------|------|------|------|
 | 营销明细 | `/marketing-orders` | `marketing.view` / `marketing.upload` / `marketing.delete` | 导入、筛选、删除营销明细 |
-| 营销统计 | `/marketing-report` | `marketing_report.view` / `marketing_report.export` | 员工、班组、自定义分组、产品、日期多维统计 |
+| 营销统计 | `/marketing-report` | `marketing_report.view` / `marketing_report.export` | 员工、班组、行分类、产品、日期多维统计 |
 | 总体营销 | `/marketing-overall` | `marketing_overall.view` / `marketing_overall.export` | 固定 9 列总体营销表及带样式 Excel 导出 |
-| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 组织分组规则、总体营销行分类规则 |
+| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 总体营销行分类规则（同时用于营销统计行分类） |
 
 ### 16.2 明细导入规则
 
@@ -1320,11 +1320,12 @@ def get_default_permissions(role_name):
 | `SERVICE_TYPE=套餐适配` | - | 套餐变更 |
 | `LH_QH` | 来话/去话 | 来话量/去话量 |
 
-### 16.4 自定义分组
+### 16.4 总体营销行分类
 
-- 营销设置中按优先级配置分组规则，支持包含、等于、前缀、后缀、正则匹配。
-- 第一条命中规则生效，未命中归入默认分组（默认“未分组”）。
-- 支持按组织机构 `RESERVE6`、受理渠道、岗位性质、发展渠道、业务分类等字段配置总体营销行分类。
+- 营销设置中只维护一套“总体营销行分类规则”，总体营销表和营销统计的“行分类”共用该数据。
+- 按优先级从小到大匹配，第一条命中生效；未命中归入“未分组”。
+- 支持包含、等于、前缀、后缀、正则匹配；正则匹配不区分大小写，页面会提示正则表达式示例。
+- 支持按组织机构 `RESERVE6`、受理渠道、岗位性质、发展渠道、业务分类、数据类型、地市、通报区域等字段配置。
 
 ### 16.5 总体营销表
 
@@ -1343,7 +1344,6 @@ def get_default_permissions(role_name):
 | DELETE | `/api/marketing/details/by-date` | 按竣工日期删除 |
 | DELETE | `/api/marketing/details/import/{batch}` | 按导入批次删除 |
 | DELETE | `/api/marketing/details/{id}` | 删除单条明细 |
-| GET/PUT | `/api/marketing/group-rules` | 读取/保存组织分组规则 |
 | GET/PUT | `/api/marketing/overall-row-rules` | 读取/保存总体营销行分类规则 |
 | GET | `/api/marketing/organizations` | 组织机构命中预览 |
 | GET | `/api/marketing/row-rule-preview` | 未分类取值预览 |

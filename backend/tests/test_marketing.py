@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sys
 from datetime import date
@@ -69,9 +70,7 @@ def _clean():
     try:
         db.query(MarketingDetail).delete()
         db.query(Employee).delete()
-        db.query(AppConfig).filter(AppConfig.key.in_([
-            "marketing_group_rules", "marketing_overall_row_rules"
-        ])).delete(synchronize_session=False)
+        db.query(AppConfig).filter(AppConfig.key == "marketing_overall_row_rules").delete(synchronize_session=False)
         db.query(OperationLog).delete()
         db.commit()
     finally:
@@ -126,13 +125,6 @@ def _upload(headers, rows, pre_rows=None, filename="marketing.xlsx"):
     return client.post("/api/marketing/details/import", files=data)
 
 
-def _set_group_rules(default_group, rules):
-    payload = {"default_group": default_group, "rules": rules}
-    resp = client.put("/api/marketing/group-rules", json=payload)
-    assert resp.status_code == 200, resp.text
-    return resp.json()
-
-
 def _set_overall_rules(rules):
     resp = client.put("/api/marketing/overall-row-rules", json={"rules": rules})
     assert resp.status_code == 200, resp.text
@@ -162,9 +154,9 @@ class TestMarketingImport:
         assert resp.status_code == 200, resp.text
         assert resp.json()["count"] == 4
 
-        _set_group_rules("未分组", [
-            {"group_name": "区域", "match_type": "contains", "pattern": "南方二中心", "priority": 1, "enabled": True},
-            {"group_name": "维系组", "match_type": "contains", "pattern": "客户关系运营中心", "priority": 2, "enabled": True},
+        _set_overall_rules([
+            {"row_label": "线上直办-区域", "field": "org_name", "match_type": "contains", "pattern": "南方二中心", "priority": 1, "enabled": True},
+            {"row_label": "线上直办-维系", "field": "org_name", "match_type": "contains", "pattern": "客户关系运营中心", "priority": 2, "enabled": True},
         ])
         report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
         assert report["stats"]["total"] == 4
@@ -173,11 +165,11 @@ class TestMarketingImport:
         assert report["stats"]["inbound"] == 3
         assert report["stats"]["outbound"] == 1
         assert report["stats"]["people_count"] == 3
-        assert set(report["options"]["groups"]) == {"未分组", "区域", "维系组"}
+        assert set(report["options"]["groups"]) == {"未分组", "线上直办-区域", "线上直办-维系"}
         emp = next(item for item in report["employees"] if item["kf_id"] == "KF999")
         assert emp["name"] == ""
         assert emp["team"] == "未匹配班组"
-        assert emp["group_name"] == "维系组"
+        assert emp["group_name"] == "线上直办-维系"
 
     def test_import_chinese_header_and_same_date_overwrite(self):
         first = _upload(CN_HEADERS, [_cn_row(product_id="OLD", product_name="旧产品")])
@@ -230,24 +222,32 @@ class TestMarketingReport:
         assert filtered["stats"]["total"] == 1
         assert filtered["employees"][0]["kf_id"] == "KF001"
 
-    def test_group_rule_priority_and_default(self):
+    def test_overall_rule_priority_and_unclassified_group(self):
         rows = [
             _en_row(kf="KF001", org="A>>维系>>投诉中心", trade="T1", product_id="P1"),
             _en_row(kf="KF002", org="未知组织", trade="T2", product_id="P2"),
         ]
         assert _upload(EN_HEADERS, rows).status_code == 200
-        _set_group_rules("默认组", [
-            {"group_name": "投诉工单组", "match_type": "contains", "pattern": "投诉中心", "priority": 1, "enabled": True},
-            {"group_name": "维系组", "match_type": "contains", "pattern": "维系", "priority": 10, "enabled": True},
+        _set_overall_rules([
+            {"row_label": "营销工单-热线", "field": "org_name", "match_type": "contains", "pattern": "投诉中心", "priority": 1, "enabled": True},
+            {"row_label": "线上直办-维系", "field": "org_name", "match_type": "contains", "pattern": "维系", "priority": 10, "enabled": True},
         ])
         report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
         groups = {item["group_name"]: item for item in report["groups"]}
-        assert groups["投诉工单组"]["total"] == 1
-        assert groups["默认组"]["total"] == 1
-        assert "维系组" not in groups
-        rules = client.get("/api/marketing/group-rules").json()
-        assert rules["default_group"] == "默认组"
+        assert groups["营销工单-热线"]["total"] == 1
+        assert groups["未分组"]["total"] == 1
+        assert "线上直办-维系" not in groups
+        rules = client.get("/api/marketing/overall-row-rules").json()
         assert len(rules["rules"]) == 2
+
+    def test_regex_rule_is_shared_by_report_grouping(self):
+        assert _upload(EN_HEADERS, [_en_row(org="广西分公司>>热线运营组", trade="T1", product_id="P1")]).status_code == 200
+        _set_overall_rules([
+            {"row_label": "线上直办-热线", "field": "org_name", "match_type": "regex", "pattern": "热线|营销", "priority": 1, "enabled": True},
+        ])
+        report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
+        assert report["employees"][0]["group_name"] == "线上直办-热线"
+        assert "线上直办-热线" in report["options"]["groups"]
 
     def test_overall_report_structure_subtotal_and_unclassified(self):
         rows = [
@@ -303,3 +303,74 @@ class TestMarketingReport:
         assert deleted.status_code == 200
         assert deleted.json()["count"] == 1
         assert client.get("/api/marketing/details").json()["total"] == 0
+
+
+class TestMarketingRulesAndExports:
+
+    def setup_method(self):
+        _clean()
+        _seed_employees()
+
+    def test_overall_rule_validation(self):
+        resp = client.put("/api/marketing/overall-row-rules", json={
+            "rules": [{"row_label": "线上直办-热线", "field": "org_name", "match_type": "unknown", "pattern": "x", "priority": 1}],
+        })
+        assert resp.status_code == 400
+        resp = client.put("/api/marketing/overall-row-rules", json={
+            "rules": [{"row_label": "不存在", "field": "org_name", "match_type": "contains", "pattern": "x"}],
+        })
+        assert resp.status_code == 400
+        resp = client.put("/api/marketing/overall-row-rules", json={
+            "rules": [{"row_label": "线上直办-热线", "field": "unknown", "match_type": "contains", "pattern": "x"}],
+        })
+        assert resp.status_code == 400
+
+    def test_permissions_required_for_mutation_and_export(self):
+        original = app.dependency_overrides[get_current_user]
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 2, "username": "limited", "role": "user", "is_system": False, "permissions": "{}"
+        }
+        try:
+            assert client.get("/api/marketing/report").status_code == 403
+            assert client.get("/api/marketing/overall-report").status_code == 403
+            assert client.get("/api/marketing/report/export").status_code == 403
+            assert client.get("/api/marketing/overall-report/export").status_code == 403
+            assert client.put("/api/marketing/overall-row-rules", json={"rules": []}).status_code == 403
+            data = {"file": ("x.xlsx", _make_xlsx(EN_HEADERS, [_en_row()]), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+            assert client.post("/api/marketing/details/import", files=data).status_code == 403
+        finally:
+            app.dependency_overrides[get_current_user] = original
+
+    def test_report_csv_export(self):
+        rows = [
+            _en_row(kf="KF001", trade="T1", product_id="P1"),
+            _en_row(kf="KF002", org="未知组织", trade="T2", product_id="P2"),
+        ]
+        assert _upload(EN_HEADERS, rows).status_code == 200
+        _set_overall_rules([])
+        resp = client.get("/api/marketing/report/export", params={"year_month": "2026-10", "dimension": "group"})
+        assert resp.status_code == 200
+        assert "text/csv" in resp.headers["content-type"]
+        text = resp.content.decode("utf-8-sig")
+        assert "行分类" in text
+        assert "未分组" in text
+        assert "产品办理量" in text
+
+    def test_import_deduplicates_same_trade_product(self):
+        rows = [
+            _en_row(trade="T1", product_id="P1", product_name="产品A"),
+            _en_row(trade="T1", product_id="P1", product_name="产品A"),
+        ]
+        resp = _upload(EN_HEADERS, rows)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["count"] == 1
+        assert resp.json()["skipped"] == 1
+
+    def test_overall_export_zero_data_uses_green_ratio(self):
+        resp = client.get("/api/marketing/overall-report/export", params={"year_month": "2026-10"})
+        assert resp.status_code == 200
+        wb = load_workbook(io.BytesIO(resp.content))
+        ws = wb["总体营销"]
+        assert ws["I2"].font.color.rgb == "FF00B050"
+        assert ws["I2"].fill.start_color.rgb == "FFC6EFCE"
+        assert ws["H16"].value == "=SUM(C16:G16)"
