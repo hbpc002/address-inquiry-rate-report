@@ -1083,7 +1083,7 @@ def export_report(
     import csv
 
     writer = csv.writer(output)
-    common = ["产品办理量", "订单数", "来话量", "去话量", "叠加包", "日包", "月包", "长期包", "未定义", "套餐变更"]
+    common = ["产品办理量", "订单数", "来话办理量", "去话办理量", "叠加包", "日包", "月包", "长期包", "未定义", "套餐变更"]
     if dimension == "team":
         writer.writerow(["班组", "人数"] + common)
         for item in data["teams"]:

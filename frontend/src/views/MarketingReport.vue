@@ -65,8 +65,8 @@
       <el-row class="stats-row">
         <div class="stat-item"><el-statistic title="产品办理量" :value="stats.total" /></div>
         <div class="stat-item"><el-statistic title="订单数" :value="stats.order_count" /></div>
-        <div class="stat-item"><el-statistic title="来话量" :value="stats.inbound" /></div>
-        <div class="stat-item"><el-statistic title="去话量" :value="stats.outbound" /></div>
+        <div class="stat-item"><el-statistic title="来话办理量" :value="stats.inbound" /></div>
+        <div class="stat-item"><el-statistic title="去话办理量" :value="stats.outbound" /></div>
         <div class="stat-item"><el-statistic title="叠加包" :value="stats.overlay" /></div>
         <div class="stat-item"><el-statistic title="套餐变更" :value="stats.package_change" /></div>
         <div class="stat-item"><el-statistic title="涉及员工" :value="stats.people_count" /></div>
@@ -84,16 +84,16 @@
         <template v-if="dimension === 'employee'">
           <el-table-column prop="kf_id" label="客服工号" width="120" />
           <el-table-column prop="name" label="姓名" width="90" />
-          <el-table-column prop="team" label="班组" min-width="130" />
-          <el-table-column prop="dept" label="部门" min-width="160" show-overflow-tooltip />
-          <el-table-column prop="group_name" label="行分类" min-width="140" />
+          <el-table-column prop="team" label="班组" width="110" show-overflow-tooltip />
+          <el-table-column prop="dept" label="部门" width="140" show-overflow-tooltip />
+          <el-table-column prop="group_name" label="行分类" width="120" show-overflow-tooltip />
         </template>
         <template v-else-if="dimension === 'team'">
-          <el-table-column prop="team" label="班组" min-width="180" />
+          <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip />
           <el-table-column prop="people" label="人数" width="80" />
         </template>
         <template v-else-if="dimension === 'group'">
-          <el-table-column prop="group_name" label="行分类" min-width="160" />
+          <el-table-column prop="group_name" label="行分类" width="130" show-overflow-tooltip />
           <el-table-column prop="people" label="人数" width="80" />
         </template>
         <template v-else-if="dimension === 'product'">
@@ -105,8 +105,8 @@
         </template>
         <el-table-column prop="total" label="产品办理量" width="110" sortable />
         <el-table-column prop="order_count" label="订单数" width="90" />
-        <el-table-column prop="inbound" label="来话量" width="90" />
-        <el-table-column prop="outbound" label="去话量" width="90" />
+        <el-table-column prop="inbound" label="来话办理量" width="110" />
+        <el-table-column prop="outbound" label="去话办理量" width="110" />
         <el-table-column prop="overlay" label="叠加包" width="90" />
         <el-table-column prop="overlay_day" label="日包" width="80" />
         <el-table-column prop="overlay_month" label="月包" width="80" />
