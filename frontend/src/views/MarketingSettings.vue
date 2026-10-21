@@ -11,7 +11,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="总体营销行分类规则同时用于总体营销表和营销统计的“行分类”。按优先级从小到大匹配，第一条命中生效；未命中归入“未分组”。"
+        title="总体营销行分类规则同时用于总体营销表和营销统计的“行分类”。线上直办数据命中“线上直办-*”，办理工单数据先按线上直办组织机构分类、未命中再按“建单租户”分类，归入“营销工单-*”。按优先级从小到大匹配，第一条命中生效。"
         style="margin-bottom: 12px"
       />
       <el-alert
@@ -80,7 +80,8 @@
 
       <el-divider content-position="left">组织机构命中行分类预览</el-divider>
       <el-table :data="organizations" border stripe max-height="320">
-        <el-table-column prop="org_name" label="组织机构（RESERVE6）" min-width="420" show-overflow-tooltip />
+        <el-table-column prop="source" label="数据来源" width="100" />
+        <el-table-column prop="org_name" label="组织机构/建单租户" min-width="420" show-overflow-tooltip />
         <el-table-column prop="count" label="明细行数" width="100" />
         <el-table-column prop="row_label" label="命中行分类" width="160" />
       </el-table>
@@ -117,13 +118,13 @@ const MATCH_TYPES = [
 
 const ROW_LABELS = [
   '线上直办-热线', '线上直办-区域', '线上直办-维系', '线上直办-工单', '线上直办-分公司',
-  '办理工单',
   '营销工单-热线', '营销工单-区域', '营销工单-维系', '营销工单-工单', '营销工单-分公司',
   '降套维系'
 ]
 
 const OVERALL_FIELDS = [
-  { value: 'org_name', label: '组织机构 RESERVE6' },
+  { value: 'org_name', label: '组织机构' },
+  { value: 'tenant', label: '建单租户' },
   { value: 'channel', label: '受理渠道' },
   { value: 'pos_sequence', label: '人员岗位性质' },
   { value: 'develop_depart_name', label: '发展渠道' },

@@ -40,20 +40,13 @@ OVERALL_SECTIONS = [
     },
     {
         "section_no": 2,
-        "section_name": "办理工单",
-        "bg": "pink",
-        "rows": ["办理工单"],
-        "subtotal": False,
-    },
-    {
-        "section_no": 3,
         "section_name": "营销工单",
         "bg": "green",
         "rows": ["营销工单-热线", "营销工单-区域", "营销工单-维系", "营销工单-工单", "营销工单-分公司"],
         "subtotal": True,
     },
     {
-        "section_no": 4,
+        "section_no": 3,
         "section_name": "降套维系",
         "bg": "yellow",
         "rows": ["降套维系"],
@@ -71,7 +64,14 @@ OVERALL_FIELDS = [
     "data_type",
     "area_name",
     "tb_region_name",
+    "tenant",
 ]
+ONLINE_ROW_SUFFIXES = ("热线", "区域", "维系", "工单", "分公司")
+ONLINE_ROW_LABELS = {f"线上直办-{suffix}" for suffix in ONLINE_ROW_SUFFIXES}
+WORK_ORDER_ROW_LABELS = {f"营销工单-{suffix}" for suffix in ONLINE_ROW_SUFFIXES}
+SOURCE_XSZB = "xszb"
+SOURCE_FWGD = "fwgd"
+SOURCE_LABELS = {SOURCE_XSZB: "线上直办", SOURCE_FWGD: "办理工单"}
 OVERALL_COLUMNS = [
     {"key": "overlay", "label": "叠加包"},
     {"key": "package_change", "label": "套餐变更"},
@@ -81,16 +81,19 @@ OVERALL_COLUMNS = [
 ]
 
 FIELD_ALIASES = {
-    "kf_id": ("KF_ID", "客服id", "客服ID"),
+    "kf_id": ("KF_ID", "客服id", "客服ID", "工单受理工号"),
     "org_name": ("RESERVE6", "预留字段6"),
-    "data_type": ("DATA_TYPE",),
+    "organization": ("ORG_NAME", "组织机构"),
+    "tenant": ("建单租户",),
+    "work_order_id": ("工单流水号",),
+    "data_type": ("DATA_TYPE", "xszb/fwgd"),
     "pos_sequence": ("POS_SEQUENCE", "人员岗位性质"),
-    "develop_depart_name": ("DEVELOP_DEPART_NAME", "发展渠道"),
-    "develop_depart_id": ("DEVELOP_DEPART_ID", "发展渠道编码"),
-    "develop_staff_name": ("DEVELOP_STAFF_NAME", "发展人"),
+    "develop_depart_name": ("DEVELOP_DEPART_NAME", "发展渠道", "发展人渠道名称"),
+    "develop_depart_id": ("DEVELOP_DEPART_ID", "发展渠道编码", "发展人渠道编码"),
+    "develop_staff_name": ("DEVELOP_STAFF_NAME", "发展人", "发展人名称"),
     "develop_staff_id": ("DEVELOP_STAFF_ID", "发展人编码"),
-    "tb_region_name": ("TB_REGION_NAME",),
-    "channel": ("CHANNEL", "受理渠道"),
+    "tb_region_name": ("TB_REGION_NAME", "通报区域"),
+    "channel": ("CHANNEL", "渠道名称", "受理渠道"),
     "area_name": ("AREA_NAME", "地市名称_cbss", "地市名称"),
     "net_type": ("NET_TYPE", "网别"),
     "trade_id": ("TRADE_ID", "CBSS订单号"),
@@ -100,7 +103,7 @@ FIELD_ALIASES = {
     "valid_type": ("VALID_TYPE", "叠加包有效期"),
     "product_id": ("PRODUCT_ID", "产品ID"),
     "product_name": ("PRODUCT_NAME", "产品名称"),
-    "lh_qh": ("LH_QH", "来话去话"),
+    "lh_qh": ("LH_QH", "来话去话", "呼入方向"),
     "is_zero": ("IS_ZERO", "0元/非0元"),
 }
 
@@ -270,31 +273,128 @@ def _clean_rules(rules: List[Any]) -> List[Dict[str, Any]]:
     return result
 
 
+def _detail_source(detail: MarketingDetail) -> str:
+    return SOURCE_FWGD if (detail.data_type or "").strip().lower() == SOURCE_FWGD else SOURCE_XSZB
+
+
+def _source_condition(source: str):
+    if source == SOURCE_FWGD:
+        return MarketingDetail.data_type == SOURCE_FWGD
+    return or_(
+        MarketingDetail.data_type == SOURCE_XSZB,
+        MarketingDetail.data_type.is_(None),
+        MarketingDetail.data_type == "",
+    )
+
+
 def _detail_value(detail: MarketingDetail, field: str) -> str:
+    if field == "org_name":
+        org = str(getattr(detail, "org_name", "") or "").strip()
+        if org:
+            return org
+        return str(getattr(detail, "organization", "") or "").strip()
+    if field == "organization":
+        org = str(getattr(detail, "organization", "") or "").strip()
+        if org:
+            return org
+        return str(getattr(detail, "org_name", "") or "").strip()
     return str(getattr(detail, field, "") or "")
 
 
-def _classify_overall_row(detail: MarketingDetail, config: Dict[str, Any], cache: Dict[str, str]) -> Optional[str]:
-    keys = []
-    for field in OVERALL_FIELDS:
-        keys.append(_detail_value(detail, field))
-    cache_key = "\u0001".join(keys)
+def _detail_values(detail: MarketingDetail) -> Dict[str, str]:
+    return {field: _detail_value(detail, field) for field in OVERALL_FIELDS}
+
+
+def _sorted_rules(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    rules = [r for r in config.get("rules", []) if r.get("enabled", True)]
+    return [rule for _, rule in sorted(enumerate(rules), key=lambda pair: (int(pair[1].get("priority") or 0), pair[0]))]
+
+
+def _normalize_work_order_label(value: Any) -> Optional[str]:
+    label = str(value or "").strip()
+    if label in WORK_ORDER_ROW_LABELS:
+        return label
+    if label.startswith("线上直办-"):
+        candidate = f"营销工单-{label.split('-', 1)[1]}"
+        if candidate in WORK_ORDER_ROW_LABELS:
+            return candidate
+    return None
+
+
+def _xszb_org_map(db: Session) -> Dict[str, str]:
+    result: Dict[str, str] = {}
+    details = db.query(MarketingDetail).filter(_source_condition(SOURCE_XSZB)).order_by(
+        MarketingDetail.finish_date.desc(), MarketingDetail.id.desc()
+    ).all()
+    for detail in details:
+        key = _norm_emp_no(detail.kf_id)
+        if not key or key in result:
+            continue
+        org = (detail.organization or "").strip() or (detail.org_name or "").strip()
+        if org:
+            result[key] = org
+    return result
+
+
+def _classify_online_row(detail: MarketingDetail, config: Dict[str, Any], cache: Dict[str, str]) -> Optional[str]:
+    values = _detail_values(detail)
+    cache_key = SOURCE_XSZB + "\u0001" + "\u0001".join(values.get(field, "") for field in OVERALL_FIELDS)
     if cache_key in cache:
         return cache[cache_key] or None
-    rules = [r for r in config.get("rules", []) if r.get("enabled", True)]
-    rules = sorted(enumerate(rules), key=lambda pair: (int(pair[1].get("priority") or 0), pair[0]))
     result = None
-    for _, rule in rules:
+    for rule in _sorted_rules(config):
         field = rule.get("field") or "org_name"
         if field not in OVERALL_FIELDS:
             continue
-        if _rule_match(_detail_value(detail, field), rule):
-            result = str(rule.get("row_label") or "").strip()
-            if result in OVERALL_ROW_LABELS:
+        if _rule_match(values.get(field, ""), rule):
+            label = str(rule.get("row_label") or "").strip()
+            if label in ONLINE_ROW_LABELS or label == "降套维系":
+                result = label
                 break
-            result = None
     cache[cache_key] = result or ""
     return result
+
+
+def _classify_work_order_row(
+    detail: MarketingDetail,
+    config: Dict[str, Any],
+    org_map: Dict[str, str],
+    cache: Dict[str, str],
+) -> Optional[str]:
+    values = _detail_values(detail)
+    values["org_name"] = org_map.get(_norm_emp_no(detail.kf_id), "")
+    cache_key = SOURCE_FWGD + "\u0001" + "\u0001".join(values.get(field, "") for field in OVERALL_FIELDS)
+    if cache_key in cache:
+        return cache[cache_key] or None
+
+    rules = _sorted_rules(config)
+    result = None
+    for rule in rules:
+        if (rule.get("field") or "org_name") != "org_name":
+            continue
+        if _rule_match(values.get("org_name", ""), rule):
+            label = _normalize_work_order_label(rule.get("row_label"))
+            if label:
+                result = label
+                break
+    if not result:
+        for rule in rules:
+            if rule.get("field") != "tenant":
+                continue
+            if _rule_match(values.get("tenant", ""), rule):
+                label = _normalize_work_order_label(rule.get("row_label"))
+                if label:
+                    result = label
+                    break
+
+    cache[cache_key] = result or ""
+    return result
+
+
+def _classify_overall_row(detail: MarketingDetail, config: Dict[str, Any], cache: Dict[str, str]) -> Optional[str]:
+    if _detail_source(detail) == SOURCE_FWGD:
+        return _classify_work_order_row(detail, config, {}, cache)
+    return _classify_online_row(detail, config, cache)
 
 
 def _resolve_range(year_month: Optional[str], start_date: Optional[str], end_date: Optional[str]):
@@ -451,12 +551,17 @@ def _match_valid_filter(detail: MarketingDetail, valid_type: str) -> bool:
 
 
 def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]) -> Dict[str, Any]:
-    details = db.query(MarketingDetail).filter(
+    query = db.query(MarketingDetail).filter(
         MarketingDetail.finish_date >= start,
         MarketingDetail.finish_date <= end,
-    ).all()
+    )
+    data_type = filters.get("data_type") or ""
+    if data_type in (SOURCE_XSZB, SOURCE_FWGD):
+        query = query.filter(_source_condition(data_type))
+    details = query.all()
     emps = _emp_map(db)
     config = _overall_config(db)
+    org_map = _xszb_org_map(db)
     group_cache: Dict[str, str] = {}
 
     prepared = []
@@ -466,12 +571,17 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     all_products = set()
     for detail in details:
         emp = emps.get(_norm_emp_no(detail.kf_id))
-        group = _classify_overall_row(detail, config, group_cache) or UNCLASSIFIED_GROUP
-        prepared.append((detail, emp, group))
+        if _detail_source(detail) == SOURCE_FWGD:
+            group = _classify_work_order_row(detail, config, org_map, group_cache) or UNCLASSIFIED_GROUP
+            effective_org = org_map.get(_norm_emp_no(detail.kf_id), "")
+        else:
+            group = _classify_online_row(detail, config, group_cache) or UNCLASSIFIED_GROUP
+            effective_org = _detail_value(detail, "org_name")
+        prepared.append((detail, emp, group, effective_org))
         all_groups.add(group)
         all_teams.add(emp.team if emp and emp.team else "未匹配班组")
-        if detail.org_name:
-            all_orgs.add(detail.org_name)
+        if effective_org:
+            all_orgs.add(effective_org)
         if detail.product_id or detail.product_name:
             all_products.add(detail.product_id or detail.product_name)
 
@@ -486,7 +596,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     product = filters.get("product") or ""
 
     filtered = []
-    for detail, emp, group in prepared:
+    for detail, emp, group, effective_org in prepared:
         if group_name and group != group_name:
             continue
         if team:
@@ -497,7 +607,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             continue
         if emp_no and emp_no.lower() not in (detail.kf_id or "").lower():
             continue
-        if org_name and org_name.lower() not in (detail.org_name or "").lower():
+        if org_name and org_name.lower() not in effective_org.lower():
             continue
         if lh_qh and (detail.lh_qh or "").strip() != lh_qh:
             continue
@@ -509,7 +619,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             continue
         if not _match_valid_filter(detail, valid_type):
             continue
-        filtered.append((detail, emp, group))
+        filtered.append((detail, emp, group, effective_org))
 
     employees: Dict[str, Any] = {}
     teams: Dict[str, Any] = {}
@@ -520,7 +630,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     people = set()
     product_set = set()
 
-    for detail, emp, group in filtered:
+    for detail, emp, group, effective_org in filtered:
         kf_id = detail.kf_id or ""
         emp_name = emp.name if emp else ""
         emp_team = emp.team if emp and emp.team else "未匹配班组"
@@ -538,8 +648,10 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             "team": emp_team,
             "dept": emp_dept,
             "group_name": group,
-            "org_name": detail.org_name or "",
+            "org_name": effective_org,
         })
+        if not bucket.get("tenant") and detail.tenant:
+            bucket["tenant"] = detail.tenant
         _accumulate(bucket, detail)
         bucket["_trade_id"] = detail.trade_id
 
@@ -616,6 +728,10 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             "teams": sorted(filter(None, all_teams)),
             "orgs": sorted(filter(None, all_orgs)),
             "products": sorted(filter(None, all_products)),
+            "sources": [
+                {"value": SOURCE_XSZB, "label": SOURCE_LABELS[SOURCE_XSZB]},
+                {"value": SOURCE_FWGD, "label": SOURCE_LABELS[SOURCE_FWGD]},
+            ],
         },
     }
 
@@ -625,22 +741,42 @@ def _overall_counts() -> Dict[str, int]:
 
 
 def _compute_overall(db: Session, start: date, end: date) -> Dict[str, Any]:
-    details = db.query(MarketingDetail).filter(
-        MarketingDetail.finish_date >= start,
-        MarketingDetail.finish_date <= end,
-    ).all()
     config = _overall_config(db)
     cache: Dict[str, str] = {}
+    org_map = _xszb_org_map(db)
     row_counts = {label: _overall_counts() for label in OVERALL_ROW_LABELS}
     unclassified_rows = 0
     unclassified_business_rows = 0
 
-    for detail in details:
+    online_details = db.query(MarketingDetail).filter(
+        MarketingDetail.finish_date >= start,
+        MarketingDetail.finish_date <= end,
+        _source_condition(SOURCE_XSZB),
+    ).all()
+    for detail in online_details:
         biz = _business_key(detail.service_type or "")
         if biz not in ("overlay", "package_change"):
             unclassified_business_rows += 1
             continue
-        row_label = _classify_overall_row(detail, config, cache)
+        row_label = _classify_online_row(detail, config, cache)
+        if not row_label:
+            unclassified_rows += 1
+            continue
+        if row_label not in ONLINE_ROW_LABELS:
+            continue
+        row_counts[row_label][biz] += 1
+
+    work_order_details = db.query(MarketingDetail).filter(
+        MarketingDetail.finish_date >= start,
+        MarketingDetail.finish_date <= end,
+        _source_condition(SOURCE_FWGD),
+    ).all()
+    for detail in work_order_details:
+        biz = _business_key(detail.service_type or "")
+        if biz not in ("overlay", "package_change"):
+            unclassified_business_rows += 1
+            continue
+        row_label = _classify_work_order_row(detail, config, org_map, cache)
         if not row_label:
             unclassified_rows += 1
             continue
@@ -731,6 +867,7 @@ def import_details(
     content = file.file.read()
     data, mapping = _read_excel(content)
 
+    source = SOURCE_FWGD if ("tenant" in mapping or "work_order_id" in mapping) else SOURCE_XSZB
     records = []
     dates = set()
     seen = set()
@@ -747,10 +884,19 @@ def import_details(
             if not product_id and not product_name:
                 skipped += 1
                 continue
+            org_name = _cell(values, mapping, "org_name")
+            organization = _cell(values, mapping, "organization")
+            if not org_name:
+                org_name = organization
+            if not organization:
+                organization = org_name
             record = {
                 "kf_id": _cell(values, mapping, "kf_id"),
-                "org_name": _cell(values, mapping, "org_name"),
-                "data_type": _cell(values, mapping, "data_type"),
+                "org_name": org_name,
+                "organization": organization,
+                "tenant": _cell(values, mapping, "tenant") if source == SOURCE_FWGD else "",
+                "work_order_id": _cell(values, mapping, "work_order_id") if source == SOURCE_FWGD else "",
+                "data_type": source,
                 "pos_sequence": _cell(values, mapping, "pos_sequence"),
                 "develop_depart_name": _cell(values, mapping, "develop_depart_name"),
                 "develop_depart_id": _cell(values, mapping, "develop_depart_id"),
@@ -791,7 +937,10 @@ def import_details(
     if not records:
         raise HTTPException(status_code=400, detail="未解析到有效数据")
 
-    db.query(MarketingDetail).filter(MarketingDetail.finish_date.in_(sorted(dates))).delete(synchronize_session=False)
+    db.query(MarketingDetail).filter(
+        MarketingDetail.finish_date.in_(sorted(dates)),
+        _source_condition(source),
+    ).delete(synchronize_session=False)
     db.bulk_insert_mappings(MarketingDetail, records)
     db.commit()
     log_operation(
@@ -800,13 +949,15 @@ def import_details(
         "import_marketing_details",
         "marketing",
         None,
-        {"batch": batch, "count": len(records), "dates": [d.isoformat() for d in sorted(dates)]},
+        {"batch": batch, "count": len(records), "dates": [d.isoformat() for d in sorted(dates)], "source": source},
     )
     return {
         "count": len(records),
         "skipped": skipped,
         "batch": batch,
         "dates": [d.isoformat() for d in sorted(dates)],
+        "data_type": source,
+        "source": SOURCE_LABELS[source],
     }
 
 
@@ -823,6 +974,7 @@ def get_details(
     product: Optional[str] = None,
     service_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
+    data_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -830,6 +982,8 @@ def get_details(
     query = db.query(MarketingDetail)
     if import_batch:
         query = query.filter(MarketingDetail.import_batch == import_batch)
+    if data_type in (SOURCE_XSZB, SOURCE_FWGD):
+        query = query.filter(_source_condition(data_type))
     start = _date_param(start_date)
     end = _date_param(end_date)
     if start:
@@ -844,7 +998,15 @@ def get_details(
             return {"items": [], "total": 0}
         query = query.filter(MarketingDetail.kf_id.in_(emp_nos))
     if org_name:
-        query = query.filter(MarketingDetail.org_name.ilike(f"%{org_name}%"))
+        org_map = _xszb_org_map(db)
+        matched_kf = [key for key, value in org_map.items() if org_name.lower() in value.lower()]
+        org_conditions = [
+            MarketingDetail.org_name.ilike(f"%{org_name}%"),
+            MarketingDetail.organization.ilike(f"%{org_name}%"),
+        ]
+        if matched_kf:
+            org_conditions.append(MarketingDetail.kf_id.in_(matched_kf))
+        query = query.filter(or_(*org_conditions))
     if product:
         query = query.filter(or_(
             MarketingDetail.product_id.ilike(f"%{product}%"),
@@ -862,19 +1024,31 @@ def get_details(
 
     emps = _emp_map(db)
     config = _overall_config(db)
+    org_map = _xszb_org_map(db)
     cache: Dict[str, str] = {}
     result = []
     for detail in items:
         emp = emps.get(_norm_emp_no(detail.kf_id))
+        source = _detail_source(detail)
+        if source == SOURCE_FWGD:
+            group = _classify_work_order_row(detail, config, org_map, cache) or UNCLASSIFIED_GROUP
+            effective_org = org_map.get(_norm_emp_no(detail.kf_id), "")
+        else:
+            group = _classify_online_row(detail, config, cache) or UNCLASSIFIED_GROUP
+            effective_org = detail.org_name or detail.organization or ""
         result.append({
             "id": detail.id,
             "kf_id": detail.kf_id,
             "name": emp.name if emp else "",
             "team": emp.team if emp else "",
             "dept": emp.dept if emp else "",
-            "group_name": _classify_overall_row(detail, config, cache) or UNCLASSIFIED_GROUP,
-            "org_name": detail.org_name,
-            "data_type": detail.data_type,
+            "group_name": group,
+            "org_name": effective_org,
+            "organization": detail.organization,
+            "tenant": detail.tenant,
+            "work_order_id": detail.work_order_id,
+            "data_type": source,
+            "source": SOURCE_LABELS[source],
             "pos_sequence": detail.pos_sequence,
             "develop_depart_name": detail.develop_depart_name,
             "channel": detail.channel,
@@ -973,14 +1147,27 @@ def get_organizations(
     require_permission(current_user, "marketing_settings.view")
     config = _overall_config(db)
     cache: Dict[str, str] = {}
+    org_map = _xszb_org_map(db)
     counter: Dict[tuple, int] = {}
     for detail in db.query(MarketingDetail).all():
-        row_label = _classify_overall_row(detail, config, cache) or UNCLASSIFIED_GROUP
-        key = (detail.org_name or "", row_label)
+        source = _detail_source(detail)
+        if source == SOURCE_FWGD:
+            row_label = _classify_work_order_row(detail, config, org_map, cache) or UNCLASSIFIED_GROUP
+            org_name = org_map.get(_norm_emp_no(detail.kf_id), "") or detail.tenant or ""
+        else:
+            row_label = _classify_online_row(detail, config, cache) or UNCLASSIFIED_GROUP
+            org_name = _detail_value(detail, "org_name")
+        key = (source, org_name, row_label)
         counter[key] = counter.get(key, 0) + 1
     items = [
-        {"org_name": org_name, "count": count, "row_label": row_label}
-        for (org_name, row_label), count in sorted(counter.items(), key=lambda item: item[1], reverse=True)[:limit]
+        {
+            "org_name": org_name,
+            "count": count,
+            "row_label": row_label,
+            "data_type": source,
+            "source": SOURCE_LABELS[source],
+        }
+        for (source, org_name, row_label), count in sorted(counter.items(), key=lambda item: item[1], reverse=True)[:limit]
     ]
     return {"items": items}
 
@@ -994,18 +1181,26 @@ def get_row_rule_preview(
     require_permission(current_user, "marketing_settings.view")
     config = _overall_config(db)
     cache: Dict[str, str] = {}
+    org_map = _xszb_org_map(db)
     details = db.query(MarketingDetail).all()
     unclassified = 0
     counter: Dict[tuple, int] = {}
     for detail in details:
         if _business_key(detail.service_type or "") not in ("overlay", "package_change"):
             continue
-        row_label = _classify_overall_row(detail, config, cache)
+        source = _detail_source(detail)
+        if source == SOURCE_FWGD:
+            row_label = _classify_work_order_row(detail, config, org_map, cache)
+            values = _detail_values(detail)
+            values["org_name"] = org_map.get(_norm_emp_no(detail.kf_id), "")
+        else:
+            row_label = _classify_online_row(detail, config, cache)
+            values = _detail_values(detail)
         if row_label:
             continue
         unclassified += 1
         for field in OVERALL_FIELDS:
-            value = _detail_value(detail, field)
+            value = values.get(field, "")
             if value:
                 key = (field, value)
                 counter[key] = counter.get(key, 0) + 1
@@ -1030,6 +1225,7 @@ def get_report(
     valid_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
     product: Optional[str] = None,
+    data_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1045,6 +1241,7 @@ def get_report(
         "valid_type": valid_type,
         "lh_qh": lh_qh,
         "product": product,
+        "data_type": data_type,
     })
 
 
@@ -1063,6 +1260,7 @@ def export_report(
     valid_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
     product: Optional[str] = None,
+    data_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1078,6 +1276,7 @@ def export_report(
         "valid_type": valid_type,
         "lh_qh": lh_qh,
         "product": product,
+        "data_type": data_type,
     })
     output = io.StringIO()
     import csv

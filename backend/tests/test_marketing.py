@@ -48,6 +48,17 @@ CN_HEADERS = [
     "受理渠道", "人员岗位性质", "发展渠道",
 ]
 
+FWGD_HEADERS = [
+    "工单受理工号", "建单租户", "工单流水号", "CBSS订单号", "CBSS订单竣工时间",
+    "重点业务分类", "叠加包分类", "叠加包有效期", "产品ID", "产品名称",
+    "呼入方向", "渠道名称", "人员岗位性质", "发展人渠道名称", "通报区域", "xszb/fwgd",
+]
+
+ORG_HEADERS = [
+    "KF_ID", "组织机构", "CBSS订单竣工时间", "重点业务分类", "叠加包有效期",
+    "产品ID", "产品名称", "CBSS订单号",
+]
+
 
 def setup_module():
     Base.metadata.drop_all(bind=engine)
@@ -120,6 +131,21 @@ def _cn_row(kf="KF001", org="广西分公司>>省中心>>客户服务营销中�
             lh, trade, channel, pos, depart]
 
 
+def _fwgd_row(kf="KF001", tenant="广西", work_order_id="WO1", trade="W1",
+              finish="20261003120000", service="叠加包", valid="月包",
+              product_id="WP1", product_name="工单产品", lh="去话",
+              channel="热线人工", pos="一线坐席-10010", depart="10010",
+              region="南方二中心", data_type="fwgd"):
+    return [kf, tenant, work_order_id, trade, finish, service, "流量", valid,
+            product_id, product_name, lh, channel, pos, depart, region, data_type]
+
+
+def _org_row(kf="KF001", org="广西分公司->省中心->客户服务营销中心->热线运营组",
+             finish="20261005120000", service="叠加包", valid="月包",
+             product_id="OP1", product_name="线上直办产品", trade="O1"):
+    return [kf, org, finish, service, valid, product_id, product_name, trade]
+
+
 def _upload(headers, rows, pre_rows=None, filename="marketing.xlsx"):
     data = {"file": (filename, _make_xlsx(headers, rows, pre_rows), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
     return client.post("/api/marketing/details/import", files=data)
@@ -190,6 +216,27 @@ class TestMarketingImport:
         resp = client.post("/api/marketing/details/import", files=data)
         assert resp.status_code == 400
 
+    def test_import_fwgd_source_and_same_date_does_not_overwrite_xszb(self):
+        assert _upload(EN_HEADERS, [_en_row(trade="T1", product_id="P1", finish="20261004120000")]).status_code == 200
+        resp = _upload(FWGD_HEADERS, [_fwgd_row(kf="KF001", trade="W1", product_id="WP1", finish="20261004120000")])
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data_type"] == "fwgd"
+        assert resp.json()["source"] == "办理工单"
+
+        details = client.get("/api/marketing/details", params={"start_date": "2026-10-04", "end_date": "2026-10-04"}).json()
+        assert details["total"] == 2
+        sources = {item["data_type"] for item in details["items"]}
+        assert sources == {"xszb", "fwgd"}
+
+        again = _upload(FWGD_HEADERS, [_fwgd_row(kf="KF001", trade="W2", product_id="WP2", finish="20261004120000")])
+        assert again.status_code == 200, again.text
+        details = client.get("/api/marketing/details", params={"start_date": "2026-10-04", "end_date": "2026-10-04"}).json()
+        assert details["total"] == 2
+        fwgd_items = [item for item in details["items"] if item["data_type"] == "fwgd"]
+        assert len(fwgd_items) == 1
+        assert fwgd_items[0]["trade_id"] == "W2"
+        assert fwgd_items[0]["tenant"] == "广西"
+
 
 class TestMarketingReport:
 
@@ -229,12 +276,12 @@ class TestMarketingReport:
         ]
         assert _upload(EN_HEADERS, rows).status_code == 200
         _set_overall_rules([
-            {"row_label": "营销工单-热线", "field": "org_name", "match_type": "contains", "pattern": "投诉中心", "priority": 1, "enabled": True},
+            {"row_label": "线上直办-热线", "field": "org_name", "match_type": "contains", "pattern": "投诉中心", "priority": 1, "enabled": True},
             {"row_label": "线上直办-维系", "field": "org_name", "match_type": "contains", "pattern": "维系", "priority": 10, "enabled": True},
         ])
         report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
         groups = {item["group_name"]: item for item in report["groups"]}
-        assert groups["营销工单-热线"]["total"] == 1
+        assert groups["线上直办-热线"]["total"] == 1
         assert groups["未分组"]["total"] == 1
         assert "线上直办-维系" not in groups
         rules = client.get("/api/marketing/overall-row-rules").json()
@@ -261,7 +308,7 @@ class TestMarketingReport:
             {"row_label": "线上直办-区域", "field": "org_name", "match_type": "contains", "pattern": "南方二中心", "priority": 2, "enabled": True},
         ])
         report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
-        assert len(report["rows"]) == 14
+        assert len(report["rows"]) == 13
         hotline = _overall_row(report, "线上直办-热线")
         area = _overall_row(report, "线上直办-区域")
         sub1 = next(row for row in report["rows"] if row["section_no"] == 1 and row["is_subtotal"])
@@ -291,7 +338,7 @@ class TestMarketingReport:
         assert any(str(rng) == "A2:A7" for rng in ws.merged_cells.ranges)
         assert ws["H2"].value == "=SUM(C2:G2)"
         assert str(ws["I2"].value).startswith("=IFERROR")
-        assert ws["A16"].value == "合计"
+        assert ws["A15"].value == "合计"
         assert ws["B2"].value == "线上直办-热线"
 
     def test_delete_details_by_date_and_batch(self):
@@ -303,6 +350,63 @@ class TestMarketingReport:
         assert deleted.status_code == 200
         assert deleted.json()["count"] == 1
         assert client.get("/api/marketing/details").json()["total"] == 0
+
+
+class TestMarketingWorkOrders:
+
+    def setup_method(self):
+        _clean()
+        _seed_employees()
+
+    def test_fwgd_uses_xszb_organization_before_tenant_fallback(self):
+        assert _upload(ORG_HEADERS, [_org_row(kf="KF001", trade="O1", product_id="OP1")]).status_code == 200
+        _set_overall_rules([
+            {"row_label": "营销工单-区域", "field": "tenant", "match_type": "contains", "pattern": "南方二中心", "priority": 0, "enabled": True},
+            {"row_label": "线上直办-热线", "field": "org_name", "match_type": "contains", "pattern": "热线运营组", "priority": 99, "enabled": True},
+        ])
+        resp = _upload(FWGD_HEADERS, [
+            _fwgd_row(kf="KF001", trade="W1", product_id="WP1", finish="20261005120000"),
+            _fwgd_row(kf="KF999", tenant="南方二中心", trade="W2", product_id="WP2", finish="20261005120000", lh="来话"),
+        ])
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data_type"] == "fwgd"
+
+        report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        assert len(report["rows"]) == 13
+        assert all(row["label"] != "办理工单" for row in report["rows"])
+        assert _overall_row(report, "线上直办-热线")["counts"]["overlay"] == 1
+        assert _overall_row(report, "营销工单-热线")["counts"]["overlay"] == 1
+        assert _overall_row(report, "营销工单-区域")["counts"]["overlay"] == 1
+        assert report["stats"]["grand_total"] == 3
+        assert report["stats"]["unclassified_rows"] == 0
+
+    def test_fwgd_unclassified_not_counted_in_overall(self):
+        assert _upload(FWGD_HEADERS, [_fwgd_row(kf="KF999", tenant="未知租户")]).status_code == 200
+        report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        assert report["stats"]["grand_total"] == 0
+        assert report["stats"]["unclassified_rows"] == 1
+        assert all(row["total"] == 0 for row in report["rows"])
+
+    def test_marketing_report_source_filter(self):
+        assert _upload(ORG_HEADERS, [_org_row(kf="KF001", trade="O1", product_id="OP1")]).status_code == 200
+        assert _upload(FWGD_HEADERS, [_fwgd_row(kf="KF001", trade="W1", product_id="WP1", finish="20261005120000")]).status_code == 200
+
+        all_report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
+        assert all_report["stats"]["total"] == 2
+        assert {item["value"] for item in all_report["options"]["sources"]} == {"xszb", "fwgd"}
+
+        fwgd_report = client.get("/api/marketing/report", params={"year_month": "2026-10", "data_type": "fwgd"}).json()
+        assert fwgd_report["stats"]["total"] == 1
+        assert fwgd_report["stats"]["outbound"] == 1
+
+        xszb_report = client.get("/api/marketing/report", params={"year_month": "2026-10", "data_type": "xszb"}).json()
+        assert xszb_report["stats"]["total"] == 1
+        assert xszb_report["stats"]["inbound"] == 0
+
+        details = client.get("/api/marketing/details", params={"start_date": "2026-10-01", "end_date": "2026-10-31", "data_type": "fwgd"}).json()
+        assert details["total"] == 1
+        assert details["items"][0]["source"] == "办理工单"
+        assert details["items"][0]["tenant"] == "广西"
 
 
 class TestMarketingRulesAndExports:
@@ -373,4 +477,4 @@ class TestMarketingRulesAndExports:
         ws = wb["总体营销"]
         assert ws["I2"].font.color.rgb == "FF00B050"
         assert ws["I2"].fill.start_color.rgb == "FFC6EFCE"
-        assert ws["H16"].value == "=SUM(C16:G16)"
+        assert ws["H15"].value == "=SUM(C15:G15)"

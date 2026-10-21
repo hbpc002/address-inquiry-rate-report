@@ -21,6 +21,12 @@
         <el-form-item label="组织">
           <el-input v-model="searchForm.org_name" placeholder="组织关键词" clearable style="width: 150px" />
         </el-form-item>
+        <el-form-item label="数据来源">
+          <el-select v-model="searchForm.data_type" placeholder="全部来源" clearable style="width: 120px">
+            <el-option label="线上直办" value="xszb" />
+            <el-option label="办理工单" value="fwgd" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="产品">
           <el-input v-model="searchForm.product" placeholder="产品ID/名称" clearable style="width: 140px" />
         </el-form-item>
@@ -40,11 +46,14 @@
 
       <el-table :data="tableData" border stripe max-height="calc(100vh - 360px)">
         <el-table-column prop="finish_date" label="竣工日期" width="105" />
+        <el-table-column prop="source" label="数据来源" width="95" />
         <el-table-column prop="kf_id" label="客服工号" width="120" />
         <el-table-column prop="name" label="姓名" width="80" />
         <el-table-column prop="team" label="班组" min-width="120" />
         <el-table-column prop="group_name" label="行分类" width="150" />
         <el-table-column prop="org_name" label="组织机构" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="tenant" label="建单租户" width="110" show-overflow-tooltip />
+        <el-table-column prop="work_order_id" label="工单流水号" width="160" show-overflow-tooltip />
         <el-table-column prop="trade_id" label="CBSS订单号" width="150" />
         <el-table-column prop="service_type" label="重点业务" width="90" />
         <el-table-column prop="valid_type" label="叠加包有效期" width="105" />
@@ -83,7 +92,7 @@
         <el-icon class="el-icon--upload"><upload-filled /></el-icon>
         <div class="el-upload__text">拖拽XLSX文件到此处，或<em>点击选择</em></div>
         <template #tip>
-          <div class="el-upload__tip">兼容新版英文表头（HB_...）和旧版中文表头，同竣工日期数据会被覆盖</div>
+          <div class="el-upload__tip">自动识别线上直办/办理工单文件；同来源、同竣工日期数据会被覆盖</div>
         </template>
       </el-upload>
       <div v-if="uploadResults.length" style="margin-top: 12px">
@@ -122,7 +131,7 @@ const uploading = ref(false)
 const deleteByDateVisible = ref(false)
 const deleteDate = ref('')
 const deletingByDate = ref(false)
-const searchForm = reactive({ batch: '', kf_id: '', name: '', org_name: '', product: '' })
+const searchForm = reactive({ batch: '', kf_id: '', name: '', org_name: '', data_type: '', product: '' })
 const range = ref('')
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const fileList = ref([])
@@ -137,6 +146,7 @@ async function loadData() {
       kf_id: searchForm.kf_id || undefined,
       name: searchForm.name || undefined,
       org_name: searchForm.org_name || undefined,
+      data_type: searchForm.data_type || undefined,
       product: searchForm.product || undefined
     }
     if (range.value && range.value.length === 2) {
@@ -161,6 +171,7 @@ function resetSearch() {
   searchForm.kf_id = ''
   searchForm.name = ''
   searchForm.org_name = ''
+  searchForm.data_type = ''
   searchForm.product = ''
   range.value = ''
   pagination.page = 1

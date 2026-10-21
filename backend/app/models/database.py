@@ -149,6 +149,30 @@ def _migrate_db():
                 except Exception as e:
                     print(f"Failed to add column segment_details: {e}")
 
+        if 'marketing_details' in tables:
+            marketing_cols = {col['name'] for col in inspector.get_columns('marketing_details')}
+            marketing_migrations = [
+                ('organization', 'VARCHAR(500)'),
+                ('tenant', 'VARCHAR(100)'),
+                ('work_order_id', 'VARCHAR(100)'),
+            ]
+            for col_name, col_def in marketing_migrations:
+                if col_name not in marketing_cols:
+                    try:
+                        db.execute(text(f"ALTER TABLE marketing_details ADD COLUMN {col_name} {col_def}"))
+                        print(f"Added column {col_name} to marketing_details")
+                    except Exception as e:
+                        print(f"Failed to add column {col_name} to marketing_details: {e}")
+            for idx_name, col_name in (
+                ('ix_marketing_details_organization', 'organization'),
+                ('ix_marketing_details_tenant', 'tenant'),
+                ('ix_marketing_details_work_order_id', 'work_order_id'),
+            ):
+                try:
+                    db.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON marketing_details ({col_name})"))
+                except Exception as e:
+                    print(f"Failed to create index {idx_name}: {e}")
+
         if 'app_configs' in tables:
             try:
                 cfg_cols = {col['name']: col for col in inspector.get_columns('app_configs')}

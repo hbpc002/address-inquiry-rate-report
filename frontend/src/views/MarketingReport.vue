@@ -28,6 +28,11 @@
         <el-form-item v-if="searchForm.type === 'range'" label="结束日期">
           <el-date-picker v-model="searchForm.end_date" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
+        <el-form-item label="数据来源">
+          <el-select v-model="searchForm.data_type" placeholder="全部来源" clearable style="width: 120px">
+            <el-option v-for="item in options.sources" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="行分类">
           <el-select v-model="searchForm.group_name" placeholder="全部行分类" clearable filterable style="width: 160px">
             <el-option v-for="g in options.groups" :key="g" :label="g" :value="g" />
@@ -136,6 +141,7 @@ const searchForm = reactive({
   start_date: '',
   end_date: '',
   group_name: '',
+  data_type: '',
   team: '',
   business_type: '',
   lh_qh: '',
@@ -151,7 +157,7 @@ const stats = reactive({
   package_change: 0,
   people_count: 0
 })
-const options = reactive({ groups: [], teams: [], orgs: [], products: [] })
+const options = reactive({ groups: [], teams: [], orgs: [], products: [], sources: [] })
 const result = ref({ employees: [], teams: [], groups: [], products: [], days: [] })
 const dimension = ref('employee')
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', group: 'groups', product: 'products', day: 'days' }[dimension.value]))
@@ -168,7 +174,7 @@ function buildParams() {
     params.start_date = searchForm.start_date
     params.end_date = searchForm.end_date
   }
-  for (const key of ['group_name', 'team', 'business_type', 'lh_qh', 'name', 'emp_no']) {
+  for (const key of ['group_name', 'data_type', 'team', 'business_type', 'lh_qh', 'name', 'emp_no']) {
     if (searchForm[key]) params[key] = searchForm[key]
   }
   return params
@@ -193,6 +199,7 @@ function resetFilters() {
     start_date: '',
     end_date: '',
     group_name: '',
+    data_type: '',
     team: '',
     business_type: '',
     lh_qh: '',
