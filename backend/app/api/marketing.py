@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -27,8 +28,12 @@ router = APIRouter(prefix="/api/marketing", tags=["营销统计"])
 
 OVERALL_CONFIG_KEY = "marketing_overall_row_rules"
 DEFAULT_OVERALL_CONFIG = {"rules": []}
+KEY_PRODUCT_CONFIG_KEY = "marketing_key_products"
+DEFAULT_KEY_PRODUCT_CONFIG = {"products": []}
 UNCLASSIFIED_GROUP = "未分组"
+UNASSIGNED_TEAM = "未分班组"
 MATCH_TYPES = {"contains", "equals", "prefix", "suffix", "regex"}
+WORK_GROUP_SUFFIXES = ("热线", "区域", "维系", "工单", "分公司")
 
 OVERALL_SECTIONS = [
     {
@@ -72,6 +77,12 @@ WORK_ORDER_ROW_LABELS = {f"营销工单-{suffix}" for suffix in ONLINE_ROW_SUFFI
 SOURCE_XSZB = "xszb"
 SOURCE_FWGD = "fwgd"
 SOURCE_LABELS = {SOURCE_XSZB: "线上直办", SOURCE_FWGD: "办理工单"}
+PRODUCT_SOURCE_ALL = "all"
+PRODUCT_SOURCE_LABELS = {
+    SOURCE_XSZB: SOURCE_LABELS[SOURCE_XSZB],
+    SOURCE_FWGD: SOURCE_LABELS[SOURCE_FWGD],
+    PRODUCT_SOURCE_ALL: "合计",
+}
 OVERALL_COLUMNS = [
     {"key": "overlay", "label": "叠加包"},
     {"key": "package_change", "label": "套餐变更"},
@@ -120,6 +131,18 @@ class OverallRowRule(BaseModel):
 
 class OverallRulesIn(BaseModel):
     rules: List[OverallRowRule] = []
+
+
+class KeyProductItem(BaseModel):
+    id: Optional[str] = None
+    business_name: str = ""
+    product_id: str = ""
+    product_name: str = ""
+    sort: int = 0
+
+
+class KeyProductsIn(BaseModel):
+    products: List[KeyProductItem] = []
 
 
 def _norm_label(value: Any) -> str:
@@ -271,6 +294,69 @@ def _clean_rules(rules: List[Any]) -> List[Dict[str, Any]]:
         data["enabled"] = bool(data.get("enabled", True))
         result.append(data)
     return result
+
+
+def _key_product_config(db: Session) -> Dict[str, Any]:
+    return _get_config(db, KEY_PRODUCT_CONFIG_KEY, DEFAULT_KEY_PRODUCT_CONFIG)
+
+
+def _sorted_key_products(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    products = config.get("products") or []
+    return [
+        product
+        for _, product in sorted(
+            enumerate(products),
+            key=lambda pair: (int(pair[1].get("sort") or 0), pair[0]),
+        )
+    ]
+
+
+def _norm_product_id(value: Any) -> str:
+    return str(value or "").replace("\ufeff", "").strip().upper()
+
+
+def _norm_product_name(value: Any) -> str:
+    return str(value or "").replace("\ufeff", "").strip().casefold()
+
+
+def _key_product_match_key(product: Dict[str, Any]) -> tuple:
+    product_id = _norm_product_id(product.get("product_id"))
+    if product_id:
+        return ("id", product_id)
+    return ("name", _norm_product_name(product.get("product_name")))
+
+
+def _clean_key_products(products: List[Any]) -> List[Dict[str, Any]]:
+    result = []
+    seen = set()
+    for index, item in enumerate(products):
+        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        business_name = str(data.get("business_name") or "").strip()
+        product_id = str(data.get("product_id") or "").replace("\ufeff", "").strip()
+        product_name = str(data.get("product_name") or "").replace("\ufeff", "").strip()
+        if not business_name:
+            raise HTTPException(status_code=400, detail="重点业务产品的业务名不能为空")
+        if not product_id and not product_name:
+            raise HTTPException(status_code=400, detail="重点业务产品需填写产品ID或产品名称")
+        key = _key_product_match_key({"product_id": product_id, "product_name": product_name})
+        if key in seen:
+            raise HTTPException(status_code=400, detail=f"重点业务产品重复: {business_name}")
+        seen.add(key)
+        result.append({
+            "id": data.get("id") or uuid.uuid4().hex,
+            "business_name": business_name,
+            "product_id": product_id,
+            "product_name": product_name,
+            "sort": index,
+        })
+    return result
+
+
+def _normalize_product_source(value: Optional[str]) -> str:
+    source = str(value or SOURCE_XSZB).strip().lower()
+    if source not in (SOURCE_XSZB, SOURCE_FWGD, PRODUCT_SOURCE_ALL):
+        raise HTTPException(status_code=400, detail="不支持的产品统计来源")
+    return source
 
 
 def _detail_source(detail: MarketingDetail) -> str:
@@ -740,7 +826,133 @@ def _overall_counts() -> Dict[str, int]:
     return {col["key"]: 0 for col in OVERALL_COLUMNS}
 
 
-def _compute_overall(db: Session, start: date, end: date) -> Dict[str, Any]:
+def _work_group_from_row_label(label: Optional[str]) -> Optional[str]:
+    text = str(label or "").strip()
+    if text.startswith("线上直办-"):
+        text = text.split("-", 1)[1]
+    elif text.startswith("营销工单-"):
+        text = text.split("-", 1)[1]
+    return text if text in WORK_GROUP_SUFFIXES else None
+
+
+def _detail_matches_key_product(detail: MarketingDetail, product: Dict[str, Any]) -> bool:
+    product_id = _norm_product_id(product.get("product_id"))
+    if product_id:
+        return _norm_product_id(detail.product_id) == product_id
+    product_name = _norm_product_name(product.get("product_name"))
+    return bool(product_name) and _norm_product_name(detail.product_name) == product_name
+
+
+def _compute_key_product_table(
+    db: Session,
+    start: date,
+    end: date,
+    product_source: str,
+    config: Dict[str, Any],
+    org_map: Dict[str, str],
+    cache: Dict[str, str],
+) -> Dict[str, Any]:
+    products = _sorted_key_products(_key_product_config(db))
+    columns = []
+    for index, product in enumerate(products):
+        product_id = str(product.get("product_id") or "").strip()
+        product_name = str(product.get("product_name") or "").strip()
+        columns.append({
+            "key": f"key_product_{index}",
+            "label": str(product.get("business_name") or product_name or product_id).strip(),
+            "product_id": product_id,
+            "product_name": product_name,
+        })
+
+    empty = {
+        "key_product_columns": columns,
+        "key_product_rows": [],
+        "key_product_total_row": {"counts": {col["key"]: 0 for col in columns}, "total": 0},
+        "key_product_source": product_source,
+        "key_product_source_label": PRODUCT_SOURCE_LABELS.get(product_source, ""),
+    }
+    if not products:
+        return empty
+
+    query = db.query(MarketingDetail).filter(
+        MarketingDetail.finish_date >= start,
+        MarketingDetail.finish_date <= end,
+    )
+    if product_source in (SOURCE_XSZB, SOURCE_FWGD):
+        query = query.filter(_source_condition(product_source))
+
+    emps = _emp_map(db)
+    buckets: Dict[tuple, Dict[str, Any]] = {}
+    for detail in query.all():
+        if _detail_source(detail) == SOURCE_FWGD:
+            row_label = _classify_work_order_row(detail, config, org_map, cache)
+        else:
+            row_label = _classify_online_row(detail, config, cache)
+        work_group = _work_group_from_row_label(row_label)
+        if not work_group:
+            continue
+
+        matched_keys = [
+            column["key"]
+            for column, product in zip(columns, products)
+            if _detail_matches_key_product(detail, product)
+        ]
+        if not matched_keys:
+            continue
+
+        emp = emps.get(_norm_emp_no(detail.kf_id))
+        team = (emp.team or "").strip() if emp and emp.team else UNASSIGNED_TEAM
+        bucket = buckets.setdefault(
+            (work_group, team),
+            {"counts": {col["key"]: 0 for col in columns}, "total": 0},
+        )
+        for key in matched_keys:
+            bucket["counts"][key] += 1
+        bucket["total"] += len(matched_keys)
+
+    group_order = {name: index for index, name in enumerate(WORK_GROUP_SUFFIXES)}
+    sorted_items = sorted(
+        buckets.items(),
+        key=lambda pair: (
+            group_order.get(pair[0][0], len(group_order)),
+            pair[0][1] == UNASSIGNED_TEAM,
+            -pair[1]["total"],
+            pair[0][1],
+        ),
+    )
+
+    rows = []
+    total_counts = {col["key"]: 0 for col in columns}
+    total = 0
+    for work_group in WORK_GROUP_SUFFIXES:
+        group_items = [item for item in sorted_items if item[0][0] == work_group]
+        for index, ((_, team), bucket) in enumerate(group_items):
+            rows.append({
+                "work_group": work_group,
+                "team": team,
+                "rowspan": len(group_items) if index == 0 else 0,
+                "counts": dict(bucket["counts"]),
+                "total": bucket["total"],
+            })
+            for key, value in bucket["counts"].items():
+                total_counts[key] += value
+            total += bucket["total"]
+
+    return {
+        "key_product_columns": columns,
+        "key_product_rows": rows,
+        "key_product_total_row": {"counts": total_counts, "total": total},
+        "key_product_source": product_source,
+        "key_product_source_label": PRODUCT_SOURCE_LABELS.get(product_source, ""),
+    }
+
+
+def _compute_overall(
+    db: Session,
+    start: date,
+    end: date,
+    product_source: str = SOURCE_XSZB,
+) -> Dict[str, Any]:
     config = _overall_config(db)
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
@@ -842,6 +1054,7 @@ def _compute_overall(db: Session, start: date, end: date) -> Dict[str, Any]:
         "total": sum(total_counts.values()),
         "ratio": 1 if total_counts else None,
     }
+    key_product = _compute_key_product_table(db, start, end, product_source, config, org_map, cache)
     return {
         "stats": {
             "start_date": start.isoformat(),
@@ -853,6 +1066,7 @@ def _compute_overall(db: Session, start: date, end: date) -> Dict[str, Any]:
         "columns": OVERALL_COLUMNS,
         "rows": rows,
         "total_row": total_row,
+        **key_product,
     }
 
 
@@ -1138,6 +1352,70 @@ def update_overall_row_rules(
     return _overall_config(db)
 
 
+@router.get("/key-products", response_model=dict)
+def get_key_products(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing_settings.view")
+    config = _key_product_config(db)
+    return {"products": _sorted_key_products(config)}
+
+
+@router.put("/key-products", response_model=dict)
+def update_key_products(
+    body: KeyProductsIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing_settings.edit")
+    cleaned = _clean_key_products(body.products)
+    _set_config(db, KEY_PRODUCT_CONFIG_KEY, {"products": cleaned})
+    db.commit()
+    return {"products": cleaned}
+
+
+@router.get("/product-options", response_model=dict)
+def get_product_options(
+    keyword: Optional[str] = None,
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing_settings.view")
+    query = db.query(
+        MarketingDetail.product_id,
+        MarketingDetail.product_name,
+        func.count(MarketingDetail.id),
+    ).filter(
+        or_(
+            MarketingDetail.product_id.isnot(None),
+            MarketingDetail.product_name.isnot(None),
+        )
+    ).group_by(
+        MarketingDetail.product_id,
+        MarketingDetail.product_name,
+    ).order_by(func.count(MarketingDetail.id).desc())
+
+    search = (keyword or "").strip().lower()
+    items = []
+    for product_id, product_name, count in query.all():
+        pid = str(product_id or "").strip()
+        pname = str(product_name or "").strip()
+        if not pid and not pname:
+            continue
+        if search and search not in f"{pid} {pname}".lower():
+            continue
+        items.append({
+            "product_id": pid,
+            "product_name": pname,
+            "count": int(count or 0),
+        })
+        if len(items) >= limit:
+            break
+    return {"items": items}
+
+
 @router.get("/organizations", response_model=dict)
 def get_organizations(
     limit: int = Query(200, ge=1, le=1000),
@@ -1318,12 +1596,14 @@ def get_overall_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     year_month: Optional[str] = None,
+    product_source: Optional[str] = SOURCE_XSZB,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_overall.view")
     start, end = _resolve_range(year_month, start_date, end_date)
-    return _compute_overall(db, start, end)
+    source = _normalize_product_source(product_source)
+    return _compute_overall(db, start, end, source)
 
 
 def _excel_border():
@@ -1349,12 +1629,14 @@ def export_overall_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     year_month: Optional[str] = None,
+    product_source: Optional[str] = SOURCE_XSZB,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_overall.export")
     start, end = _resolve_range(year_month, start_date, end_date)
-    data = _compute_overall(db, start, end)
+    source = _normalize_product_source(product_source)
+    data = _compute_overall(db, start, end, source)
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "总体营销"
@@ -1423,6 +1705,57 @@ def export_overall_report(
 
     sheet.merge_cells(start_row=total_row_number, start_column=1, end_row=total_row_number, end_column=2)
 
+    key_columns = data.get("key_product_columns") or []
+    if key_columns:
+        row_number = total_row_number + 2
+        last_column = 2 + len(key_columns) + 1
+        title = f"重点业务产品统计（{data.get('key_product_source_label') or PRODUCT_SOURCE_LABELS.get(source, '')}）"
+        sheet.cell(row=row_number, column=1, value=title)
+        sheet.merge_cells(start_row=row_number, start_column=1, end_row=row_number, end_column=last_column)
+        for col_idx in range(1, last_column + 1):
+            _style_cell(sheet.cell(row=row_number, column=col_idx), fill_color="FFDDEBF7", bold=True)
+        row_number += 1
+
+        key_headers = ["工作组", "班组"] + [column["label"] for column in key_columns] + ["合计"]
+        for col_idx, label in enumerate(key_headers, start=1):
+            cell = sheet.cell(row=row_number, column=col_idx, value=label)
+            _style_cell(cell, fill_color="FFFFFFFF", bold=True, font_color="FFFF0000" if 3 <= col_idx <= last_column - 1 else None)
+        row_number += 1
+
+        group_merge_ranges = []
+        for item in data.get("key_product_rows") or []:
+            sheet.cell(row=row_number, column=1, value=item["work_group"] if item.get("rowspan") else None)
+            sheet.cell(row=row_number, column=2, value=item["team"])
+            for offset, column in enumerate(key_columns):
+                sheet.cell(row=row_number, column=3 + offset, value=item["counts"].get(column["key"], 0))
+            sheet.cell(
+                row=row_number,
+                column=last_column,
+                value=f"=SUM(C{row_number}:{get_column_letter(last_column - 1)}{row_number})",
+            )
+            for col_idx in range(1, last_column + 1):
+                _style_cell(sheet.cell(row=row_number, column=col_idx))
+            if item.get("rowspan", 0) > 1:
+                group_merge_ranges.append((row_number, row_number + item["rowspan"] - 1))
+            row_number += 1
+
+        for start_row, end_row in group_merge_ranges:
+            sheet.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+
+        key_total_row = row_number
+        sheet.cell(row=key_total_row, column=1, value="合计")
+        sheet.merge_cells(start_row=key_total_row, start_column=1, end_row=key_total_row, end_column=2)
+        key_total = data.get("key_product_total_row") or {"counts": {}, "total": 0}
+        for offset, column in enumerate(key_columns):
+            sheet.cell(row=key_total_row, column=3 + offset, value=key_total["counts"].get(column["key"], 0))
+        sheet.cell(
+            row=key_total_row,
+            column=last_column,
+            value=f"=SUM(C{key_total_row}:{get_column_letter(last_column - 1)}{key_total_row})",
+        )
+        for col_idx in range(1, last_column + 1):
+            _style_cell(sheet.cell(row=key_total_row, column=col_idx), fill_color="FFFFFFFF", bold=True)
+
     widths = {"A": 7, "B": 24, "C": 12, "D": 12, "E": 12, "F": 12, "G": 12, "H": 12, "I": 12}
     for column, width in widths.items():
         sheet.column_dimensions[column].width = width
@@ -1433,7 +1766,7 @@ def export_overall_report(
     buffer.seek(0)
     filename = f"总体营销_{start}_{end}.xlsx"
     encoded = quote(filename)
-    log_operation(db, current_user["id"], "export_marketing_overall", "marketing", None, {"start_date": start.isoformat(), "end_date": end.isoformat()})
+    log_operation(db, current_user["id"], "export_marketing_overall", "marketing", None, {"start_date": start.isoformat(), "end_date": end.isoformat(), "product_source": source})
     return StreamingResponse(
         buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

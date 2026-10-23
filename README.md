@@ -1212,6 +1212,7 @@ def get_default_permissions(role_name):
 | v1.3 | 2026-08-17 | 签入签出报表遵时率/工时利用率/班表出勤率改为系统重算（汇总与逐日明细同口径，见 8.1） |
 | v1.4 | 2026-10-20 | 新增营销明细导入、营销统计、总体营销报表、营销设置及带样式 Excel 导出 |
 | v1.5 | 2026-10-21 | 接入营销工单 `fwgd` 来源：按组织机构/建单租户分类，总体营销调整 13 行并支持来源筛选 |
+| v1.6 | 2026-10-23 | 总体营销新增重点业务产品统计表、产品配置与线上直办/办理工单/合计来源切换 |
 
 ---
 
@@ -1301,8 +1302,8 @@ def get_default_permissions(role_name):
 |------|------|------|------|
 | 营销明细 | `/marketing-orders` | `marketing.view` / `marketing.upload` / `marketing.delete` | 导入、筛选、删除营销明细 |
 | 营销统计 | `/marketing-report` | `marketing_report.view` / `marketing_report.export` | 员工、班组、行分类、产品、日期多维统计 |
-| 总体营销 | `/marketing-overall` | `marketing_overall.view` / `marketing_overall.export` | 固定 9 列总体营销表及带样式 Excel 导出 |
-| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 总体营销行分类规则（同时用于营销统计行分类） |
+| 总体营销 | `/marketing-overall` | `marketing_overall.view` / `marketing_overall.export` | 固定 9 列总体营销表、重点业务产品统计表及带样式 Excel 导出 |
+| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 总体营销行分类规则、重点业务产品配置（同时用于营销统计行分类） |
 
 ### 16.2 明细导入规则
 
@@ -1341,7 +1342,18 @@ def get_default_permissions(role_name):
 - 导出的 `.xlsx` 包含表头红字、分区底色、合并单元格、网格线和公式。
 - 营销统计页支持“数据来源”筛选：`xszb` 为线上直办，`fwgd` 为办理工单。
 
-### 16.6 主要 API
+### 16.6 重点业务产品统计
+
+- 营销设置中新增“重点业务产品设置”，可通过产品ID、产品名称或产品库下拉框添加，并上移/下移调整列顺序。
+- 每个产品配置包含业务名、产品ID、产品名称；业务名作为总体营销下方新表的列名。
+- 产品统计按明细行计数，命中产品ID优先，未配置产品ID时按产品名称匹配；不限制重点业务分类。
+- 新表固定展示 5 个工作组：热线、区域、维系、工单、分公司；线上直办与办理工单同名工作组合并。
+- 班组取员工表班组，工号未匹配到员工时汇总为“未分班组”；仅展示有数据的工作组/班组组合。
+- `降套维系`、未分组数据不纳入新表。
+- 页面提供来源切换：线上直办（默认）、办理工单、合计，通过 `product_source` 参数传递。
+- 导出的 `.xlsx` 会在原总体营销表下方追加“重点业务产品统计”表。
+
+### 16.7 主要 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -1351,9 +1363,11 @@ def get_default_permissions(role_name):
 | DELETE | `/api/marketing/details/import/{batch}` | 按导入批次删除 |
 | DELETE | `/api/marketing/details/{id}` | 删除单条明细 |
 | GET/PUT | `/api/marketing/overall-row-rules` | 读取/保存总体营销行分类规则 |
+| GET/PUT | `/api/marketing/key-products` | 读取/保存重点业务产品配置 |
+| GET | `/api/marketing/product-options` | 产品库下拉选项，支持 `keyword` 搜索 |
 | GET | `/api/marketing/organizations` | 组织机构命中预览 |
 | GET | `/api/marketing/row-rule-preview` | 未分类取值预览 |
 | GET | `/api/marketing/report` | 营销多维统计，支持 `data_type` 来源筛选 |
 | GET | `/api/marketing/report/export` | CSV 导出，支持 `data_type` 来源筛选 |
-| GET | `/api/marketing/overall-report` | 总体营销数据 |
-| GET | `/api/marketing/overall-report/export` | 总体营销 Excel 导出 |
+| GET | `/api/marketing/overall-report` | 总体营销数据，支持 `product_source=xszb/fwgd/all` |
+| GET | `/api/marketing/overall-report/export` | 总体营销 Excel 导出，支持 `product_source` |

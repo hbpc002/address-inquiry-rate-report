@@ -81,7 +81,7 @@ def _clean():
     try:
         db.query(MarketingDetail).delete()
         db.query(Employee).delete()
-        db.query(AppConfig).filter(AppConfig.key == "marketing_overall_row_rules").delete(synchronize_session=False)
+        db.query(AppConfig).filter(AppConfig.key.in_(["marketing_overall_row_rules", "marketing_key_products"])).delete(synchronize_session=False)
         db.query(OperationLog).delete()
         db.commit()
     finally:
@@ -407,6 +407,147 @@ class TestMarketingWorkOrders:
         assert details["total"] == 1
         assert details["items"][0]["source"] == "办理工单"
         assert details["items"][0]["tenant"] == "广西"
+
+
+class TestKeyProductStatistics:
+
+    def setup_method(self):
+        _clean()
+        _seed_employees()
+
+    def _seed_key_products(self):
+        resp = client.put("/api/marketing/key-products", json={
+            "products": [
+                {"business_name": "业务A", "product_id": "P1", "product_name": "产品A"},
+                {"business_name": "业务B", "product_id": "P2", "product_name": "产品B"},
+                {"business_name": "业务C", "product_id": "P3", "product_name": "产品C"},
+            ],
+        })
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    def _seed_data(self):
+        online_rows = [
+            _en_row(kf="KF001", org="广西分公司>>热线运营组", trade="T1", product_id="P1", product_name="产品A"),
+            _en_row(kf="KF001", org="广西分公司>>热线运营组", trade="T2", product_id="P2", product_name="产品B"),
+            _en_row(kf="KF002", org="南方二中心>>通软-在线", trade="T3", product_id="P1", product_name="产品A"),
+            _en_row(kf="KF999", org="广西分公司>>热线运营组", trade="T4", product_id="P1", product_name="产品A"),
+        ]
+        assert _upload(EN_HEADERS, online_rows).status_code == 200
+        assert _upload(FWGD_HEADERS, [
+            _fwgd_row(kf="KF002", tenant="广西", trade="W1", product_id="P3", product_name="产品C", finish="20261005120000"),
+        ]).status_code == 200
+        _set_overall_rules([
+            {"row_label": "线上直办-热线", "field": "org_name", "match_type": "contains", "pattern": "热线运营组", "priority": 1, "enabled": True},
+            {"row_label": "线上直办-区域", "field": "org_name", "match_type": "contains", "pattern": "南方二中心", "priority": 2, "enabled": True},
+        ])
+
+    def _report(self, source):
+        return client.get("/api/marketing/overall-report", params={
+            "year_month": "2026-10",
+            "product_source": source,
+        }).json()
+
+    def test_key_product_config_crud_and_validation(self):
+        resp = client.put("/api/marketing/key-products", json={
+            "products": [
+                {"business_name": "业务B", "product_id": "P2", "product_name": "产品B"},
+                {"business_name": "业务A", "product_name": "产品A"},
+            ],
+        })
+        assert resp.status_code == 200, resp.text
+        products = resp.json()["products"]
+        assert [item["business_name"] for item in products] == ["业务B", "业务A"]
+        assert [item["sort"] for item in products] == [0, 1]
+        assert products[0]["id"]
+
+        fetched = client.get("/api/marketing/key-products").json()["products"]
+        assert [item["business_name"] for item in fetched] == ["业务B", "业务A"]
+
+        assert client.put("/api/marketing/key-products", json={
+            "products": [{"business_name": "", "product_id": "P1"}],
+        }).status_code == 400
+        assert client.put("/api/marketing/key-products", json={
+            "products": [{"business_name": "无产品"}],
+        }).status_code == 400
+        assert client.put("/api/marketing/key-products", json={
+            "products": [
+                {"business_name": "重复1", "product_id": "P1"},
+                {"business_name": "重复2", "product_id": "p1"},
+            ],
+        }).status_code == 400
+
+    def test_product_options_returns_distinct_products(self):
+        self._seed_data()
+        items = client.get("/api/marketing/product-options").json()["items"]
+        lookup = {(item["product_id"], item["product_name"]): item["count"] for item in items}
+        assert lookup[("P1", "产品A")] == 3
+        assert lookup[("P2", "产品B")] == 1
+        assert lookup[("P3", "产品C")] == 1
+
+        filtered = client.get("/api/marketing/product-options", params={"keyword": "产品B"}).json()["items"]
+        assert len(filtered) == 1
+        assert filtered[0]["product_id"] == "P2"
+
+    def test_product_table_defaults_to_online_source(self):
+        self._seed_key_products()
+        self._seed_data()
+        report = self._report("xszb")
+        assert report["key_product_source"] == "xszb"
+        assert report["key_product_source_label"] == "线上直办"
+        assert [col["label"] for col in report["key_product_columns"]] == ["业务A", "业务B", "业务C"]
+        rows = report["key_product_rows"]
+        assert [row["work_group"] for row in rows if row["rowspan"]] == ["热线", "区域"]
+        hotline_team = next(row for row in rows if row["work_group"] == "热线" and row["team"] == "热线一组")
+        assert hotline_team["counts"] == {"key_product_0": 1, "key_product_1": 1, "key_product_2": 0}
+        assert hotline_team["total"] == 2
+        unassigned = next(row for row in rows if row["team"] == "未分班组")
+        assert unassigned["work_group"] == "热线"
+        assert unassigned["counts"]["key_product_0"] == 1
+        area_team = next(row for row in rows if row["work_group"] == "区域")
+        assert area_team["team"] == "区域二组"
+        assert area_team["counts"]["key_product_0"] == 1
+        assert all(row["counts"].get("key_product_2", 0) == 0 for row in rows)
+        assert report["key_product_total_row"] == {
+            "counts": {"key_product_0": 3, "key_product_1": 1, "key_product_2": 0},
+            "total": 4,
+        }
+
+    def test_product_table_supports_work_order_and_total_sources(self):
+        self._seed_key_products()
+        self._seed_data()
+        work_order = self._report("fwgd")
+        work_order_rows = work_order["key_product_rows"]
+        assert len(work_order_rows) == 1
+        assert work_order_rows[0]["work_group"] == "区域"
+        assert work_order_rows[0]["team"] == "区域二组"
+        assert work_order_rows[0]["counts"] == {"key_product_0": 0, "key_product_1": 0, "key_product_2": 1}
+        assert work_order["key_product_total_row"]["total"] == 1
+
+        total = self._report("all")
+        assert total["key_product_source_label"] == "合计"
+        assert total["key_product_total_row"] == {
+            "counts": {"key_product_0": 3, "key_product_1": 1, "key_product_2": 1},
+            "total": 5,
+        }
+        assert client.get("/api/marketing/overall-report", params={
+            "year_month": "2026-10", "product_source": "bad",
+        }).status_code == 400
+
+    def test_product_table_export_contains_new_table(self):
+        self._seed_key_products()
+        self._seed_data()
+        resp = client.get("/api/marketing/overall-report/export", params={
+            "year_month": "2026-10", "product_source": "all",
+        })
+        assert resp.status_code == 200
+        wb = load_workbook(io.BytesIO(resp.content))
+        ws = wb["总体营销"]
+        values = [str(cell.value) for row in ws.iter_rows() for cell in row if cell.value is not None]
+        assert "重点业务产品统计（合计）" in values
+        assert "工作组" in values
+        assert "业务A" in values
+        assert "未分班组" in values
 
 
 class TestMarketingRulesAndExports:
