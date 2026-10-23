@@ -501,12 +501,19 @@ class TestKeyProductStatistics:
         hotline_team = next(row for row in rows if row["work_group"] == "热线" and row["team"] == "热线一组")
         assert hotline_team["counts"] == {"key_product_0": 1, "key_product_1": 1, "key_product_2": 0}
         assert hotline_team["total"] == 2
+        assert hotline_team["rowspan"] == 3
         unassigned = next(row for row in rows if row["team"] == "未分班组")
         assert unassigned["work_group"] == "热线"
         assert unassigned["counts"]["key_product_0"] == 1
+        hotline_subtotal = next(row for row in rows if row["work_group"] == "热线" and row.get("is_subtotal"))
+        assert hotline_subtotal["team"] == "小计"
+        assert hotline_subtotal["counts"] == {"key_product_0": 2, "key_product_1": 1, "key_product_2": 0}
+        assert hotline_subtotal["total"] == 3
+        assert hotline_subtotal["rowspan"] == 0
         area_team = next(row for row in rows if row["work_group"] == "区域")
         assert area_team["team"] == "区域二组"
         assert area_team["counts"]["key_product_0"] == 1
+        assert not any(row["work_group"] == "区域" and row.get("is_subtotal") for row in rows)
         assert all(row["counts"].get("key_product_2", 0) == 0 for row in rows)
         assert report["key_product_total_row"] == {
             "counts": {"key_product_0": 3, "key_product_1": 1, "key_product_2": 0},
@@ -548,6 +555,11 @@ class TestKeyProductStatistics:
         assert "工作组" in values
         assert "业务A" in values
         assert "未分班组" in values
+        assert "小计" in values
+        all_rows = list(ws.iter_rows())
+        title_index = next(index for index, row in enumerate(all_rows) if row[0].value == "重点业务产品统计（合计）")
+        subtotal_row = next(row for row in all_rows[title_index:] if row[1].value == "小计")
+        assert [cell.value for cell in subtotal_row[2:5]] == [2, 1, 0]
 
 
 class TestMarketingRulesAndExports:

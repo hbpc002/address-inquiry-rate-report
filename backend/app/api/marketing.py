@@ -926,17 +926,33 @@ def _compute_key_product_table(
     total = 0
     for work_group in WORK_GROUP_SUFFIXES:
         group_items = [item for item in sorted_items if item[0][0] == work_group]
+        has_subtotal = len(group_items) > 1
+        group_counts = {col["key"]: 0 for col in columns}
+        group_total = 0
         for index, ((_, team), bucket) in enumerate(group_items):
             rows.append({
                 "work_group": work_group,
                 "team": team,
-                "rowspan": len(group_items) if index == 0 else 0,
+                "rowspan": len(group_items) + (1 if has_subtotal else 0) if index == 0 else 0,
                 "counts": dict(bucket["counts"]),
                 "total": bucket["total"],
+                "is_subtotal": False,
             })
             for key, value in bucket["counts"].items():
                 total_counts[key] += value
+                group_counts[key] += value
             total += bucket["total"]
+            group_total += bucket["total"]
+
+        if has_subtotal:
+            rows.append({
+                "work_group": work_group,
+                "team": "小计",
+                "rowspan": 0,
+                "counts": group_counts,
+                "total": group_total,
+                "is_subtotal": True,
+            })
 
     return {
         "key_product_columns": columns,
@@ -1734,7 +1750,10 @@ def export_overall_report(
                 value=f"=SUM(C{row_number}:{get_column_letter(last_column - 1)}{row_number})",
             )
             for col_idx in range(1, last_column + 1):
-                _style_cell(sheet.cell(row=row_number, column=col_idx))
+                if item.get("is_subtotal"):
+                    _style_cell(sheet.cell(row=row_number, column=col_idx), fill_color="FFF2F2F2", bold=True)
+                else:
+                    _style_cell(sheet.cell(row=row_number, column=col_idx))
             if item.get("rowspan", 0) > 1:
                 group_merge_ranges.append((row_number, row_number + item["rowspan"] - 1))
             row_number += 1

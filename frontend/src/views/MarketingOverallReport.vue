@@ -24,13 +24,6 @@
         <el-form-item v-if="searchForm.type === 'range'" label="结束日期">
           <el-date-picker v-model="searchForm.end_date" type="date" value-format="YYYY-MM-DD" />
         </el-form-item>
-        <el-form-item label="产品统计来源">
-          <el-radio-group v-model="productSource" @change="loadData">
-            <el-radio-button value="xszb">线上直办</el-radio-button>
-            <el-radio-button value="fwgd">办理工单</el-radio-button>
-            <el-radio-button value="all">合计</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="loadData">查询</el-button>
         </el-form-item>
@@ -81,7 +74,11 @@
       <div class="key-product-section">
         <div class="section-header">
           <span class="section-title">重点业务产品统计</span>
-          <el-tag size="small">{{ keyProductSourceLabel }}</el-tag>
+          <el-radio-group v-model="productSource" size="small" @change="loadData">
+            <el-radio-button value="xszb">线上直办</el-radio-button>
+            <el-radio-button value="fwgd">办理工单</el-radio-button>
+            <el-radio-button value="all">合计</el-radio-button>
+          </el-radio-group>
         </div>
         <el-alert
           v-if="!keyProductColumns.length"
@@ -101,7 +98,11 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(row, index) in keyProductRows" :key="`${row.work_group}-${row.team}-${index}`">
+              <tr
+                v-for="(row, index) in keyProductRows"
+                :key="`${row.work_group}-${row.team}-${index}`"
+                :class="{ 'subtotal-row': row.is_subtotal }"
+              >
                 <td v-if="row.rowspan > 0" :rowspan="row.rowspan" class="work-group-col section-no">{{ row.work_group }}</td>
                 <td class="team-col">{{ row.team }}</td>
                 <td v-for="col in keyProductColumns" :key="col.key" class="col-value">{{ row.counts[col.key] }}</td>
@@ -146,7 +147,6 @@ const productSource = ref('xszb')
 const keyProductColumns = ref([])
 const keyProductRows = ref([])
 const keyProductTotalRow = ref({ counts: {}, total: 0 })
-const keyProductSourceLabel = ref('线上直办')
 
 function buildParams() {
   const params = { product_source: productSource.value }
@@ -169,7 +169,6 @@ async function loadData() {
     keyProductColumns.value = res.data.key_product_columns || []
     keyProductRows.value = res.data.key_product_rows || []
     keyProductTotalRow.value = res.data.key_product_total_row || { counts: {}, total: 0 }
-    keyProductSourceLabel.value = res.data.key_product_source_label || ''
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
   }
@@ -240,6 +239,8 @@ onMounted(loadData)
 .section-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 10px;
 }
