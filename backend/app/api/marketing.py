@@ -963,6 +963,29 @@ def _compute_key_product_table(
     }
 
 
+def _source_date_ranges(
+    db: Session,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+) -> Dict[str, Dict[str, Optional[str]]]:
+    ranges = {}
+    for source in (SOURCE_XSZB, SOURCE_FWGD):
+        query = db.query(
+            func.min(MarketingDetail.finish_date),
+            func.max(MarketingDetail.finish_date),
+        ).filter(_source_condition(source))
+        if start:
+            query = query.filter(MarketingDetail.finish_date >= start)
+        if end:
+            query = query.filter(MarketingDetail.finish_date <= end)
+        min_date, max_date = query.one()
+        ranges[source] = {
+            "start_date": min_date.isoformat() if min_date else None,
+            "end_date": max_date.isoformat() if max_date else None,
+        }
+    return ranges
+
+
 def _compute_overall(
     db: Session,
     start: date,
@@ -1619,7 +1642,12 @@ def get_overall_report(
     require_permission(current_user, "marketing_overall.view")
     start, end = _resolve_range(year_month, start_date, end_date)
     source = _normalize_product_source(product_source)
-    return _compute_overall(db, start, end, source)
+    data = _compute_overall(db, start, end, source)
+    data["data_ranges"] = {
+        "database": _source_date_ranges(db),
+        "query": _source_date_ranges(db, start, end),
+    }
+    return data
 
 
 def _excel_border():

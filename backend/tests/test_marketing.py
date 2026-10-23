@@ -323,6 +323,48 @@ class TestMarketingReport:
         assert hotline["rowspan"] == 6
         assert report["rows"][1]["rowspan"] == 0
 
+    def test_overall_source_data_ranges_global_and_query(self):
+        online_rows = [
+            _en_row(trade="ON1", product_id="P1", finish="20260930120000"),
+            _en_row(trade="ON2", product_id="P2", finish="20261001120000"),
+            _en_row(trade="ON3", product_id="P3", finish="20261020120000"),
+            _en_row(trade="ON4", product_id="P4", finish="20261101120000"),
+        ]
+        assert _upload(EN_HEADERS, online_rows).status_code == 200
+        work_order_rows = [
+            _fwgd_row(trade="WO1", product_id="W1", finish="20261002120000"),
+            _fwgd_row(trade="WO2", product_id="W2", finish="20261022120000"),
+        ]
+        assert _upload(FWGD_HEADERS, work_order_rows).status_code == 200
+
+        report = client.get("/api/marketing/overall-report", params={
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-31",
+        }).json()
+        assert report["stats"]["start_date"] == "2026-10-01"
+        assert report["stats"]["end_date"] == "2026-10-31"
+        assert report["data_ranges"]["database"] == {
+            "xszb": {"start_date": "2026-09-30", "end_date": "2026-11-01"},
+            "fwgd": {"start_date": "2026-10-02", "end_date": "2026-10-22"},
+        }
+        assert report["data_ranges"]["query"] == {
+            "xszb": {"start_date": "2026-10-01", "end_date": "2026-10-20"},
+            "fwgd": {"start_date": "2026-10-02", "end_date": "2026-10-22"},
+        }
+
+        monthly = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        assert monthly["data_ranges"]["database"] == report["data_ranges"]["database"]
+
+        empty = client.get("/api/marketing/overall-report", params={
+            "start_date": "2026-10-10",
+            "end_date": "2026-10-15",
+        }).json()
+        assert empty["data_ranges"]["database"] == report["data_ranges"]["database"]
+        assert empty["data_ranges"]["query"] == {
+            "xszb": {"start_date": None, "end_date": None},
+            "fwgd": {"start_date": None, "end_date": None},
+        }
+
     def test_overall_export_has_style_merge_and_formulas(self):
         assert _upload(EN_HEADERS, [_en_row(org="热线运营组")]).status_code == 200
         _set_overall_rules([

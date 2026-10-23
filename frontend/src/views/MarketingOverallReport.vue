@@ -30,6 +30,15 @@
       </el-form>
 
       <el-alert
+        v-if="dataRangesLoaded"
+        class="data-range-alert"
+        :type="databaseRangeType"
+        :closable="false"
+        show-icon
+        :title="databaseRangeText"
+      />
+
+      <el-alert
         v-if="stats.unclassified_rows || stats.unclassified_business_rows"
         type="warning"
         :closable="false"
@@ -37,6 +46,16 @@
         style="margin-bottom: 12px"
         :title="`有 ${stats.unclassified_rows} 条产品行未匹配行分类规则，${stats.unclassified_business_rows} 条产品行不属于当前统计业务类型；未分类数据不计入下表，请在营销设置中补充规则。`"
       />
+
+      <div v-if="dataRangesLoaded" class="query-range-summary">
+        <div class="query-range-title">当前查询范围：{{ formatRange({ start_date: stats.start_date, end_date: stats.end_date }) }}</div>
+        <div class="query-range-item" :class="{ 'range-incomplete': isRangeIncomplete(queryRanges.xszb) }">
+          <span class="range-label">线上直办数据：</span>{{ formatQueryRange(queryRanges.xszb) }}
+        </div>
+        <div class="query-range-item" :class="{ 'range-incomplete': isRangeIncomplete(queryRanges.fwgd) }">
+          <span class="range-label">营销工单数据：</span>{{ formatQueryRange(queryRanges.fwgd) }}
+        </div>
+      </div>
 
       <div class="table-wrap">
         <table class="overall-table">
@@ -122,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
@@ -133,7 +152,7 @@ const ui = useUiConfigStore()
 const now = new Date()
 const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 const searchForm = reactive({ type: 'month', month: defaultMonth, start_date: '', end_date: '' })
-const stats = reactive({ grand_total: 0, unclassified_rows: 0, unclassified_business_rows: 0 })
+const stats = reactive({ start_date: '', end_date: '', grand_total: 0, unclassified_rows: 0, unclassified_business_rows: 0 })
 const columns = ref([
   { key: 'overlay', label: '叠加包' },
   { key: 'package_change', label: '套餐变更' },
@@ -147,6 +166,41 @@ const productSource = ref('xszb')
 const keyProductColumns = ref([])
 const keyProductRows = ref([])
 const keyProductTotalRow = ref({ counts: {}, total: 0 })
+const dataRanges = ref({ database: {}, query: {} })
+const dataRangesLoaded = ref(false)
+const databaseRanges = computed(() => dataRanges.value.database || {})
+const queryRanges = computed(() => dataRanges.value.query || {})
+const databaseRangeMismatch = computed(() => {
+  const onlineEnd = databaseRanges.value.xszb?.end_date
+  const workOrderEnd = databaseRanges.value.fwgd?.end_date
+  return Boolean((onlineEnd || workOrderEnd) && onlineEnd !== workOrderEnd)
+})
+const databaseRangeType = computed(() => databaseRangeMismatch.value ? 'warning' : 'info')
+const databaseRangeText = computed(() => {
+  const suffix = databaseRangeMismatch.value ? '，两者截止日期不一致，请确认数据是否导入完整' : ''
+  return `数据库数据范围：线上直办 ${formatRange(databaseRanges.value.xszb)}；营销工单 ${formatRange(databaseRanges.value.fwgd)}${suffix}`
+})
+
+function formatRange(range) {
+  if (!range?.start_date || !range?.end_date) return '暂无数据'
+  return range.start_date === range.end_date
+    ? range.start_date
+    : `${range.start_date} ~ ${range.end_date}`
+}
+
+function formatQueryRange(range) {
+  if (!range?.start_date && !range?.end_date) return '当前查询范围内无数据'
+  const text = formatRange(range)
+  return isRangeIncomplete(range) ? `${text}（未覆盖完整查询范围）` : text
+}
+
+function isRangeIncomplete(range) {
+  if (!range?.start_date || !range?.end_date) return true
+  return Boolean(
+    (stats.start_date && range.start_date > stats.start_date) ||
+    (stats.end_date && range.end_date < stats.end_date)
+  )
+}
 
 function buildParams() {
   const params = { product_source: productSource.value }
@@ -169,6 +223,8 @@ async function loadData() {
     keyProductColumns.value = res.data.key_product_columns || []
     keyProductRows.value = res.data.key_product_rows || []
     keyProductTotalRow.value = res.data.key_product_total_row || { counts: {}, total: 0 }
+    dataRanges.value = res.data.data_ranges || { database: {}, query: {} }
+    dataRangesLoaded.value = true
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
   }
@@ -232,6 +288,32 @@ onMounted(loadData)
   color: #00b050;
   background: #c6efce !important;
   font-weight: 700;
+}
+.data-range-alert {
+  margin-bottom: 12px;
+}
+.query-range-summary {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  color: #303133;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.query-range-title {
+  font-weight: 700;
+}
+.query-range-item {
+  color: #606266;
+}
+.range-label {
+  color: #909399;
+}
+.query-range-item.range-incomplete {
+  color: #e6a23c;
+  font-weight: 600;
 }
 .key-product-section {
   margin-top: 24px;
