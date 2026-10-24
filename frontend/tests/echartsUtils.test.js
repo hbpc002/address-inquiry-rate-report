@@ -7,6 +7,8 @@ import {
   createLineOptions,
   createHorizontalBarOptions,
   createMultiBarOptions,
+  createStackedBarOptions,
+  createMultiLineOptions,
   CHART_COLORS
 } from '../src/utils/echarts'
 
@@ -17,7 +19,53 @@ describe('echarts 图表工具函数', () => {
     expect(typeof createLineOptions).toBe('function')
     expect(typeof createHorizontalBarOptions).toBe('function')
     expect(typeof createMultiBarOptions).toBe('function')
+    expect(typeof createStackedBarOptions).toBe('function')
+    expect(typeof createMultiLineOptions).toBe('function')
     expect(Array.isArray(CHART_COLORS)).toBe(true)
+  })
+
+  it('createStackedBarOptions 应生成堆叠柱状图并支持横向、缩放和自定义 tooltip', () => {
+    const formatter = (params) => params[0].name
+    const options = createStackedBarOptions(
+      ['班组A', '班组B'],
+      [
+        { name: '叠加包', data: [3, 5] },
+        { name: '套餐变更', data: [1, 2] }
+      ],
+      '班组业务结构',
+      { horizontal: true, dataZoom: true, tooltipFormatter: formatter, showLabel: true }
+    )
+    expect(options.series).toHaveLength(2)
+    expect(options.series[0].type).toBe('bar')
+    expect(options.series[0].stack).toBe('total')
+    expect(options.series[0].label.show).toBe(true)
+    expect(options.yAxis.type).toBe('category')
+    expect(options.xAxis.type).toBe('value')
+    expect(options.dataZoom).toHaveLength(2)
+    expect(options.tooltip.formatter).toBe(formatter)
+    expect(options.tooltip.appendToBody).toBe(true)
+  })
+
+  it('createMultiLineOptions 应生成多指标折线图并自动启用长周期缩放', () => {
+    const categories = Array.from({ length: 31 }, (_, index) => `2026-10-${String(index + 1).padStart(2, '0')}`)
+    const options = createMultiLineOptions(categories, [
+      { name: '办理量', data: categories.map(() => 10) },
+      { name: '订单数', data: categories.map(() => 6), area: true }
+    ], '每日趋势', { yName: '数量' })
+    expect(options.series).toHaveLength(2)
+    expect(options.series[0].type).toBe('line')
+    expect(options.series[1].areaStyle).toBeTruthy()
+    expect(options.dataZoom).toHaveLength(2)
+    expect(options.xAxis.data).toHaveLength(31)
+  })
+
+  it('createHorizontalBarOptions 支持自定义 tooltip 并保留右边界空间', () => {
+    const formatter = () => '自定义'
+    const options = createHorizontalBarOptions(['A'], [1], '排行', '', '单', formatter)
+    expect(options.tooltip.formatter).toBe(formatter)
+    expect(options.tooltip.confine).toBe(false)
+    expect(options.tooltip.appendToBody).toBe(true)
+    expect(options.grid.right).toBe('8%')
   })
 
   it('createMultiBarOptions 应生成多系列柱状图配置（支持班组晚签/早退、分时分布、班次结构图）', () => {

@@ -77,6 +77,239 @@
         <div class="stat-item"><el-statistic title="涉及员工" :value="stats.people_count" /></div>
       </el-row>
 
+      <div v-if="stats.total > 0" class="chart-section">
+        <div class="chart-section-header">
+          <span class="chart-section-title">图表分析</span>
+          <el-radio-group v-model="chartSection" size="small">
+            <el-radio-button value="overview">总览</el-radio-button>
+            <el-radio-button value="team">班组分析</el-radio-button>
+            <el-radio-button value="employee">员工分析</el-radio-button>
+            <el-radio-button value="trend">趋势分析</el-radio-button>
+            <el-radio-button value="auxiliary">辅助维度</el-radio-button>
+          </el-radio-group>
+        </div>
+
+        <template v-if="chartSection === 'overview'">
+          <el-row :gutter="16">
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="businessPieOptions" height="280px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="validPieOptions" height="280px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="lhPieOptions" height="280px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="volumeOrderOptions" height="280px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="perPersonOptions" height="280px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="orderRateOptions" height="280px" />
+              </el-card>
+            </el-col>
+          </el-row>
+        </template>
+
+        <template v-else-if="chartSection === 'team'">
+          <div class="chart-toolbar">
+            <span>排行指标</span>
+            <el-select v-model="teamMetric" size="small" style="width: 150px">
+              <el-option v-for="item in rankingMetrics" :key="item.key" :label="item.label" :value="item.key" />
+            </el-select>
+            <span>Top N</span>
+            <el-select v-model="teamLimit" size="small" style="width: 90px">
+              <el-option v-for="limit in topLimits" :key="limit" :label="String(limit)" :value="limit" />
+            </el-select>
+          </div>
+          <el-row :gutter="16">
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamRankingOptions" height="300px" @click="handleTeamChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamAvgRankingOptions" height="300px" @click="handleTeamChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamAvgOrderRankingOptions" height="300px" @click="handleTeamChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamOrderRateRankingOptions" height="300px" @click="handleTeamChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamBusinessOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamLhOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamValidOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamRadarOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamScatterOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="24" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamParetoOptions" height="340px" />
+              </el-card>
+            </el-col>
+          </el-row>
+        </template>
+
+        <template v-else-if="chartSection === 'employee'">
+          <div class="chart-toolbar">
+            <span>排行指标</span>
+            <el-select v-model="employeeMetric" size="small" style="width: 150px">
+              <el-option v-for="item in rankingMetrics" :key="item.key" :label="item.label" :value="item.key" />
+            </el-select>
+            <span>Top N</span>
+            <el-select v-model="employeeLimit" size="small" style="width: 90px">
+              <el-option v-for="limit in topLimits" :key="limit" :label="String(limit)" :value="limit" />
+            </el-select>
+          </div>
+          <el-row :gutter="16">
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeRankingOptions" height="320px" @click="handleEmployeeChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeOrderRankingOptions" height="320px" @click="handleEmployeeChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeOrderRateRankingOptions" height="320px" @click="handleEmployeeChartClick" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeBusinessOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeLhOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeValidOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeScatterOptions" height="340px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="employeeParetoOptions" height="340px" />
+              </el-card>
+            </el-col>
+          </el-row>
+        </template>
+
+        <template v-else-if="chartSection === 'trend'">
+          <el-row :gutter="16">
+            <el-col :span="24" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="dailyTrendOptions" height="340px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="dailyBusinessOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="dailyLhOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="dailyValidOptions" height="300px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="dailyOrderRateOptions" height="300px" />
+              </el-card>
+            </el-col>
+          </el-row>
+        </template>
+
+        <template v-else>
+          <el-row :gutter="16">
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="productRankingOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="groupRankingOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="productBusinessOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="productLhOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="groupBusinessOptions" height="320px" />
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="groupLhOptions" height="320px" />
+              </el-card>
+            </el-col>
+          </el-row>
+        </template>
+      </div>
+
       <el-tabs v-model="dimension" @tab-change="loadData">
         <el-tab-pane label="员工" name="employee" />
         <el-tab-pane label="班组" name="team" />
@@ -130,6 +363,37 @@ import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import { downloadBlob } from '../utils/download'
+import Echart from '../components/Echart.vue'
+import {
+  RANKING_METRICS,
+  TOP_LIMITS,
+  enrichEmployees,
+  enrichTeams,
+  enrichGroups,
+  enrichProducts,
+  buildBusinessPieOptions,
+  buildValidPieOptions,
+  buildLhPieOptions,
+  buildVolumeOrderOptions,
+  buildPerPersonOptions,
+  buildOrderRateOptions,
+  buildTeamRankingOptions,
+  buildEmployeeRankingOptions,
+  buildProductRankingOptions,
+  buildGroupRankingOptions,
+  buildParetoOptions,
+  buildBusinessCrossOptions,
+  buildLhCrossOptions,
+  buildValidCrossOptions,
+  buildDailyTrendOptions,
+  buildDailyBusinessOptions,
+  buildDailyLhOptions,
+  buildDailyValidOptions,
+  buildDailyOrderRateOptions,
+  buildTeamScatterOptions,
+  buildEmployeeScatterOptions,
+  buildTeamRadarOptions
+} from '../utils/marketingCharts'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
@@ -163,6 +427,126 @@ const result = ref({ employees: [], teams: [], groups: [], products: [], days: [
 const dimension = ref('employee')
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', group: 'groups', product: 'products', day: 'days' }[dimension.value]))
 const tableData = computed(() => result.value[dimensionKey.value] || [])
+const chartSection = ref('overview')
+const teamMetric = ref('total')
+const employeeMetric = ref('total')
+const teamLimit = ref(10)
+const employeeLimit = ref(10)
+const rankingMetrics = RANKING_METRICS
+const topLimits = TOP_LIMITS
+
+const teamItems = computed(() => enrichTeams(result.value.teams || []))
+const employeeItems = computed(() => enrichEmployees(result.value.employees || []))
+const groupItems = computed(() => enrichGroups(result.value.groups || []))
+const productItems = computed(() => enrichProducts(result.value.products || []))
+const dayItems = computed(() => result.value.days || [])
+
+const businessPieOptions = computed(() => buildBusinessPieOptions(stats))
+const validPieOptions = computed(() => buildValidPieOptions(stats))
+const lhPieOptions = computed(() => buildLhPieOptions(stats))
+const volumeOrderOptions = computed(() => buildVolumeOrderOptions(stats))
+const perPersonOptions = computed(() => buildPerPersonOptions(stats))
+const orderRateOptions = computed(() => buildOrderRateOptions(stats))
+
+const teamRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
+  metric: teamMetric.value,
+  limit: teamLimit.value
+}))
+const teamAvgRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
+  metric: 'avg_total',
+  limit: teamLimit.value
+}))
+const teamAvgOrderRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
+  metric: 'avg_order',
+  limit: teamLimit.value
+}))
+const teamOrderRateRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
+  metric: 'order_rate',
+  limit: teamLimit.value
+}))
+const teamBusinessOptions = computed(() => buildBusinessCrossOptions(teamItems.value, {
+  title: '班组业务结构',
+  limit: teamLimit.value
+}))
+const teamLhOptions = computed(() => buildLhCrossOptions(teamItems.value, {
+  title: '班组来话/去话结构',
+  limit: teamLimit.value
+}))
+const teamValidOptions = computed(() => buildValidCrossOptions(teamItems.value, {
+  title: '班组叠加包有效期结构',
+  limit: teamLimit.value
+}))
+const teamRadarOptions = computed(() => buildTeamRadarOptions(teamItems.value, { limit: 8 }))
+const teamScatterOptions = computed(() => buildTeamScatterOptions(teamItems.value))
+const teamParetoOptions = computed(() => buildParetoOptions(teamItems.value, {
+  metric: 'total',
+  limit: teamLimit.value,
+  title: '班组办理量帕累托图'
+}))
+
+const employeeRankingOptions = computed(() => buildEmployeeRankingOptions(employeeItems.value, {
+  metric: employeeMetric.value,
+  limit: employeeLimit.value
+}))
+const employeeOrderRankingOptions = computed(() => buildEmployeeRankingOptions(employeeItems.value, {
+  metric: 'order_count',
+  limit: employeeLimit.value
+}))
+const employeeOrderRateRankingOptions = computed(() => buildEmployeeRankingOptions(employeeItems.value, {
+  metric: 'order_rate',
+  limit: employeeLimit.value
+}))
+const employeeBusinessOptions = computed(() => buildBusinessCrossOptions(employeeItems.value, {
+  title: '员工业务结构',
+  limit: employeeLimit.value
+}))
+const employeeLhOptions = computed(() => buildLhCrossOptions(employeeItems.value, {
+  title: '员工来话/去话结构',
+  limit: employeeLimit.value
+}))
+const employeeValidOptions = computed(() => buildValidCrossOptions(employeeItems.value, {
+  title: '员工叠加包有效期结构',
+  limit: employeeLimit.value
+}))
+const employeeScatterOptions = computed(() => buildEmployeeScatterOptions(employeeItems.value))
+const employeeParetoOptions = computed(() => buildParetoOptions(employeeItems.value, {
+  metric: 'total',
+  limit: employeeLimit.value,
+  title: '员工办理量帕累托图'
+}))
+
+const dailyTrendOptions = computed(() => buildDailyTrendOptions(dayItems.value))
+const dailyBusinessOptions = computed(() => buildDailyBusinessOptions(dayItems.value))
+const dailyLhOptions = computed(() => buildDailyLhOptions(dayItems.value))
+const dailyValidOptions = computed(() => buildDailyValidOptions(dayItems.value))
+const dailyOrderRateOptions = computed(() => buildDailyOrderRateOptions(dayItems.value))
+
+const productRankingOptions = computed(() => buildProductRankingOptions(productItems.value, {
+  metric: 'total',
+  limit: 10,
+  title: '产品办理量排行'
+}))
+const groupRankingOptions = computed(() => buildGroupRankingOptions(groupItems.value, {
+  metric: 'total',
+  limit: 10,
+  title: '行分类办理量排行'
+}))
+const productBusinessOptions = computed(() => buildBusinessCrossOptions(productItems.value, {
+  title: '产品业务结构',
+  limit: 10
+}))
+const productLhOptions = computed(() => buildLhCrossOptions(productItems.value, {
+  title: '产品来话/去话结构',
+  limit: 10
+}))
+const groupBusinessOptions = computed(() => buildBusinessCrossOptions(groupItems.value, {
+  title: '行分类业务结构',
+  limit: 10
+}))
+const groupLhOptions = computed(() => buildLhCrossOptions(groupItems.value, {
+  title: '行分类来话/去话结构',
+  limit: 10
+}))
 
 function buildParams() {
   const params = {}
@@ -210,6 +594,21 @@ function resetFilters() {
   loadData()
 }
 
+function handleTeamChartClick(params) {
+  const team = params?.data?.team || params?.name
+  if (!team) return
+  searchForm.team = team
+  loadData()
+}
+
+function handleEmployeeChartClick(params) {
+  const kfId = params?.data?.kf_id
+  if (!kfId) return
+  searchForm.emp_no = kfId
+  searchForm.name = ''
+  loadData()
+}
+
 function handleExport() {
   downloadBlob('/marketing/report/export', { ...buildParams(), dimension: dimension.value }, 'marketing_report.csv')
 }
@@ -232,5 +631,37 @@ onMounted(loadData)
 .stat-item {
   flex: 1 1 0;
   min-width: 0;
+}
+.chart-section {
+  margin-bottom: 16px;
+}
+.chart-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.chart-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+.chart-col {
+  margin-bottom: 16px;
+}
+.chart-col :deep(.chart-card) {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
 }
 </style>
