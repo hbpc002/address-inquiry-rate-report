@@ -123,7 +123,7 @@
                 :class="{ 'subtotal-row': row.is_subtotal }"
               >
                 <td v-if="row.rowspan > 0" :rowspan="row.rowspan" class="work-group-col section-no">{{ row.work_group }}</td>
-                <td class="team-col">{{ row.team }}</td>
+                <td class="team-col">{{ formatTeamName(row) }}</td>
                 <td v-for="col in keyProductColumns" :key="col.key" class="col-value">{{ row.counts[col.key] }}</td>
                 <td class="col-value strong">{{ row.total }}</td>
               </tr>
@@ -228,6 +228,10 @@ async function loadData() {
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
   }
+}
+
+function formatTeamName(row) {
+  return row.leader ? `${row.team}（${row.leader}）` : row.team
 }
 
 function formatRatio(value) {

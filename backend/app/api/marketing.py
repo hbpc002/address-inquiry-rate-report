@@ -530,6 +530,17 @@ def _emp_map(db: Session) -> Dict[str, Employee]:
     return result
 
 
+def _team_leader_map(emps: Dict[str, Employee]) -> Dict[str, str]:
+    leader_names: Dict[str, set] = {}
+    for emp in emps.values():
+        if emp.role == "组长" and emp.status == "在职" and emp.team and emp.name:
+            leader_names.setdefault(emp.team, set()).add(emp.name)
+    return {
+        team: "、".join(sorted(names))
+        for team, names in leader_names.items()
+    }
+
+
 def _new_bucket():
     return {
         "total": 0,
@@ -646,14 +657,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         query = query.filter(_source_condition(data_type))
     details = query.all()
     emps = _emp_map(db)
-    leader_names: Dict[str, set] = {}
-    for emp in emps.values():
-        if emp.role == "组长" and emp.status == "在职" and emp.team and emp.name:
-            leader_names.setdefault(emp.team, set()).add(emp.name)
-    team_leaders = {
-        team: "、".join(sorted(names))
-        for team, names in leader_names.items()
-    }
+    team_leaders = _team_leader_map(emps)
     config = _overall_config(db)
     org_map = _xszb_org_map(db)
     group_cache: Dict[str, str] = {}
@@ -891,6 +895,7 @@ def _compute_key_product_table(
         query = query.filter(_source_condition(product_source))
 
     emps = _emp_map(db)
+    team_leaders = _team_leader_map(emps)
     buckets: Dict[tuple, Dict[str, Any]] = {}
     for detail in query.all():
         if _detail_source(detail) == SOURCE_FWGD:
@@ -942,6 +947,7 @@ def _compute_key_product_table(
             rows.append({
                 "work_group": work_group,
                 "team": team,
+                "leader": team_leaders.get(team, ""),
                 "rowspan": len(group_items) + (1 if has_subtotal else 0) if index == 0 else 0,
                 "counts": dict(bucket["counts"]),
                 "total": bucket["total"],
@@ -1777,8 +1783,11 @@ def export_overall_report(
 
         group_merge_ranges = []
         for item in data.get("key_product_rows") or []:
+            team_label = item["team"]
+            if item.get("leader"):
+                team_label = f"{team_label}（{item['leader']}）"
             sheet.cell(row=row_number, column=1, value=item["work_group"] if item.get("rowspan") else None)
-            sheet.cell(row=row_number, column=2, value=item["team"])
+            sheet.cell(row=row_number, column=2, value=team_label)
             for offset, column in enumerate(key_columns):
                 sheet.cell(row=row_number, column=3 + offset, value=item["counts"].get(column["key"], 0))
             sheet.cell(

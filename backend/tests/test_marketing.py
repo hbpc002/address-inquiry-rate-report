@@ -571,6 +571,38 @@ class TestKeyProductStatistics:
             "total": 4,
         }
 
+    def test_product_table_team_includes_leaders(self):
+        self._seed_key_products()
+        self._seed_data()
+        _seed_leader("L001", "王组长", "热线一组")
+        _seed_leader("L002", "赵组长", "热线一组")
+        _seed_leader("L003", "钱组长", "区域二组")
+
+        report = self._report("xszb")
+        rows = report["key_product_rows"]
+        hotline = next(row for row in rows if row["work_group"] == "热线" and row["team"] == "热线一组")
+        assert hotline["leader"] == "王组长、赵组长"
+        area = next(row for row in rows if row["work_group"] == "区域" and row["team"] == "区域二组")
+        assert area["leader"] == "钱组长"
+        unassigned = next(row for row in rows if row["team"] == "未分班组")
+        assert unassigned["leader"] == ""
+        hotline_subtotal = next(row for row in rows if row["work_group"] == "热线" and row.get("is_subtotal"))
+        assert "leader" not in hotline_subtotal
+
+        resp = client.get("/api/marketing/overall-report/export", params={
+            "year_month": "2026-10", "product_source": "xszb",
+        })
+        assert resp.status_code == 200
+        wb = load_workbook(io.BytesIO(resp.content))
+        ws = wb["总体营销"]
+        all_rows = list(ws.iter_rows())
+        title_index = next(index for index, row in enumerate(all_rows) if row[0].value == "重点业务产品统计（线上直办）")
+        team_labels = [row[1].value for row in all_rows[title_index:]]
+        assert "热线一组（王组长、赵组长）" in team_labels
+        assert "区域二组（钱组长）" in team_labels
+        assert "未分班组" in team_labels
+        assert "小计" in team_labels
+
     def test_product_table_supports_work_order_and_total_sources(self):
         self._seed_key_products()
         self._seed_data()
