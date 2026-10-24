@@ -87,37 +87,37 @@
 
       <el-table :data="tableData" border stripe max-height="calc(100vh - 520px)">
         <template v-if="dimension === 'employee'">
-          <el-table-column prop="kf_id" label="客服工号" width="120" />
-          <el-table-column prop="name" label="姓名" width="90" />
-          <el-table-column prop="team" label="班组" width="110" show-overflow-tooltip />
-          <el-table-column prop="dept" label="部门" width="140" show-overflow-tooltip />
-          <el-table-column prop="group_name" label="行分类" width="120" show-overflow-tooltip />
+          <el-table-column prop="kf_id" label="客服工号" width="120" sortable />
+          <el-table-column prop="name" label="姓名" width="90" sortable />
+          <el-table-column prop="team" label="班组" width="110" show-overflow-tooltip sortable />
+          <el-table-column prop="dept" label="部门" width="140" show-overflow-tooltip sortable />
+          <el-table-column prop="group_name" label="行分类" width="120" show-overflow-tooltip sortable />
         </template>
         <template v-else-if="dimension === 'team'">
-          <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip />
-          <el-table-column prop="people" label="人数" width="80" />
+          <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip sortable />
+          <el-table-column prop="people" label="人数" width="80" sortable />
         </template>
         <template v-else-if="dimension === 'group'">
-          <el-table-column prop="group_name" label="行分类" width="130" show-overflow-tooltip />
-          <el-table-column prop="people" label="人数" width="80" />
+          <el-table-column prop="group_name" label="行分类" width="130" show-overflow-tooltip sortable />
+          <el-table-column prop="people" label="人数" width="80" sortable />
         </template>
         <template v-else-if="dimension === 'product'">
-          <el-table-column prop="product_id" label="产品ID" width="120" />
-          <el-table-column prop="product_name" label="产品名称" min-width="240" show-overflow-tooltip />
+          <el-table-column prop="product_id" label="产品ID" width="120" sortable />
+          <el-table-column prop="product_name" label="产品名称" min-width="240" show-overflow-tooltip sortable />
         </template>
         <template v-else>
-          <el-table-column prop="date" label="竣工日期" width="120" />
+          <el-table-column prop="date" label="竣工日期" width="120" sortable />
         </template>
         <el-table-column prop="total" label="产品办理量" width="110" sortable />
-        <el-table-column prop="order_count" label="订单数" width="90" />
-        <el-table-column prop="inbound" label="来话办理量" width="110" />
-        <el-table-column prop="outbound" label="去话办理量" width="110" />
-        <el-table-column prop="overlay" label="叠加包" width="90" />
-        <el-table-column prop="overlay_day" label="日包" width="80" />
-        <el-table-column prop="overlay_month" label="月包" width="80" />
-        <el-table-column prop="overlay_long" label="长期包" width="90" />
-        <el-table-column prop="overlay_undefined" label="未定义" width="90" />
-        <el-table-column prop="package_change" label="套餐变更" width="100" />
+        <el-table-column prop="order_count" label="订单数" width="90" sortable />
+        <el-table-column prop="inbound" label="来话办理量" width="110" sortable />
+        <el-table-column prop="outbound" label="去话办理量" width="110" sortable />
+        <el-table-column prop="overlay" label="叠加包" width="90" sortable />
+        <el-table-column prop="overlay_day" label="日包" width="80" sortable />
+        <el-table-column prop="overlay_month" label="月包" width="80" sortable />
+        <el-table-column prop="overlay_long" label="长期包" width="90" sortable />
+        <el-table-column prop="overlay_undefined" label="未定义" width="90" sortable />
+        <el-table-column prop="package_change" label="套餐变更" width="100" sortable />
       </el-table>
     </el-card>
   </div>
