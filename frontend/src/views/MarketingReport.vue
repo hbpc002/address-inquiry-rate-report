@@ -95,6 +95,7 @@
         </template>
         <template v-else-if="dimension === 'team'">
           <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip sortable />
+          <el-table-column prop="leader" label="组长" width="90" show-overflow-tooltip sortable />
           <el-table-column prop="people" label="人数" width="80" sortable />
         </template>
         <template v-else-if="dimension === 'group'">

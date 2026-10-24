@@ -646,6 +646,14 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         query = query.filter(_source_condition(data_type))
     details = query.all()
     emps = _emp_map(db)
+    leader_names: Dict[str, set] = {}
+    for emp in emps.values():
+        if emp.role == "组长" and emp.status == "在职" and emp.team and emp.name:
+            leader_names.setdefault(emp.team, set()).add(emp.name)
+    team_leaders = {
+        team: "、".join(sorted(names))
+        for team, names in leader_names.items()
+    }
     config = _overall_config(db)
     org_map = _xszb_org_map(db)
     group_cache: Dict[str, str] = {}
@@ -783,6 +791,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
 
     def team_extra(item, bucket, _key):
         item["people"] = len(bucket.get("people") or set())
+        item["leader"] = team_leaders.get(_key, "")
 
     def group_extra(item, bucket, _key):
         item["people"] = len(bucket.get("people") or set())
@@ -1601,9 +1610,9 @@ def export_report(
     writer = csv.writer(output)
     common = ["产品办理量", "订单数", "来话办理量", "去话办理量", "叠加包", "日包", "月包", "长期包", "未定义", "套餐变更"]
     if dimension == "team":
-        writer.writerow(["班组", "人数"] + common)
+        writer.writerow(["班组", "组长", "人数"] + common)
         for item in data["teams"]:
-            writer.writerow([item.get("team"), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
     elif dimension == "group":
         writer.writerow(["行分类", "人数"] + common)
         for item in data["groups"]:

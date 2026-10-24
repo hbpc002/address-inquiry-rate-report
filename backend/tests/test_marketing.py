@@ -100,6 +100,15 @@ def _seed_employees():
         db.close()
 
 
+def _seed_leader(emp_no, name, team, status="在职"):
+    db = SessionLocal()
+    try:
+        db.add(Employee(emp_no=emp_no, name=name, team=team, dept="客服部", role="组长", status=status))
+        db.commit()
+    finally:
+        db.close()
+
+
 def _make_xlsx(headers, rows, pre_rows=None):
     wb = Workbook()
     ws = wb.active
@@ -654,6 +663,27 @@ class TestMarketingRulesAndExports:
         assert "行分类" in text
         assert "未分组" in text
         assert "产品办理量" in text
+
+    def test_report_team_includes_leaders_and_csv_export(self):
+        _seed_leader("L001", "王组长", "热线一组")
+        _seed_leader("L002", "赵组长", "热线一组")
+        _seed_leader("L003", "离职组长", "热线一组", status="离职")
+        assert _upload(EN_HEADERS, [
+            _en_row(kf="KF001", trade="T1", product_id="P1"),
+            _en_row(kf="KF999", trade="T2", product_id="P2"),
+        ]).status_code == 200
+
+        report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
+        team = next(item for item in report["teams"] if item["team"] == "热线一组")
+        assert team["leader"] == "王组长、赵组长"
+        unmatched = next(item for item in report["teams"] if item["team"] == "未匹配班组")
+        assert unmatched["leader"] == ""
+
+        resp = client.get("/api/marketing/report/export", params={"year_month": "2026-10", "dimension": "team"})
+        assert resp.status_code == 200
+        text = resp.content.decode("utf-8-sig")
+        assert text.splitlines()[0].startswith("班组,组长,人数,")
+        assert "热线一组,王组长、赵组长," in text
 
     def test_import_deduplicates_same_trade_product(self):
         rows = [

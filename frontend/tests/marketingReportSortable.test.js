@@ -117,4 +117,18 @@ describe('营销统计表格列排序', () => {
       expect(unsortable.map((column) => column.attributes('data-label'))).toEqual([])
     }
   })
+
+  it('班组维度显示可排序的组长列', async () => {
+    const wrapper = await mountPage()
+
+    await wrapper.find('.tab-button[data-name="team"]').trigger('click')
+    await flushPromises()
+
+    const leader = wrapper.findAll('.el-table-column-stub').find(
+      (column) => column.attributes('data-prop') === 'leader'
+    )
+    expect(leader).toBeTruthy()
+    expect(leader.attributes('data-label')).toBe('组长')
+    expect(leader.attributes('data-sortable')).toBe('true')
+  })
 })
