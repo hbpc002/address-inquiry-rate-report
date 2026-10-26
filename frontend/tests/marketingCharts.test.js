@@ -13,7 +13,8 @@ import {
   buildDailyBusinessOptions,
   buildTeamScatterOptions,
   buildTeamRadarOptions,
-  buildValidCrossOptions
+  buildValidCrossOptions,
+  filterMatchedTeams
 } from '../src/utils/marketingCharts'
 
 const stats = {
@@ -130,6 +131,29 @@ const days = [
 ]
 
 describe('营销统计图表数据构建', () => {
+  it('存在正常班组时过滤未匹配班组，全部未匹配时保留兜底', () => {
+    const unmatched = {
+      team: '未匹配班组',
+      leader: '',
+      people: 1,
+      total: 10,
+      order_count: 5,
+      inbound: 8,
+      outbound: 2,
+      overlay: 7,
+      package_change: 2,
+      overlay_day: 1,
+      overlay_month: 3,
+      overlay_long: 2,
+      overlay_undefined: 1
+    }
+
+    expect(filterMatchedTeams([...teams, unmatched]).map(item => item.displayName)).toEqual([
+      '热线一组', '热线二组'
+    ])
+    expect(filterMatchedTeams([unmatched]).map(item => item.displayName)).toEqual(['未匹配班组'])
+  })
+
   it('业务构成、有效期、来话去话饼图数据应包含其他和未标注分类', () => {
     expect(buildBusinessPieData(stats)).toEqual([
       { name: '叠加包', value: 70 },

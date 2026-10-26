@@ -127,21 +127,12 @@ describe('营销统计图表区域', () => {
     api.get.mockResolvedValue({ data: reportData })
   })
 
-  it('总览展示 6 个图表，且不使用部门/组织图表', async () => {
+  it('仅保留班组、趋势、辅助维度三个图表页签，默认展示班组分析', async () => {
     const wrapper = await mountPage()
-    const charts = wrapper.findAll('.echart-stub')
-    expect(charts).toHaveLength(6)
-    const titles = charts.map(chart => chart.attributes('data-title'))
-    expect(titles).toContain('业务构成')
-    expect(titles).toContain('叠加包有效期构成')
-    expect(titles).toContain('来话/去话构成')
-    expect(titles.join(' ')).not.toContain('部门')
-    expect(titles.join(' ')).not.toContain('组织')
-  })
+    const tabLabels = wrapper.findAll('.el-radio-button-stub').map(tab => tab.text())
+    expect(tabLabels).toEqual(['班组分析', '趋势分析', '辅助维度'])
+    expect(wrapper.vm.$.setupState.chartSection).toBe('team')
 
-  it('班组分析包含排行、人效、结构、雷达、散点和帕累托图', async () => {
-    const wrapper = await mountPage()
-    await switchSection(wrapper, 'team')
     const titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
     expect(titles).toHaveLength(10)
     expect(titles).toContain('班组产品办理量排行')
@@ -151,18 +142,27 @@ describe('营销统计图表区域', () => {
     expect(titles).toContain('班组多指标雷达')
     expect(titles).toContain('班组人均效率分布')
     expect(titles).toContain('班组办理量帕累托图')
+    expect(titles.join(' ')).not.toContain('部门')
+    expect(titles.join(' ')).not.toContain('组织')
   })
 
-  it('员工分析包含排行、结构、散点和帕累托图', async () => {
+  it('班组分析存在正常班组时过滤未匹配班组', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...reportData,
+        teams: [
+          ...reportData.teams,
+          {
+            team: '未匹配班组', leader: '', people: 1, total: 10, order_count: 5,
+            inbound: 8, outbound: 2, overlay: 7, package_change: 2,
+            overlay_day: 1, overlay_month: 3, overlay_long: 2, overlay_undefined: 1
+          }
+        ]
+      }
+    })
     const wrapper = await mountPage()
-    await switchSection(wrapper, 'employee')
-    const titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
-    expect(titles).toHaveLength(8)
-    expect(titles).toContain('员工产品办理量排行')
-    expect(titles).toContain('员工订单数排行')
-    expect(titles).toContain('员工订单覆盖率排行')
-    expect(titles).toContain('员工办理量与订单数分布')
-    expect(titles).toContain('员工办理量帕累托图')
+    const teamLabels = wrapper.vm.$.setupState.teamItems.map(item => item.displayName)
+    expect(teamLabels).toEqual(['热线一组', '热线二组'])
   })
 
   it('趋势分析和辅助维度图表数量与标题正确', async () => {

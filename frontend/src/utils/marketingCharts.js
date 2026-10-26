@@ -26,6 +26,8 @@ export const RANKING_METRICS = [
 
 export const TOP_LIMITS = [10, 20, 50]
 
+export const UNASSIGNED_TEAM = '未匹配班组'
+
 const METRIC_MAP = Object.fromEntries(RANKING_METRICS.map(item => [item.key, item]))
 
 function toNumber(value) {
@@ -76,7 +78,7 @@ function employeeLabel(item) {
 }
 
 function teamLabel(item) {
-  return item.team || '未匹配班组'
+  return item.team || UNASSIGNED_TEAM
 }
 
 function groupLabel(item) {
@@ -103,6 +105,12 @@ export function enrichTeams(teams = []) {
     label: teamLabel(item),
     people: toNumber(item.people)
   }))
+}
+
+export function filterMatchedTeams(teams = []) {
+  const items = enrichTeams(teams)
+  const matched = items.filter(item => item.team && item.team !== UNASSIGNED_TEAM)
+  return matched.length ? matched : items
 }
 
 export function enrichGroups(groups = []) {
