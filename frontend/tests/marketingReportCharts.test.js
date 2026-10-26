@@ -129,21 +129,45 @@ describe('营销统计图表区域', () => {
 
   it('仅保留班组、趋势、辅助维度三个图表页签，默认展示班组分析', async () => {
     const wrapper = await mountPage()
-    const tabLabels = wrapper.findAll('.el-radio-button-stub').map(tab => tab.text())
+    const tabLabels = wrapper.find('.chart-section-header').findAll('.el-radio-button-stub').map(tab => tab.text())
     expect(tabLabels).toEqual(['班组分析', '趋势分析', '辅助维度'])
     expect(wrapper.vm.$.setupState.chartSection).toBe('team')
 
+    const toolbarLabels = wrapper.find('.chart-toolbar').findAll('.el-radio-button-stub').map(tab => tab.text())
+    expect(toolbarLabels).toEqual([
+      '产品办理量', '人均办理量', '人均订单数', '订单覆盖率', '业务结构', '来话/去话结构'
+    ])
+
     const titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
-    expect(titles).toHaveLength(10)
-    expect(titles).toContain('班组产品办理量排行')
-    expect(titles).toContain('班组人均办理量排行')
-    expect(titles).toContain('班组人均订单数排行')
-    expect(titles).toContain('班组订单覆盖率排行')
-    expect(titles).toContain('班组多指标雷达')
-    expect(titles).toContain('班组人均效率分布')
-    expect(titles).toContain('班组办理量帕累托图')
+    expect(titles).toEqual([
+      '班组产品办理量排行',
+      '班组业务结构',
+      '班组叠加包有效期结构',
+      '班组多指标雷达',
+      '班组人均效率分布'
+    ])
+    expect(titles.join(' ')).not.toContain('帕累托')
     expect(titles.join(' ')).not.toContain('部门')
     expect(titles.join(' ')).not.toContain('组织')
+  })
+
+  it('班组排行指标和结构维度可通过按钮切换', async () => {
+    const wrapper = await mountPage()
+
+    wrapper.vm.$.setupState.teamMetric = 'order_rate'
+    await flushPromises()
+    let titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
+    expect(titles).toContain('班组订单覆盖率排行')
+
+    wrapper.vm.$.setupState.teamMetric = 'avg_total'
+    await flushPromises()
+    titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
+    expect(titles).toContain('班组人均办理量排行')
+
+    wrapper.vm.$.setupState.teamStructureKind = 'lh'
+    await flushPromises()
+    titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
+    expect(titles).toContain('班组来话/去话结构')
   })
 
   it('班组分析存在正常班组时过滤未匹配班组', async () => {

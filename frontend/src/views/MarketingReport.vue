@@ -90,9 +90,16 @@
         <template v-if="chartSection === 'team'">
           <div class="chart-toolbar">
             <span>排行指标</span>
-            <el-select v-model="teamMetric" size="small" style="width: 150px">
-              <el-option v-for="item in rankingMetrics" :key="item.key" :label="item.label" :value="item.key" />
-            </el-select>
+            <el-radio-group v-model="teamMetric" size="small">
+              <el-radio-button v-for="item in teamRankingMetrics" :key="item.key" :value="item.key">
+                {{ item.label }}
+              </el-radio-button>
+            </el-radio-group>
+            <span>结构维度</span>
+            <el-radio-group v-model="teamStructureKind" size="small">
+              <el-radio-button value="business">业务结构</el-radio-button>
+              <el-radio-button value="lh">来话/去话结构</el-radio-button>
+            </el-radio-group>
             <span>Top N</span>
             <el-select v-model="teamLimit" size="small" style="width: 90px">
               <el-option v-for="limit in topLimits" :key="limit" :label="String(limit)" :value="limit" />
@@ -106,27 +113,7 @@
             </el-col>
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
               <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamAvgRankingOptions" height="300px" @click="handleTeamChartClick" />
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
-              <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamAvgOrderRankingOptions" height="300px" @click="handleTeamChartClick" />
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
-              <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamOrderRateRankingOptions" height="300px" @click="handleTeamChartClick" />
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
-              <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamBusinessOptions" height="300px" />
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
-              <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamLhOptions" height="300px" />
+                <Echart :options="teamStructureOptions" height="300px" />
               </el-card>
             </el-col>
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
@@ -142,11 +129,6 @@
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
               <el-card shadow="hover" class="chart-card">
                 <Echart :options="teamScatterOptions" height="320px" />
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :lg="24" class="chart-col">
-              <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamParetoOptions" height="340px" />
               </el-card>
             </el-col>
           </el-row>
@@ -282,7 +264,6 @@ import {
   buildTeamRankingOptions,
   buildProductRankingOptions,
   buildGroupRankingOptions,
-  buildParetoOptions,
   buildBusinessCrossOptions,
   buildLhCrossOptions,
   buildValidCrossOptions,
@@ -329,8 +310,10 @@ const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', gro
 const tableData = computed(() => result.value[dimensionKey.value] || [])
 const chartSection = ref('team')
 const teamMetric = ref('total')
+const teamStructureKind = ref('business')
 const teamLimit = ref(10)
-const rankingMetrics = RANKING_METRICS
+const TEAM_RANKING_KEYS = ['total', 'avg_total', 'avg_order', 'order_rate']
+const teamRankingMetrics = RANKING_METRICS.filter(item => TEAM_RANKING_KEYS.includes(item.key))
 const topLimits = TOP_LIMITS
 
 const teamItems = computed(() => filterMatchedTeams(result.value.teams || []))
@@ -342,37 +325,24 @@ const teamRankingOptions = computed(() => buildTeamRankingOptions(teamItems.valu
   metric: teamMetric.value,
   limit: teamLimit.value
 }))
-const teamAvgRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
-  metric: 'avg_total',
-  limit: teamLimit.value
-}))
-const teamAvgOrderRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
-  metric: 'avg_order',
-  limit: teamLimit.value
-}))
-const teamOrderRateRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
-  metric: 'order_rate',
-  limit: teamLimit.value
-}))
-const teamBusinessOptions = computed(() => buildBusinessCrossOptions(teamItems.value, {
-  title: '班组业务结构',
-  limit: teamLimit.value
-}))
-const teamLhOptions = computed(() => buildLhCrossOptions(teamItems.value, {
-  title: '班组来话/去话结构',
-  limit: teamLimit.value
-}))
+const teamStructureOptions = computed(() => {
+  if (teamStructureKind.value === 'lh') {
+    return buildLhCrossOptions(teamItems.value, {
+      title: '班组来话/去话结构',
+      limit: teamLimit.value
+    })
+  }
+  return buildBusinessCrossOptions(teamItems.value, {
+    title: '班组业务结构',
+    limit: teamLimit.value
+  })
+})
 const teamValidOptions = computed(() => buildValidCrossOptions(teamItems.value, {
   title: '班组叠加包有效期结构',
   limit: teamLimit.value
 }))
 const teamRadarOptions = computed(() => buildTeamRadarOptions(teamItems.value, { limit: 8 }))
 const teamScatterOptions = computed(() => buildTeamScatterOptions(teamItems.value))
-const teamParetoOptions = computed(() => buildParetoOptions(teamItems.value, {
-  metric: 'total',
-  limit: teamLimit.value,
-  title: '班组办理量帕累托图'
-}))
 
 const dailyTrendOptions = computed(() => buildDailyTrendOptions(dayItems.value))
 const dailyBusinessOptions = computed(() => buildDailyBusinessOptions(dayItems.value))
