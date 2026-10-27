@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import time
+import asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,6 +17,7 @@ from langchain_core.messages.tool import tool_call_chunk
 
 from app.api.agent import (
     iter_sse_events,
+    _with_heartbeat,
     _PROGRESS_TEXTS,
     PROGRESS_INTERVAL,
 )
@@ -204,14 +206,72 @@ def test_sse_response_has_streaming_headers():
         media_type="text/event-stream",
         headers={
             "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
         },
     )
     assert resp.headers["X-Accel-Buffering"] == "no"
-    assert resp.headers["Cache-Control"] == "no-cache"
+    assert resp.headers["Cache-Control"] == "no-cache, no-transform"
     assert resp.headers["Connection"] == "keep-alive"
     assert resp.media_type == "text/event-stream"
+
+
+def test_tool_events_include_id_title_subject_duration_and_summary():
+    """工具开始/结束事件应携带前端时间线需要的 id、标题、对象、耗时和摘要。"""
+    events = [
+        _ev(
+            "on_tool_start",
+            run_id="r1",
+            name="query_date_range",
+            input={"start_date": "2026-07-01", "end_date": "2026-07-07"},
+        ),
+        _ev(
+            "on_tool_end",
+            run_id="r1",
+            name="query_date_range",
+            output='{"rows":[{"a":1},{"a":2}]}',
+        ),
+    ]
+    result = asyncio_run(_collect(events, _now=AdvancingClock(step=0.05)))
+    start = next(e for e in result if e["type"] == "tool_start")
+    end = next(e for e in result if e["type"] == "tool_end")
+    assert start["id"] == "r1"
+    assert start["title"] == "区间汇总"
+    assert "2026-07-01" in start["subject"]
+    assert end["id"] == "r1"
+    assert end["status"] == "success"
+    assert end["duration_ms"] is not None
+    assert end["summary"] == "返回 2 行"
+    assert not any(e["type"] == "status" for e in result)
+
+
+def test_tool_error_emits_error_status_and_message():
+    """工具异常应发 tool_end(status=error)，而不是只留下一个永远 loading 的步骤。"""
+    events = [
+        _ev("on_tool_start", run_id="r2", name="run_sql", input={"sql_query": "select 1"}),
+        _ev("on_tool_error", run_id="r2", name="run_sql", error=RuntimeError("SQL 超时")),
+    ]
+    result = asyncio_run(_collect(events, _now=AdvancingClock(step=0.02)))
+    end = next(e for e in result if e["type"] == "tool_end")
+    assert end["id"] == "r2"
+    assert end["status"] == "error"
+    assert "SQL 超时" in end["error"]
+    assert end["summary"] == "执行失败"
+    assert end["duration_ms"] is not None
+
+
+def test_heartbeat_emitted_when_stream_is_idle():
+    """长时间无业务事件时应发 SSE 注释心跳，避免代理或浏览器断开。"""
+    async def slow_source():
+        await asyncio.sleep(0.05)
+        yield "data: {}\n\n"
+
+    async def run():
+        return [item async for item in _with_heartbeat(slow_source(), interval=0.01)]
+
+    out = asyncio_run(run())
+    assert any(item.startswith(": ping") for item in out)
+    assert out[-1].startswith("data:")
 
 
 def asyncio_run(coro):

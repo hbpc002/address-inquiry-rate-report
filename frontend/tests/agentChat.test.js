@@ -166,9 +166,124 @@ describe('agentChat store 持久化', () => {
     const ai = store.bubbleItems[1]
     expect(ai.thoughtItems.length).toBe(2)
     expect(ai.thoughtItems[0].status).toBe('success')
-    expect(ai.thoughtItems[1].title).toBe('query_date_range')
+    expect(ai.thoughtItems[1].title).toBe('区间汇总')
+    expect(ai.thoughtItems[1].toolName).toBe('query_date_range')
     expect(ai.thoughtItems[1].status).toBe('success')
     expect(ai.thoughtItems[1].thinkContent).toContain('c')
+  })
+
+  it('流式期间 AI 气泡保持 loading=false，步骤实时可见', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    const store = useAgentChatStore()
+    store.activate()
+    let release
+    const gate = new Promise((resolve) => { release = resolve })
+    const chunks = [
+      'data: ' + JSON.stringify({ type: 'status', id: 'm1', kind: 'thinking', title: '正在分析问题' }) + '\n\n',
+      'data: ' + JSON.stringify({ type: 'tool_start', id: 't1', name: 'query_date_range', input: { start_date: '2026-07-01' }, title: '区间汇总', subject: '2026-07-01' }) + '\n\n',
+    ]
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: {
+        getReader: () => {
+          const enc = new TextEncoder()
+          let index = 0
+          return {
+            read: async () => {
+              if (index < chunks.length) {
+                const value = enc.encode(chunks[index])
+                index += 1
+                return { done: false, value }
+              }
+              await gate
+              return { done: true, value: undefined }
+            },
+          }
+        },
+      },
+    }))
+
+    const pending = store.send('最近一周')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const ai = store.bubbleItems[1]
+    expect(ai.loading).toBe(false)
+    expect(ai.streaming).toBe(true)
+    expect(store.streaming).toBe(true)
+    expect(ai.thoughtItems.length).toBe(2)
+    expect(ai.thoughtItems[1].title).toBe('区间汇总')
+
+    release()
+    await pending
+    expect(ai.loading).toBe(false)
+    expect(ai.streaming).toBe(false)
+    expect(store.streaming).toBe(false)
+    expect(ai.thoughtItems.every((step) => step.status !== 'loading')).toBe(true)
+  })
+
+  it('tool_end 按 id 关联并记录耗时、状态和摘要', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    const store = useAgentChatStore()
+    store.activate()
+    const sse =
+      'data: ' + JSON.stringify({ type: 'tool_start', id: 't1', name: 'query_date_range', input: { start_date: '2026-07-01' }, title: '区间汇总', subject: '2026-07-01' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'tool_end', id: 't1', name: 'query_date_range', status: 'success', output: '{"rows":[1,2]}', duration_ms: 42, summary: '返回 2 行' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'tool_start', id: 't2', name: 'run_sql', input: { sql_query: 'select 1' }, title: '自定义查询', subject: 'select 1' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'tool_end', id: 't2', name: 'run_sql', status: 'error', error: 'SQL 超时', duration_ms: 7, summary: '执行失败' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'done' }) + '\n\n'
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: {
+        getReader: () => {
+          const enc = new TextEncoder()
+          let sent = false
+          return {
+            read: async () => {
+              if (sent) return { done: true, value: undefined }
+              sent = true
+              return { done: false, value: enc.encode(sse) }
+            },
+          }
+        },
+      },
+    }))
+
+    await store.send('查一下')
+    const ai = store.bubbleItems[1]
+    expect(ai.thoughtItems.length).toBe(2)
+    const [ok, bad] = ai.thoughtItems
+    expect(ok.id).toBe('t1')
+    expect(ok.status).toBe('success')
+    expect(ok.durationMs).toBe(42)
+    expect(ok.outcome).toBe('返回 2 行')
+    expect(ok.output).toContain('rows')
+    expect(bad.id).toBe('t2')
+    expect(bad.status).toBe('error')
+    expect(bad.durationMs).toBe(7)
+    expect(bad.outcome).toBe('执行失败')
+    expect(bad.error).toBe('SQL 超时')
+  })
+
+  it('水合：中断的 loading 步骤标记为 stopped', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    localStorage.setItem(
+      'agent_chat_anonymous',
+      JSON.stringify({
+        bubbleItems: [{
+          id: 'a1',
+          placement: 'start',
+          content: 'hi',
+          loading: true,
+          streaming: true,
+          thoughtItems: [{ id: 't1', kind: 'tool', title: '查询', status: 'loading' }],
+        }],
+      })
+    )
+    const store = useAgentChatStore()
+    store.activate()
+    const ai = store.bubbleItems[0]
+    expect(ai.loading).toBe(false)
+    expect(ai.streaming).toBe(false)
+    expect(ai.thoughtItems[0].status).toBe('stopped')
   })
 
   it('progress 事件更新当前 loading 节点的文案而不新增节点', async () => {

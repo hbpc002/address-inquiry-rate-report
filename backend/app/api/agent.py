@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 
@@ -22,12 +23,34 @@ from app.agent.settings import get_settings
 # 模型生成工具调用（如 SQL）时 content 为空、无可视文本；节流地发 progress
 # 心跳，让前端在最长空白阶段仍有实时反馈。单位：秒。
 PROGRESS_INTERVAL = 2.0
+# SSE 空闲心跳间隔：复杂查询期间即使没有 token/tool 事件，也保持连接活跃。
+HEARTBEAT_INTERVAL = 15.0
 # 进度文案轮换，避免界面长时间看起来"卡住"
 _PROGRESS_TEXTS = [
     "正在分析数据…",
     "正在生成查询…",
     "正在整理结果…",
     "正在比对数据…",
+]
+
+_TOOL_TITLES = {
+    "query_team_ranking": "班组排名",
+    "query_month_summary": "月度汇总",
+    "query_date_range": "区间汇总",
+    "query_daily": "每日明细",
+    "query_efficiency": "月度效能",
+    "query_dashboard_stats": "仪表盘统计",
+    "run_sql": "自定义查询",
+}
+_SUBJECT_KEYS = [
+    "year_month",
+    "start_date",
+    "end_date",
+    "schedule_date",
+    "emp_name",
+    "team",
+    "month",
+    "name",
 ]
 
 router = APIRouter(prefix="/api/agent", tags=["智能体对话"])
@@ -66,21 +89,55 @@ async def agent_chat(
     )
 
     async def event_stream():
-        async for s in iter_sse_events(graph, llm, messages):
+        async for s in _with_heartbeat(iter_sse_events(graph, llm, messages)):
             yield s
 
     # SSE 实时透传加固头：
     #  - X-Accel-Buffering: no  —— 通知 nginx 不要缓冲该响应（某些环境下至关重要）
-    #  - Cache-Control: no-cache —— 避免代理/浏览器缓存整个流
+    #  - Cache-Control: no-cache, no-transform —— 避免代理/浏览器缓存或改写流
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={
             "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
         },
     )
+
+
+async def _with_heartbeat(source, interval=HEARTBEAT_INTERVAL):
+    """包装 SSE 生成器：空闲超过 interval 时发送注释心跳，避免代理断开。"""
+    queue = asyncio.Queue(maxsize=64)
+
+    async def produce():
+        try:
+            async for item in source:
+                await queue.put(("event", item))
+        except Exception as e:  # noqa: BLE001
+            await queue.put(("error", e))
+        finally:
+            await queue.put(("end", None))
+
+    task = asyncio.create_task(produce())
+    try:
+        while True:
+            try:
+                kind, payload = await asyncio.wait_for(queue.get(), timeout=interval)
+            except asyncio.TimeoutError:
+                yield ": ping\n\n"
+                continue
+            if kind == "end":
+                break
+            if kind == "error":
+                raise payload
+            yield payload
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
@@ -94,11 +151,19 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
     """
     last_progress = None
     progress_idx = 0
+    tool_seq = 0
+    started = {}
+    start_time = _now()
     try:
         async for ev in graph.astream_events({"messages": messages}, version="v2"):
             kind = ev.get("event")
             if kind == "on_chat_model_start":
-                yield __sse({"type": "status", "title": "正在分析问题"})
+                yield __sse({
+                    "type": "status",
+                    "id": _run_id(ev),
+                    "kind": "thinking",
+                    "title": "正在分析问题",
+                })
             elif kind == "on_chat_model_stream":
                 chunk = ev["data"]["chunk"]
                 content = chunk.content if isinstance(chunk.content, str) else ""
@@ -111,27 +176,160 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                         last_progress = cur
                         text = _PROGRESS_TEXTS[progress_idx % len(_PROGRESS_TEXTS)]
                         progress_idx += 1
-                        yield __sse({"type": "progress", "text": text})
+                        yield __sse({
+                            "type": "progress",
+                            "id": _run_id(ev),
+                            "text": text,
+                        })
             elif kind == "on_chat_model_end":
                 resp = ev["data"]["output"]
                 tool_calls = getattr(resp, "tool_calls", None)
                 if tool_calls:
-                    yield __sse({"type": "status", "title": "已获取数据，正在汇总分析"})
+                    yield __sse({
+                        "type": "status",
+                        "id": _run_id(ev),
+                        "kind": "thinking",
+                        "title": "已获取数据，正在汇总分析",
+                    })
             elif kind == "on_tool_start":
-                yield __sse({"type": "status", "title": f"正在执行工具：{ev.get('name')}"})
+                name = _event_name(ev)
+                rid = _run_id(ev)
+                if not rid:
+                    tool_seq += 1
+                    rid = f"tool-{tool_seq}"
+                input_data = ev["data"].get("input")
+                started[rid] = {"start": _now(), "name": name}
                 yield __sse({
                     "type": "tool_start",
-                    "name": ev.get("name"),
-                    "input": ev["data"].get("input"),
+                    "id": rid,
+                    "name": name,
+                    "input": input_data,
+                    "title": _tool_title(name),
+                    "subject": _tool_subject(name, input_data),
                 })
             elif kind == "on_tool_end":
-                out = str(ev["data"].get("output"))[:800]
-                yield __sse({"type": "tool_end", "name": ev.get("name"), "output": out})
-        yield __sse({"type": "done"})
+                name = _event_name(ev)
+                rid = _match_started(started, _run_id(ev), name)
+                start = started.pop(rid, None)
+                out = _output_text(ev["data"].get("output"))
+                duration_ms = _elapsed_ms(start, _now())
+                yield __sse({
+                    "type": "tool_end",
+                    "id": rid,
+                    "name": name,
+                    "output": out,
+                    "status": "success",
+                    "duration_ms": duration_ms,
+                    "summary": _tool_summary(out),
+                })
+            elif kind == "on_tool_error":
+                name = _event_name(ev)
+                rid = _match_started(started, _run_id(ev), name)
+                start = started.pop(rid, None)
+                err = ev["data"].get("error")
+                message = str(err) if err else "工具执行失败"
+                yield __sse({
+                    "type": "tool_end",
+                    "id": rid,
+                    "name": name,
+                    "status": "error",
+                    "error": message,
+                    "output": "",
+                    "duration_ms": _elapsed_ms(start, _now()),
+                    "summary": "执行失败",
+                })
+        yield __sse({"type": "done", "elapsed_ms": _elapsed_ms({"start": start_time}, _now())})
     except RateLimitError:
         yield __sse({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})
     except Exception as e:  # noqa: BLE001
         yield __sse({"type": "error", "message": str(e)})
+
+
+def _run_id(ev):
+    return ev.get("run_id") or ev.get("data", {}).get("run_id")
+
+
+def _event_name(ev):
+    return ev.get("name") or ev.get("data", {}).get("name")
+
+
+def _match_started(started, run_id, name):
+    """用 run_id 精确匹配；兼容缺失/不匹配的 run_id，按工具名回退。"""
+    if run_id in started:
+        return run_id
+    for rid in reversed(list(started)):
+        if started[rid].get("name") == name:
+            return rid
+    return run_id or name or "tool"
+
+
+def _elapsed_ms(start, now):
+    if not start:
+        return None
+    return round((now - start["start"]) * 1000)
+
+
+def _tool_title(name):
+    return _TOOL_TITLES.get(name, name or "工具")
+
+
+def _short_text(value, limit=2000):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False, default=str)
+        except Exception:  # noqa: BLE001
+            text = str(value)
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _tool_subject(name, input_data):
+    if not isinstance(input_data, dict):
+        return _short_text(input_data, 200)
+    if name == "run_sql":
+        return _short_text(input_data.get("sql_query") or input_data.get("sql"), 200)
+    parts = []
+    for key in _SUBJECT_KEYS:
+        value = input_data.get(key)
+        if value is not None and value != "":
+            parts.append(str(value))
+    if parts:
+        return " · ".join(parts)
+    return " · ".join(
+        f"{key}={_short_text(value, 60)}" for key, value in list(input_data.items())[:2]
+    )
+
+
+def _output_text(output):
+    if output is None:
+        return ""
+    content = getattr(output, "content", None)
+    if content is not None:
+        return _short_text(content)
+    return _short_text(output)
+
+
+def _tool_summary(output):
+    text = output or ""
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return f"返回 {len(data)} 行"
+        if isinstance(data, dict):
+            for key in ("rows", "data", "items", "result"):
+                if isinstance(data.get(key), list):
+                    return f"返回 {len(data[key])} 行"
+            if data.get("error"):
+                return "查询失败"
+    except Exception:  # noqa: BLE001
+        pass
+    lines = [line for line in text.splitlines() if line.strip()]
+    if not lines:
+        return "无输出"
+    return f"{len(lines)} 行输出"
 
 
 def _reasoning_content(chunk) -> bool:

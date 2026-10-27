@@ -54,6 +54,10 @@ def _assert_sse_passthrough(path: Path):
     # SSE 需 HTTP/1.1 且清除 Connection，避免 keep-alive 缓冲
     assert "proxy_http_version 1.1" in block, f"{path.name} 缺少 proxy_http_version 1.1"
     assert 'proxy_set_header Connection ""' in block, f"{path.name} 缺少 Connection 透传"
+    # 禁用压缩/改写，避免 nginx 或上游 gzip 缓冲整个事件流
+    assert 'proxy_set_header Accept-Encoding ""' in block, f"{path.name} 缺少 Accept-Encoding 透传"
+    assert "gzip off" in block, f"{path.name} 缺少 gzip off"
+    assert "add_header X-Accel-Buffering no always" in block, f"{path.name} 缺少 X-Accel-Buffering 响应头"
     # 长连接不超时，复杂查询可能较久
     assert "proxy_read_timeout" in block, f"{path.name} 缺少 proxy_read_timeout"
     assert "proxy_send_timeout" in block, f"{path.name} 缺少 proxy_send_timeout"
@@ -89,3 +93,6 @@ def test_static_block_unaffected():
     # 全配置应只含一次 (proxy_buffering off / 1.1 / Connection)，均在 /api 内
     assert conf.count("proxy_buffering off") == 1
     assert conf.count("proxy_http_version 1.1") == 1
+    assert conf.count("gzip off") == 1
+    assert conf.count('proxy_set_header Accept-Encoding ""') == 1
+    assert conf.count("add_header X-Accel-Buffering no always") == 1

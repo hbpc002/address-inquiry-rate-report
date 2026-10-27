@@ -26,7 +26,7 @@
       </div>
     </div>
 
-    <div class="messages" ref="messagesRef">
+    <div class="messages" ref="messagesRef" @scroll.passive="onMessagesScroll">
       <div v-if="!store.bubbleItems.length" class="empty">
         <Prompts :items="promptItems" :wrap="true" @itemClick="onPrompt" />
       </div>
@@ -34,16 +34,22 @@
       <BubbleList v-else :list="store.bubbleItems" :auto-scroll="true" class="bubble-list">
         <template #content="{ item }">
           <div class="bubble-body">
-            <ThoughtChain
-              v-if="item.thoughtItems && item.thoughtItems.length"
-              :thinking-items="item.thoughtItems"
-              class="thought-chain"
+            <AgentTimeline
+              v-if="item.placement === 'start' && ((item.thoughtItems && item.thoughtItems.length) || item.streaming)"
+              :steps="item.thoughtItems || []"
+              :streaming="!!item.streaming"
+              :started-at="item.startedAt"
+              :finished-at="item.finishedAt"
+              :default-open="isLastAi(item)"
             />
             <MarkdownMessage v-if="item.placement === 'start'" :content="item.content" />
             <span v-else class="user-text">{{ item.content }}</span>
-            <div v-if="item.placement === 'start' && currentStepOf(item)" class="step-bar">
+            <div
+              v-if="item.placement === 'start' && item.streaming && !(item.thoughtItems && item.thoughtItems.length) && !item.content"
+              class="thinking-hint"
+            >
               <span class="spinner"></span>
-              <span class="step-text">{{ currentStepOf(item) }}</span>
+              <span>正在思考…</span>
             </div>
           </div>
         </template>
@@ -66,12 +72,13 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, computed } from 'vue'
-import { BubbleList, ThoughtChain, Prompts } from 'vue-element-plus-x'
+import { ref, nextTick, onMounted, computed, watch } from 'vue'
+import { BubbleList, Prompts } from 'vue-element-plus-x'
 import { api } from '@/stores/user'
 import { useAgentChatStore } from '@/stores/agentChat'
 import { useUiConfigStore } from '@/stores/uiConfig'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
+import AgentTimeline from '@/components/AgentTimeline.vue'
 
 defineProps({
   embedded: { type: Boolean, default: false },
@@ -105,10 +112,11 @@ function scrollBottom() {
 }
 
 function onPrompt(item) {
-  if (item && item.label) store.send(item.label)
+  if (item && item.label) send(item.label)
 }
 
 function send(text) {
+  stickToBottom = true
   store.send(text)
   scrollBottom()
 }
@@ -117,11 +125,32 @@ function onProviderChange() {
   store.model = ''
 }
 
-function currentStepOf(item) {
-  if (!store.streaming || !item.thoughtItems) return ''
-  const running = [...item.thoughtItems].reverse().find((t) => t.status === 'loading')
-  return running ? running.title : ''
+function isLastAi(item) {
+  for (let i = store.bubbleItems.length - 1; i >= 0; i -= 1) {
+    if (store.bubbleItems[i].placement === 'start') return store.bubbleItems[i].id === item.id
+  }
+  return false
 }
+
+let scrollScheduled = false
+let stickToBottom = true
+
+function onMessagesScroll() {
+  const el = messagesRef.value
+  if (!el) return
+  stickToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+}
+
+function scheduleScroll() {
+  if (!stickToBottom || scrollScheduled) return
+  scrollScheduled = true
+  requestAnimationFrame(() => {
+    scrollScheduled = false
+    scrollBottom()
+  })
+}
+
+watch(() => store.bubbleItems, scheduleScroll, { deep: true })
 
 async function loadProviders() {
   try {
@@ -181,8 +210,7 @@ onMounted(() => {
 .bubble-list { background: transparent; }
 .bubble-body { word-break: break-word; }
 .user-text { white-space: pre-wrap; }
-.thought-chain { margin-bottom: 8px; }
-.step-bar {
+.thinking-hint {
   display: inline-flex;
   align-items: center;
   gap: 8px;
