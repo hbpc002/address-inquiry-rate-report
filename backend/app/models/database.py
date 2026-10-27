@@ -41,6 +41,8 @@ def init_db():
     from app.models.marketing_detail import MarketingDetail
     from app.models.app_config import AppConfig
     from app.models.llm_provider import LLMProvider
+    from app.models.agent_conversation import AgentConversation
+    from app.models.agent_message import AgentMessage
 
     Base.metadata.create_all(bind=engine)
     _migrate_db()

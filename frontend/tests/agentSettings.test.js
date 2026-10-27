@@ -35,6 +35,8 @@ describe('AgentSettings.vue', () => {
     expect(agentSettingsVue).toContain('max_iterations')
     expect(agentSettingsVue).toContain('max_history_messages')
     expect(agentSettingsVue).toContain('consecutive_run_sql_failures')
+    expect(agentSettingsVue).toContain('conversation_retention_days')
+    expect(agentSettingsVue).toContain('会话保留天数')
     expect(agentSettingsVue).toContain('{current_date}')
   })
 

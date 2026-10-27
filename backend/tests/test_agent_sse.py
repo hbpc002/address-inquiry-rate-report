@@ -260,6 +260,31 @@ def test_tool_error_emits_error_status_and_message():
     assert end["duration_ms"] is not None
 
 
+def test_on_event_callback_receives_raw_payloads_for_persistence():
+    """持久化回调应收到与 SSE 相同的事件字典（token/tool/done）。"""
+    events = [
+        _ev("on_chat_model_stream", chunk=_content_chunk("你好")),
+        _ev("on_tool_start", run_id="r1", name="query_date_range", input={"start_date": "2026-07-01"}),
+        _ev("on_tool_end", run_id="r1", name="query_date_range", output='{"rows":[]}'),
+        _ev("on_chat_model_end", output=AIMessage(content="你好")),
+    ]
+    collected = []
+
+    async def run():
+        parsed = []
+        async for item in iter_sse_events(
+            FakeGraph(events), FakeLLM(), [HumanMessage(content="q")],
+            _now=AdvancingClock(step=0.01), on_event=collected.append,
+        ):
+            parsed.append(json.loads(item[len("data: "):].strip()))
+        return parsed
+
+    parsed = asyncio_run(run())
+    assert collected == parsed
+    assert any(item["type"] == "token" for item in collected)
+    assert any(item["type"] == "done" for item in collected)
+
+
 def test_heartbeat_emitted_when_stream_is_idle():
     """长时间无业务事件时应发 SSE 注释心跳，避免代理或浏览器断开。"""
     async def slow_source():

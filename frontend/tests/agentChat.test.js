@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { api } from '@/stores/user'
 
 function mockLocalStorage() {
   const m = new Map()
@@ -18,7 +19,11 @@ describe('agentChat store 持久化', () => {
     setActivePinia(createPinia())
   })
 
-  it('水合：从 localStorage 恢复对话并清除残留 loading', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('水合：只恢复偏好与当前会话，不再读取本机消息', async () => {
     const { useAgentChatStore } = await import('@/stores/agentChat')
     localStorage.setItem(
       'agent_chat_anonymous',
@@ -27,22 +32,24 @@ describe('agentChat store 持久化', () => {
         thoughtSeq: 3,
         provider: 'p1',
         model: 'm1',
+        conversationId: 7,
       })
     )
     const store = useAgentChatStore()
     store.activate()
-    expect(store.bubbleItems.length).toBe(1)
-    expect(store.bubbleItems[0].loading).toBe(false)
-    expect(store.bubbleItems[0].content).toBe('hi')
-    expect(store.thoughtSeq).toBe(3)
+    expect(store.bubbleItems.length).toBe(0)
+    expect(store.thoughtSeq).toBe(0)
     expect(store.provider).toBe('p1')
     expect(store.model).toBe('m1')
+    expect(store.conversationId).toBe(7)
   })
 
-  it('发送后把对话写回 localStorage', async () => {
+  it('发送后保存消息并刷新本地偏好', async () => {
     const { useAgentChatStore } = await import('@/stores/agentChat')
     const store = useAgentChatStore()
     store.activate()
+    store.provider = 'p1'
+    await new Promise((resolve) => setTimeout(resolve, 0))
     const sse =
       'data: ' + JSON.stringify({ type: 'token', content: '你好' }) + '\n\n' +
       'data: ' + JSON.stringify({ type: 'tool_start', name: 'query', input: { a: 1 } }) + '\n\n' +
@@ -73,8 +80,7 @@ describe('agentChat store 持久化', () => {
     expect(store.bubbleItems[1].thoughtItems.length).toBe(1)
     expect(store.bubbleItems[1].thoughtItems[0].status).toBe('success')
     const saved = JSON.parse(localStorage.getItem('agent_chat_anonymous'))
-    expect(saved.bubbleItems.length).toBe(2)
-    expect(saved.bubbleItems[1].content).toBe('你好')
+    expect(saved).not.toHaveProperty('bubbleItems')
   })
 
   it('stop() 中止进行中的流式请求', async () => {
@@ -265,27 +271,50 @@ describe('agentChat store 持久化', () => {
     expect(bad.error).toBe('SQL 超时')
   })
 
-  it('水合：中断的 loading 步骤标记为 stopped', async () => {
+  it('加载服务端会话：恢复正文、工具时间线和停止状态', async () => {
     const { useAgentChatStore } = await import('@/stores/agentChat')
-    localStorage.setItem(
-      'agent_chat_anonymous',
-      JSON.stringify({
-        bubbleItems: [{
-          id: 'a1',
-          placement: 'start',
-          content: 'hi',
-          loading: true,
-          streaming: true,
-          thoughtItems: [{ id: 't1', kind: 'tool', title: '查询', status: 'loading' }],
-        }],
-      })
-    )
     const store = useAgentChatStore()
     store.activate()
-    const ai = store.bubbleItems[0]
-    expect(ai.loading).toBe(false)
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        id: 7,
+        title: '历史会话',
+        provider: 'p1',
+        model: 'm1',
+        messages: [
+          {
+            id: 1,
+            role: 'user',
+            content: '查一下',
+            events: [],
+            status: 'complete',
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: 2,
+            role: 'assistant',
+            content: '结果如下',
+            events: [
+              { type: 'status', id: 's1', title: '正在分析问题', kind: 'thinking' },
+              { type: 'tool_start', id: 't1', name: 'query_date_range', input: { start_date: '2026-07-01' }, title: '区间汇总', subject: '2026-07-01' },
+              { type: 'tool_end', id: 't1', status: 'success', output: '{"rows":[1]}', duration_ms: 12, summary: '返回 1 行' },
+            ],
+            status: 'stopped',
+            created_at: new Date().toISOString(),
+          },
+        ],
+      },
+    })
+    await store.loadConversation(7)
+    expect(store.conversationId).toBe(7)
+    expect(store.conversationTitle).toBe('历史会话')
+    expect(store.bubbleItems.length).toBe(2)
+    const ai = store.bubbleItems[1]
+    expect(ai.content).toBe('结果如下')
     expect(ai.streaming).toBe(false)
-    expect(ai.thoughtItems[0].status).toBe('stopped')
+    expect(ai.thoughtItems.length).toBe(2)
+    expect(ai.thoughtItems[1].title).toBe('区间汇总')
+    expect(ai.thoughtItems[1].status).toBe('success')
   })
 
   it('progress 事件更新当前 loading 节点的文案而不新增节点', async () => {

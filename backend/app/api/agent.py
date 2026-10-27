@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from typing import Optional
 
 from openai import RateLimitError
 from fastapi import APIRouter, Depends, Body
@@ -8,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.models.database import get_db
+from app.models.database import get_db, SessionLocal
 from app.core.security import get_current_user, require_permission
 from app.core.llm import (
     get_provider,
@@ -19,6 +20,14 @@ from app.core.llm import (
 from app.agent.tools import make_tools, _build_data_range
 from app.agent.graph import build_graph, initial_messages
 from app.agent.settings import get_settings
+from app.services.agent_sessions import (
+    add_message,
+    can_access_conversation,
+    create_conversation,
+    finalize_assistant_message,
+    get_conversation,
+    load_context_messages,
+)
 
 # 模型生成工具调用（如 SQL）时 content 为空、无可视文本；节流地发 progress
 # 心跳，让前端在最长空白阶段仍有实时反馈。单位：秒。
@@ -60,6 +69,7 @@ class AgentChatRequest(BaseModel):
     message: str
     provider: str = None
     model: str = None
+    conversation_id: Optional[int] = None
 
 
 @router.post("/chat")
@@ -69,28 +79,139 @@ async def agent_chat(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "agent.use")
-    if not body.message or not body.message.strip():
-        return StreamingResponse(iter([__sse({"type": "error", "message": "消息不能为空"})]), media_type="text/event-stream")
+    question = (body.message or "").strip()
+    if not question:
+        return StreamingResponse(
+            iter([__sse({"type": "error", "message": "消息不能为空"})]),
+            media_type="text/event-stream",
+        )
 
     try:
         provider = get_provider(db, body.provider)
     except NoProviderError as e:
-        return StreamingResponse(iter([__sse({"type": "error", "message": str(e)})]), media_type="text/event-stream")
+        return StreamingResponse(
+            iter([__sse({"type": "error", "message": str(e)})]),
+            media_type="text/event-stream",
+        )
 
     models = fallback_models(db, provider, body.model)
     llm = build_fallback_model(provider, models)
     tools = make_tools(db)
     agent_settings = get_settings(db)
     graph = build_graph(llm, tools, settings=agent_settings)
+    selected_model = body.model or getattr(provider, "model", None)
+
+    conversation = None
+    if body.conversation_id is not None:
+        conversation = get_conversation(db, body.conversation_id)
+        if not conversation or not can_access_conversation(current_user, conversation):
+            return StreamingResponse(
+                iter([__sse({"type": "error", "message": "会话不存在或无权访问"})]),
+                media_type="text/event-stream",
+            )
+    if conversation is None:
+        conversation = create_conversation(
+            db,
+            current_user,
+            question,
+            provider=getattr(provider, "name", None),
+            model=selected_model,
+        )
+    else:
+        conversation.provider = getattr(provider, "name", None)
+        conversation.model = selected_model
+
+    history_limit = max(0, int(agent_settings.get("max_history_messages", 12)) - 1)
+    history = load_context_messages(db, conversation.id, history_limit)
+    user_message = add_message(
+        db,
+        conversation,
+        "user",
+        question,
+        provider=getattr(provider, "name", None),
+        model=selected_model,
+    )
+    assistant_message = add_message(
+        db,
+        conversation,
+        "assistant",
+        "",
+        events=[],
+        status="streaming",
+        provider=getattr(provider, "name", None),
+        model=selected_model,
+        update_preview=False,
+    )
+    db.commit()
+    db.refresh(conversation)
+    conversation_id = conversation.id
+    assistant_message_id = assistant_message.id
+    conversation_title = conversation.title
+
     messages = initial_messages(
-        body.message,
+        question,
         data_range=_build_data_range(db),
         settings=agent_settings,
+        history=history,
     )
 
+    content_parts = []
+    tool_events = []
+    state = {"done": False, "error": False}
+
+    def on_event(event: dict):
+        event_type = event.get("type")
+        if event_type == "token":
+            content_parts.append(event.get("content") or "")
+        elif event_type in {
+            "status", "progress", "tool_start", "tool_end",
+            "notice", "error", "done",
+        }:
+            tool_events.append(event)
+        if event_type == "done":
+            state["done"] = True
+        elif event_type == "error":
+            state["error"] = True
+
     async def event_stream():
-        async for s in _with_heartbeat(iter_sse_events(graph, llm, messages)):
-            yield s
+        try:
+            yield _emit({
+                "type": "meta",
+                "conversation_id": conversation_id,
+                "assistant_message_id": assistant_message_id,
+                "user_message_id": user_message.id,
+                "title": conversation_title,
+            })
+            async for chunk in _with_heartbeat(
+                iter_sse_events(graph, llm, messages, on_event=on_event)
+            ):
+                yield chunk
+        except asyncio.CancelledError:
+            state["error"] = False
+            raise
+        except Exception:  # noqa: BLE001
+            state["error"] = True
+            raise
+        finally:
+            if state["error"]:
+                status = "error"
+            elif state["done"]:
+                status = "complete"
+            else:
+                status = "stopped"
+            save_db = SessionLocal()
+            try:
+                finalize_assistant_message(
+                    save_db,
+                    assistant_message_id,
+                    "".join(content_parts),
+                    tool_events,
+                    status,
+                )
+            except Exception:
+                save_db.rollback()
+            finally:
+                save_db.close()
 
     # SSE 实时透传加固头：
     #  - X-Accel-Buffering: no  —— 通知 nginx 不要缓冲该响应（某些环境下至关重要）
@@ -140,7 +261,16 @@ async def _with_heartbeat(source, interval=HEARTBEAT_INTERVAL):
             pass
 
 
-async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
+def _emit(payload: dict, on_event=None) -> str:
+    if on_event:
+        try:
+            on_event(payload)
+        except Exception:  # noqa: BLE001
+            pass
+    return __sse(payload)
+
+
+async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=None):
     """把 LangGraph 的 astream_events 转成 SSE 文本序列（可独立测试）。
 
     - content 非空 → token 事件（逐字流式显示）
@@ -149,6 +279,9 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
 
     _now 为可注入的时钟，便于测试节流/轮换逻辑（默认使用系统的单调时钟）。
     """
+    def emit(payload):
+        return _emit(payload, on_event)
+
     last_progress = None
     progress_idx = 0
     tool_seq = 0
@@ -158,7 +291,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
         async for ev in graph.astream_events({"messages": messages}, version="v2"):
             kind = ev.get("event")
             if kind == "on_chat_model_start":
-                yield __sse({
+                yield emit({
                     "type": "status",
                     "id": _run_id(ev),
                     "kind": "thinking",
@@ -168,7 +301,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                 chunk = ev["data"]["chunk"]
                 content = chunk.content if isinstance(chunk.content, str) else ""
                 if content:
-                    yield __sse({"type": "token", "content": content})
+                    yield emit({"type": "token", "content": content})
                 elif getattr(chunk, "tool_call_chunks", None) or _reasoning_content(chunk):
                     # 模型在生成工具参数：无可视文本，但可据此判断仍在工作
                     cur = _now()
@@ -176,7 +309,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                         last_progress = cur
                         text = _PROGRESS_TEXTS[progress_idx % len(_PROGRESS_TEXTS)]
                         progress_idx += 1
-                        yield __sse({
+                        yield emit({
                             "type": "progress",
                             "id": _run_id(ev),
                             "text": text,
@@ -185,7 +318,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                 resp = ev["data"]["output"]
                 tool_calls = getattr(resp, "tool_calls", None)
                 if tool_calls:
-                    yield __sse({
+                    yield emit({
                         "type": "status",
                         "id": _run_id(ev),
                         "kind": "thinking",
@@ -199,7 +332,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                     rid = f"tool-{tool_seq}"
                 input_data = ev["data"].get("input")
                 started[rid] = {"start": _now(), "name": name}
-                yield __sse({
+                yield emit({
                     "type": "tool_start",
                     "id": rid,
                     "name": name,
@@ -213,7 +346,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                 start = started.pop(rid, None)
                 out = _output_text(ev["data"].get("output"))
                 duration_ms = _elapsed_ms(start, _now())
-                yield __sse({
+                yield emit({
                     "type": "tool_end",
                     "id": rid,
                     "name": name,
@@ -228,7 +361,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                 start = started.pop(rid, None)
                 err = ev["data"].get("error")
                 message = str(err) if err else "工具执行失败"
-                yield __sse({
+                yield emit({
                     "type": "tool_end",
                     "id": rid,
                     "name": name,
@@ -238,11 +371,11 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic):
                     "duration_ms": _elapsed_ms(start, _now()),
                     "summary": "执行失败",
                 })
-        yield __sse({"type": "done", "elapsed_ms": _elapsed_ms({"start": start_time}, _now())})
+        yield emit({"type": "done", "elapsed_ms": _elapsed_ms({"start": start_time}, _now())})
     except RateLimitError:
-        yield __sse({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})
+        yield emit({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})
     except Exception as e:  # noqa: BLE001
-        yield __sse({"type": "error", "message": str(e)})
+        yield emit({"type": "error", "message": str(e)})
 
 
 def _run_id(ev):

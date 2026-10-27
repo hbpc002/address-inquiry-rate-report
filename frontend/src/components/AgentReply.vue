@@ -1,8 +1,16 @@
 <template>
   <article class="agent-reply" :class="{ 'is-streaming': streaming }">
     <div class="reply-head">
-      <span class="reply-mark" aria-hidden="true">✦</span>
-      <span class="reply-author">数据智能体</span>
+      <AgentAvatar
+        :type="agentIcon.type"
+        :value="agentIcon.value"
+        :color="agentIcon.color"
+        :offset-x="agentIcon.offsetX"
+        :offset-y="agentIcon.offsetY"
+        :scale="agentIcon.scale"
+        :size="22"
+      />
+      <span class="reply-author">{{ agentName }}</span>
       <time v-if="timeText" class="reply-time">{{ timeText }}</time>
     </div>
 
@@ -34,10 +42,23 @@
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue'
 import AgentTimeline from './AgentTimeline.vue'
+import AgentAvatar from './AgentAvatar.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
+  agentName: { type: String, default: '数据智能体' },
+  agentIcon: {
+    type: Object,
+    default: () => ({
+      type: 'emoji',
+      value: '🤖',
+      color: '#5b6ee1',
+      offsetX: 0,
+      offsetY: 0,
+      scale: 100,
+    }),
+  },
 })
 
 const copied = ref(false)
@@ -142,17 +163,6 @@ onUnmounted(() => {
   min-height: 22px;
   font-size: 12.5px;
   line-height: 22px;
-}
-.reply-mark {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--agent-accent-soft, #eef0ff);
-  color: var(--agent-accent, #5b6ee1);
-  font-size: 12px;
-  flex: none;
 }
 .reply-author {
   font-weight: 650;

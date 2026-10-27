@@ -1,86 +1,166 @@
 <template>
   <div class="agent-chat" :class="{ 'is-embedded': embedded }">
-    <header class="agent-topbar">
-      <div class="agent-identity">
-        <span class="agent-orb" aria-hidden="true">✦</span>
-        <div class="agent-identity-text">
-          <div class="agent-title">数据智能体</div>
-          <div class="agent-subtitle">考勤 · 工时 · 排班 · 运营数据</div>
-        </div>
-      </div>
-      <div class="agent-top-actions">
-        <span class="agent-status" :class="{ live: store.streaming }">
-          <span class="status-dot" aria-hidden="true"></span>
-          {{ store.streaming ? '生成中' : '在线' }}
-        </span>
-        <button type="button" class="clear-button" @click="clearChat">清空</button>
-      </div>
-    </header>
-
-    <div ref="messagesRef" class="agent-transcript" @scroll.passive="onMessagesScroll">
-      <div v-if="!store.bubbleItems.length" class="agent-empty">
-        <div class="empty-mark" aria-hidden="true">✦</div>
-        <h1>今天想查什么？</h1>
-        <p>用自然语言查询考勤、工时、排班、工作量、营销和宽带订单</p>
-        <div class="suggestion-grid">
-          <button
-            v-for="item in promptItems"
-            :key="item.key"
-            type="button"
-            class="suggestion-card"
-            @click="onPrompt(item)"
-          >
-            <span class="suggestion-arrow" aria-hidden="true">↗</span>
-            <span>{{ item.label }}</span>
-          </button>
-        </div>
-      </div>
-
-      <div v-else class="turns">
-        <template v-for="item in store.bubbleItems" :key="item.id">
-          <AgentUserMessage v-if="item.placement === 'end'" :message="item" />
-          <AgentReply v-else :message="item" />
-        </template>
-      </div>
-    </div>
-
-    <Transition name="jump-fade">
-      <button v-if="showJump" type="button" class="jump-latest" @click="scrollBottom">
-        回到最新 ↓
-      </button>
-    </Transition>
-
-    <AgentComposer
-      v-model="store.input"
-      :streaming="store.streaming"
-      :providers="providers"
-      :models="currentModels"
-      :provider="store.provider"
-      :model="store.model"
-      @update:provider="onProviderChange"
-      @update:model="store.model = $event"
-      @send="send()"
-      @stop="store.stop()"
+    <AgentConversations
+      v-if="showConversations"
+      :conversations="store.conversations"
+      :active-id="store.conversationId"
+      :loading="store.conversationsLoading"
+      :search="store.conversationSearch"
+      :total="store.conversationsTotal"
+      :show-owner="isAdmin"
+      @new="newChat"
+      @select="selectConversation"
+      @search="onSearch"
+      @rename="renameConversation"
+      @pin="pinConversation"
+      @delete="deleteConversation"
+      @close="showConversations = false"
     />
+    <div
+      v-if="showConversations"
+      class="sidebar-backdrop"
+      @click="showConversations = false"
+    ></div>
+
+    <div class="agent-main">
+      <header class="agent-topbar">
+        <div class="agent-identity">
+          <button
+            type="button"
+            class="sidebar-toggle"
+            title="会话列表"
+            aria-label="会话列表"
+            @click="showConversations = !showConversations"
+          >
+            ☰
+          </button>
+          <AgentAvatar
+            :type="agentIcon.type"
+            :value="agentIcon.value"
+            :color="agentIcon.color"
+            :offset-x="agentIcon.offsetX"
+            :offset-y="agentIcon.offsetY"
+            :scale="agentIcon.scale"
+            :size="34"
+          />
+          <div class="agent-identity-text">
+            <div class="agent-title">{{ agentName }}</div>
+            <div class="agent-subtitle">
+              {{ store.conversationTitle || '考勤 · 工时 · 排班 · 运营数据' }}
+            </div>
+          </div>
+        </div>
+        <div class="agent-top-actions">
+          <span class="agent-status" :class="{ live: store.streaming }">
+            <span class="status-dot" aria-hidden="true"></span>
+            {{ store.streaming ? '生成中' : '在线' }}
+          </span>
+          <button type="button" class="clear-button" @click="newChat">新对话</button>
+        </div>
+      </header>
+
+      <div ref="messagesRef" class="agent-transcript" @scroll.passive="onMessagesScroll">
+        <div v-if="!store.bubbleItems.length" class="agent-empty">
+          <AgentAvatar
+            :type="agentIcon.type"
+            :value="agentIcon.value"
+            :color="agentIcon.color"
+            :offset-x="agentIcon.offsetX"
+            :offset-y="agentIcon.offsetY"
+            :scale="agentIcon.scale"
+            :size="62"
+          />
+          <h1>今天想查什么？</h1>
+          <p>用自然语言查询考勤、工时、排班、工作量、营销和宽带订单</p>
+          <div class="suggestion-grid">
+            <button
+              v-for="item in promptItems"
+              :key="item.key"
+              type="button"
+              class="suggestion-card"
+              @click="onPrompt(item)"
+            >
+              <span class="suggestion-arrow" aria-hidden="true">↗</span>
+              <span>{{ item.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="turns">
+          <template v-for="item in store.bubbleItems" :key="item.id">
+            <AgentUserMessage v-if="item.placement === 'end'" :message="item" />
+            <AgentReply
+              v-else
+              :message="item"
+              :agent-name="agentName"
+              :agent-icon="agentIcon"
+            />
+          </template>
+        </div>
+      </div>
+
+      <Transition name="jump-fade">
+        <button v-if="showJump" type="button" class="jump-latest" @click="scrollBottom">
+          回到最新 ↓
+        </button>
+      </Transition>
+
+      <AgentComposer
+        v-model="store.input"
+        :streaming="store.streaming"
+        :providers="providers"
+        :models="currentModels"
+        :provider="store.provider"
+        :model="store.model"
+        :suggestions="suggestions"
+        @update:provider="onProviderChange"
+        @update:model="store.model = $event"
+        @send="send()"
+        @stop="store.stop()"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/stores/user'
 import { useAgentChatStore } from '@/stores/agentChat'
+import { useLauncherStore } from '@/stores/launcher'
+import { useUserStore } from '@/stores/user'
 import AgentUserMessage from '@/components/AgentUserMessage.vue'
 import AgentReply from '@/components/AgentReply.vue'
 import AgentComposer from '@/components/AgentComposer.vue'
+import AgentAvatar from '@/components/AgentAvatar.vue'
+import AgentConversations from '@/components/AgentConversations.vue'
 
-defineProps({
+const props = defineProps({
   embedded: { type: Boolean, default: false },
 })
 
 const store = useAgentChatStore()
+const launcher = useLauncherStore()
+const userStore = useUserStore()
 const messagesRef = ref(null)
 const providers = ref([])
 const showJump = ref(false)
+const showConversations = ref(!props.embedded && window.innerWidth > 820)
+let searchTimer = null
+
+const isAdmin = computed(
+  () => userStore.isSystem || userStore.user?.role === 'admin'
+)
+
+const agentName = computed(() => launcher.config.label || '数据智能体')
+const agentIcon = computed(() => ({
+  type: launcher.config.icon_type || 'emoji',
+  value: launcher.config.icon_value || '🤖',
+  color: launcher.config.color || '#5b6ee1',
+  offsetX: Number(launcher.config.icon_offset_x) || 0,
+  offsetY: Number(launcher.config.icon_offset_y) || 0,
+  scale: Number(launcher.config.icon_scale) || 100,
+}))
 
 const currentModels = computed(() => {
   const p = providers.value.find((x) => x.name === store.provider)
@@ -126,10 +206,68 @@ function onProviderChange(value) {
   store.model = ''
 }
 
-function clearChat() {
-  store.clear()
+function newChat() {
+  store.newConversation()
   showJump.value = false
+  if (window.innerWidth <= 820) showConversations.value = false
   scrollBottom()
+}
+
+async function selectConversation(id) {
+  if (store.streaming) store.stop()
+  try {
+    await store.loadConversation(id)
+    showJump.value = false
+    scrollBottom()
+    if (window.innerWidth <= 820) showConversations.value = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '加载会话失败')
+  }
+}
+
+function onSearch(value) {
+  store.conversationSearch = value
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    store.loadConversations(value)
+  }, 300)
+}
+
+async function renameConversation(item) {
+  try {
+    const result = await ElMessageBox.prompt('请输入新的会话标题', '重命名会话', {
+      inputValue: item.title || '新对话',
+      inputPattern: /\S+/,
+      inputErrorMessage: '标题不能为空',
+    })
+    await store.renameConversation(item.id, result.value.trim())
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e.response?.data?.detail || '重命名失败')
+    }
+  }
+}
+
+async function pinConversation(item) {
+  try {
+    await store.togglePin(item.id)
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '操作失败')
+  }
+}
+
+async function deleteConversation(item) {
+  try {
+    await ElMessageBox.confirm(`确定删除会话「${item.title || '新对话'}」吗？`, '删除会话', {
+      type: 'warning',
+    })
+    await store.deleteConversation(item.id)
+    ElMessage.success('会话已删除')
+  } catch (e) {
+    if (e !== 'cancel' && e !== 'close') {
+      ElMessage.error(e.response?.data?.detail || '删除失败')
+    }
+  }
 }
 
 let scrollScheduled = false
@@ -177,12 +315,22 @@ async function loadSuggestions() {
   }
 }
 
-onMounted(() => {
+async function initialize() {
   store.activate()
-  loadProviders()
-  loadSuggestions()
+  if (!launcher.loaded) launcher.load()
+  await Promise.all([loadProviders(), loadSuggestions(), store.loadConversations()])
+  if (store.conversationId) {
+    try {
+      await store.loadConversation(store.conversationId)
+    } catch (e) {
+      store.newConversation()
+    }
+  }
   scrollBottom()
-})
+}
+
+onMounted(initialize)
+onUnmounted(() => clearTimeout(searchTimer))
 </script>
 
 <style scoped>
@@ -211,12 +359,23 @@ onMounted(() => {
   --agent-radius-lg: 14px;
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   min-height: 520px;
   background: var(--agent-bg);
   color: var(--agent-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.agent-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+.sidebar-backdrop {
+  display: none;
 }
 .agent-topbar {
   display: flex;
@@ -234,17 +393,22 @@ onMounted(() => {
   gap: 10px;
   min-width: 0;
 }
-.agent-orb {
+.sidebar-toggle {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--agent-accent-line);
-  border-radius: 50%;
-  background: var(--agent-accent-soft);
-  color: var(--agent-accent);
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--agent-line);
+  border-radius: 9px;
+  background: var(--agent-panel);
+  color: var(--agent-muted);
   font-size: 15px;
+  cursor: pointer;
   flex: none;
+}
+.sidebar-toggle:hover {
+  color: var(--agent-text);
+  background: var(--agent-hover);
 }
 .agent-identity-text {
   min-width: 0;
@@ -331,18 +495,6 @@ onMounted(() => {
   margin: 6vh auto 0;
   padding: 24px 8px 40px;
   text-align: center;
-}
-.empty-mark {
-  display: grid;
-  place-items: center;
-  width: 62px;
-  height: 62px;
-  border: 1px solid var(--agent-accent-line);
-  border-radius: 22px;
-  background: var(--agent-panel);
-  color: var(--agent-accent);
-  font-size: 27px;
-  box-shadow: 0 18px 38px -26px rgba(31, 32, 38, 0.4);
 }
 .agent-empty h1 {
   margin: 18px 0 6px;
@@ -433,9 +585,16 @@ onMounted(() => {
   70% { box-shadow: 0 0 0 6px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
-@media (max-width: 699px) {
+@media (max-width: 820px) {
   .agent-chat {
     min-height: 100%;
+  }
+  .sidebar-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    display: block;
+    background: rgba(31, 32, 38, 0.24);
   }
   .agent-topbar {
     padding: 10px 14px;
@@ -452,12 +611,6 @@ onMounted(() => {
   .agent-empty {
     margin-top: 4vh;
     padding-inline: 0;
-  }
-  .empty-mark {
-    width: 54px;
-    height: 54px;
-    border-radius: 18px;
-    font-size: 23px;
   }
   .agent-empty h1 {
     font-size: 23px;

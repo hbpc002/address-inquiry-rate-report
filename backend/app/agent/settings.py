@@ -41,6 +41,8 @@ LEGACY_SYSTEM_PROMPTS = frozenset({
     ),
 })
 
+CONVERSATION_RETENTION_DAYS = 180
+
 DEFAULT_SETTINGS = {
     "system_prompt": SYSTEM_PROMPT,
     "suggestions": [
@@ -52,6 +54,7 @@ DEFAULT_SETTINGS = {
     "max_iterations": MAX_ITERATIONS,
     "max_history_messages": MAX_HISTORY_MESSAGES,
     "consecutive_run_sql_failures": CONSECUTIVE_RUN_SQL_FAILURES,
+    "conversation_retention_days": CONVERSATION_RETENTION_DAYS,
 }
 
 # 运行参数合法范围（服务端校验）
@@ -59,6 +62,7 @@ PARAM_BOUNDS = {
     "max_iterations": (1, 20),
     "max_history_messages": (2, 100),
     "consecutive_run_sql_failures": (1, 10),
+    "conversation_retention_days": (0, 3650),
 }
 
 

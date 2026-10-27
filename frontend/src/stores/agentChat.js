@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { useUserStore } from '@/stores/user'
+import { api, useUserStore } from '@/stores/user'
 
 const TOOL_TITLES = {
   query_team_ranking: '班组排名',
@@ -115,6 +115,12 @@ export const useAgentChatStore = defineStore('agentChat', () => {
   const abortCtl = ref(null)
   const provider = ref('')
   const model = ref('')
+  const conversationId = ref(null)
+  const conversationTitle = ref('')
+  const conversations = ref([])
+  const conversationsLoading = ref(false)
+  const conversationsTotal = ref(0)
+  const conversationSearch = ref('')
 
   let _boundKey = null
 
@@ -122,27 +128,15 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     _boundKey = key
     try {
       const saved = JSON.parse(localStorage.getItem(key) || 'null')
-      if (saved && Array.isArray(saved.bubbleItems)) {
-        bubbleItems.value = saved.bubbleItems.map((m) => ({
-          ...m,
-          loading: false,
-          streaming: false,
-          thoughtItems: (m.thoughtItems || []).map((t) => ({
-            ...t,
-            thinkTitle: t.thinkTitle || t.title || '',
-            status: t.status === 'loading' ? 'stopped' : t.status,
-          })),
-        }))
-        thoughtSeq.value = saved.thoughtSeq || 0
+      if (saved) {
         provider.value = saved.provider || ''
         model.value = saved.model || ''
-        return
+        conversationId.value = saved.conversationId ?? null
       }
     } catch (e) { /* 忽略损坏数据 */ }
     bubbleItems.value = []
     thoughtSeq.value = 0
-    provider.value = ''
-    model.value = ''
+    pendingThoughtId.value = null
   }
 
   function activate() {
@@ -152,24 +146,22 @@ export const useAgentChatStore = defineStore('agentChat', () => {
   }
 
   watch(
-    [bubbleItems, provider, model],
+    [provider, model, conversationId],
     () => {
       if (!_boundKey) return
       try {
         localStorage.setItem(
           _boundKey,
           JSON.stringify({
-            bubbleItems: bubbleItems.value,
-            thoughtSeq: thoughtSeq.value,
             provider: provider.value,
             model: model.value,
+            conversationId: conversationId.value,
           })
         )
       } catch (e) {
         /* 容量超限忽略 */
       }
-    },
-    { deep: true }
+    }
   )
 
   function _ai() {
@@ -277,13 +269,145 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     it.thoughtItems.push(step)
   }
 
-  function clear() {
-    if (abortCtl.value) abortCtl.value.abort()
-    bubbleItems.value = []
+  function _restoreThoughtItems(events, status) {
+    const savedItems = bubbleItems.value
+    const savedAi = currentAiId.value
+    const temp = {
+      id: '__restore__',
+      placement: 'start',
+      content: '',
+      thoughtItems: [],
+      streaming: false,
+    }
+    bubbleItems.value = [temp]
+    currentAiId.value = temp.id
+    for (const evt of events || []) {
+      if (['status', 'progress', 'tool_start', 'tool_end', 'done'].includes(evt.type)) {
+        handleEvent(evt)
+      }
+    }
+    const finalStatus = status === 'streaming' ? 'stopped' : status
+    const stepStatus = finalStatus === 'error'
+      ? 'error'
+      : finalStatus === 'stopped'
+        ? 'stopped'
+        : 'success'
+    for (const step of temp.thoughtItems || []) {
+      if (step.status === 'loading') _finishStep(step, stepStatus)
+    }
+    const items = temp.thoughtItems || []
+    bubbleItems.value = savedItems
+    currentAiId.value = savedAi
+    return items
+  }
+
+  function _messageToBubble(msg) {
+    const ts = msg.created_at ? new Date(msg.created_at).getTime() : Date.now()
+    const createdAt = Number.isNaN(ts) ? Date.now() : ts
+    if (msg.role === 'user') {
+      return {
+        id: 'u' + msg.id,
+        placement: 'end',
+        content: msg.content || '',
+        variant: 'filled',
+        createdAt,
+      }
+    }
+    return {
+      id: 'a' + msg.id,
+      placement: 'start',
+      content: msg.content || '',
+      variant: 'filled',
+      loading: false,
+      streaming: false,
+      createdAt,
+      startedAt: createdAt,
+      finishedAt: createdAt,
+      serverId: msg.id,
+      thoughtItems: _restoreThoughtItems(msg.events || [], msg.status),
+    }
+  }
+
+  async function loadConversations(q = conversationSearch.value) {
+    conversationSearch.value = q || ''
+    conversationsLoading.value = true
+    try {
+      const r = await api.get('/agent/conversations', {
+        params: { q: conversationSearch.value, limit: 50 },
+      })
+      conversations.value = Array.isArray(r.data?.items) ? r.data.items : []
+      conversationsTotal.value = r.data?.total || conversations.value.length
+      return conversations.value
+    } catch (e) {
+      conversations.value = []
+      conversationsTotal.value = 0
+      return []
+    } finally {
+      conversationsLoading.value = false
+    }
+  }
+
+  async function loadConversation(id) {
+    if (!id) return
+    const r = await api.get(`/agent/conversations/${id}`)
+    const data = r.data || {}
+    conversationId.value = data.id
+    conversationTitle.value = data.title || ''
+    if (data.provider) provider.value = data.provider
+    if (data.model) model.value = data.model
+    bubbleItems.value = (data.messages || []).map(_messageToBubble)
     currentAiId.value = null
     thoughtSeq.value = 0
     pendingThoughtId.value = null
     streaming.value = false
+    return data
+  }
+
+  function newConversation() {
+    if (abortCtl.value) abortCtl.value.abort()
+    bubbleItems.value = []
+    input.value = ''
+    conversationId.value = null
+    conversationTitle.value = ''
+    currentAiId.value = null
+    thoughtSeq.value = 0
+    pendingThoughtId.value = null
+    streaming.value = false
+    abortCtl.value = null
+  }
+
+  function clear() {
+    newConversation()
+  }
+
+  async function renameConversation(id, title) {
+    const r = await api.patch(`/agent/conversations/${id}`, { title })
+    const item = conversations.value.find((c) => c.id === id)
+    if (item && r.data) Object.assign(item, r.data)
+    if (conversationId.value === id) {
+      conversationTitle.value = r.data?.title || title
+    }
+    return r.data
+  }
+
+  async function togglePin(id) {
+    const item = conversations.value.find((c) => c.id === id)
+    const pinned = item ? !item.is_pinned : true
+    const r = await api.patch(`/agent/conversations/${id}`, { is_pinned: pinned })
+    if (item && r.data) Object.assign(item, r.data)
+    await loadConversations()
+    return r.data
+  }
+
+  async function deleteConversation(id) {
+    await api.delete(`/agent/conversations/${id}`)
+    conversations.value = conversations.value.filter((c) => c.id !== id)
+    conversationsTotal.value = Math.max(0, conversationsTotal.value - 1)
+    if (conversationId.value === id) newConversation()
+  }
+
+  async function searchConversations(text) {
+    return loadConversations(text)
   }
 
   function stop() {
@@ -291,8 +415,15 @@ export const useAgentChatStore = defineStore('agentChat', () => {
   }
 
   function handleEvent(evt) {
+    if (evt.type === 'meta') {
+      conversationId.value = evt.conversation_id ?? conversationId.value
+      conversationTitle.value = evt.title || conversationTitle.value
+      const ai = _ai()
+      if (ai && evt.assistant_message_id != null) ai.serverId = evt.assistant_message_id
+      return true
+    }
     const it = _ai()
-    if (!it) return
+    if (!it) return false
     if (evt.type === 'token') {
       _finalizeNonToolLoading()
       it.content += evt.content
@@ -341,6 +472,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
       }
       it.content += `\n\n> ⚠️ ${evt.message || '未知错误'}`
     }
+    return false
   }
 
   async function send(text) {
@@ -371,6 +503,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     currentAiId.value = aid
     streaming.value = true
     abortCtl.value = new AbortController()
+    let metaSeen = false
     const token = localStorage.getItem('token')
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = 'Bearer ' + token
@@ -382,6 +515,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
           message: q,
           provider: provider.value || undefined,
           model: model.value || undefined,
+          conversation_id: conversationId.value || undefined,
         }),
         signal: abortCtl.value.signal,
       })
@@ -409,7 +543,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
           } catch (e) {
             continue
           }
-          handleEvent(evt)
+          if (handleEvent(evt)) metaSeen = true
         }
       }
     } catch (e) {
@@ -429,6 +563,9 @@ export const useAgentChatStore = defineStore('agentChat', () => {
       _finalizeAll(wasAborted ? 'stopped' : 'success')
       currentAiId.value = null
       abortCtl.value = null
+      if (metaSeen) {
+        loadConversations().catch(() => {})
+      }
     }
   }
 
@@ -442,8 +579,21 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     abortCtl,
     provider,
     model,
+    conversationId,
+    conversationTitle,
+    conversations,
+    conversationsLoading,
+    conversationsTotal,
+    conversationSearch,
     activate,
     clear,
+    newConversation,
+    loadConversations,
+    loadConversation,
+    renameConversation,
+    togglePin,
+    deleteConversation,
+    searchConversations,
     stop,
     send,
     formatDuration,

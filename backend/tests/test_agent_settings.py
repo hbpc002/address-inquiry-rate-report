@@ -43,12 +43,14 @@ def test_default_settings_structure():
     assert set(DEFAULT_SETTINGS.keys()) == {
         "system_prompt", "suggestions", "max_iterations",
         "max_history_messages", "consecutive_run_sql_failures",
+        "conversation_retention_days",
     }
     assert "{current_date}" in DEFAULT_SETTINGS["system_prompt"]
     assert "{data_range}" in DEFAULT_SETTINGS["system_prompt"]
     assert DEFAULT_SETTINGS["max_iterations"] == 6
     assert DEFAULT_SETTINGS["max_history_messages"] == 12
     assert DEFAULT_SETTINGS["consecutive_run_sql_failures"] == 2
+    assert DEFAULT_SETTINGS["conversation_retention_days"] == 180
     assert len(DEFAULT_SETTINGS["suggestions"]) == 4
 
 

@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.models.database import init_db
 from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads, salary_config, field_annotations, training_records
-from app.api import llm_providers, agent, ui_config, broadband, agent_settings, marketing
+from app.api import llm_providers, agent, agent_conversations, ui_config, broadband, agent_settings, marketing
 from app.models.database import SessionLocal
 import asyncio
 import json
@@ -20,6 +20,8 @@ except Exception:
     _HAS_DB_CONFIG = False
     _autoclean_config = {'enabled': True, 'retention_days': 90}
 from app.utils.logger import log_operation
+from app.services.agent_sessions import cleanup_expired_conversations
+from app.agent.settings import get_settings
 from app.core.config import settings
 from app.core.permissions import get_all_permission_keys, get_default_permissions
 from app.models.role import Role
@@ -75,6 +77,7 @@ app.include_router(field_annotations.router)
 app.include_router(training_records.router)
 app.include_router(llm_providers.router)
 app.include_router(agent.router)
+app.include_router(agent_conversations.router)
 app.include_router(ui_config.router)
 app.include_router(broadband.router)
 app.include_router(marketing.router)
@@ -94,6 +97,7 @@ def startup_event():
     _migrate_role_permissions()
     # 启动后台日志清理任务
     asyncio.create_task(_log_cleanup_task())
+    asyncio.create_task(_agent_conversation_cleanup_task())
 
 def _ensure_defaults():
     if _HAS_DB_CONFIG:
@@ -160,6 +164,21 @@ async def _log_cleanup_task():
                         db2.commit()
                     finally:
                         db2.close()
+        except Exception:
+            pass
+        await asyncio.sleep(60 * 60 * 24)
+
+
+async def _agent_conversation_cleanup_task():
+    while True:
+        try:
+            db = SessionLocal()
+            try:
+                settings = get_settings(db)
+                retention_days = int(settings.get("conversation_retention_days", 180) or 0)
+                cleanup_expired_conversations(db, retention_days)
+            finally:
+                db.close()
         except Exception:
             pass
         await asyncio.sleep(60 * 60 * 24)

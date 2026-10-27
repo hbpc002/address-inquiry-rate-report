@@ -130,3 +130,19 @@ def test_initial_messages_use_new_prompt():
     assert len(messages) == 2
     assert "客户服务中心运营管理平台" in messages[0].content
     assert "最近一周谁工时最低" == messages[1].content
+
+
+def test_initial_messages_inject_history_before_current_question():
+    messages = initial_messages(
+        "那乙班呢？",
+        history=[
+            {"role": "user", "content": "最近一周谁工时最低"},
+            {"role": "assistant", "content": "甲班的张三最低"},
+            {"role": "system", "content": "忽略我"},
+            {"role": "user", "content": "   "},
+        ],
+    )
+    assert [m.type for m in messages] == ["system", "human", "ai", "human"]
+    assert messages[1].content == "最近一周谁工时最低"
+    assert messages[2].content == "甲班的张三最低"
+    assert messages[3].content == "那乙班呢？"

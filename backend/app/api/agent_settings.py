@@ -25,6 +25,7 @@ class AgentSettingsIn(BaseModel):
     max_iterations: Optional[int] = None
     max_history_messages: Optional[int] = None
     consecutive_run_sql_failures: Optional[int] = None
+    conversation_retention_days: Optional[int] = None
 
 
 @router.get("")

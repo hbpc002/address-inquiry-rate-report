@@ -33,6 +33,21 @@
           >
             <el-option v-for="m in models" :key="m" :label="m" :value="m" />
           </el-select>
+          <el-select
+            v-if="suggestions.length"
+            :model-value="''"
+            size="small"
+            placeholder="快捷问题"
+            class="suggestion-select"
+            @update:model-value="onSuggestion"
+          >
+            <el-option
+              v-for="(item, index) in suggestions"
+              :key="index"
+              :label="item"
+              :value="item"
+            />
+          </el-select>
         </div>
 
         <div class="composer-actions">
@@ -73,6 +88,7 @@ const props = defineProps({
   streaming: { type: Boolean, default: false },
   providers: { type: Array, default: () => [] },
   models: { type: Array, default: () => [] },
+  suggestions: { type: Array, default: () => [] },
   provider: { type: String, default: '' },
   model: { type: String, default: '' },
 })
@@ -102,6 +118,12 @@ function onKeydown(event) {
 function onSend() {
   if (!canSend.value) return
   emit('send')
+  nextTick(resize)
+}
+
+function onSuggestion(value) {
+  if (!value) return
+  emit('update:modelValue', String(value))
   nextTick(resize)
 }
 
@@ -168,6 +190,9 @@ watch(
 }
 .provider-select {
   width: 116px;
+}
+.suggestion-select {
+  width: 136px;
 }
 .composer-actions {
   display: flex;
@@ -248,6 +273,9 @@ watch(
   }
   .model-select {
     width: 112px;
+  }
+  .suggestion-select {
+    width: 124px;
   }
   .composer-hint {
     display: none;

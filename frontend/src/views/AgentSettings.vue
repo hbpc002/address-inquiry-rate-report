@@ -36,11 +36,15 @@
         </el-form-item>
         <el-form-item label="历史消息条数">
           <el-input-number v-model="form.max_history_messages" :min="2" :max="100" />
-          <span class="tip">发给模型的最近消息上限，默认 12</span>
+          <span class="tip">发给模型的最近消息上限，默认 12（含当前问题）</span>
         </el-form-item>
         <el-form-item label="连续SQL失败阈值">
           <el-input-number v-model="form.consecutive_run_sql_failures" :min="1" :max="10" />
           <span class="tip">连续失败多少次后改用报表工具，默认 2</span>
+        </el-form-item>
+        <el-form-item label="会话保留天数">
+          <el-input-number v-model="form.conversation_retention_days" :min="0" :max="3650" />
+          <span class="tip">0 表示永久保留；置顶会话不会被自动清理，默认 180 天</span>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="saving" @click="save">保存</el-button>
@@ -63,6 +67,7 @@ const form = reactive({
   max_iterations: 6,
   max_history_messages: 12,
   consecutive_run_sql_failures: 2,
+  conversation_retention_days: 180,
 })
 
 function apply(data) {
@@ -71,6 +76,7 @@ function apply(data) {
   form.max_iterations = data.max_iterations ?? 6
   form.max_history_messages = data.max_history_messages ?? 12
   form.consecutive_run_sql_failures = data.consecutive_run_sql_failures ?? 2
+  form.conversation_retention_days = data.conversation_retention_days ?? 180
 }
 
 async function load() {
@@ -102,6 +108,7 @@ async function save() {
       max_iterations: form.max_iterations,
       max_history_messages: form.max_history_messages,
       consecutive_run_sql_failures: form.consecutive_run_sql_failures,
+      conversation_retention_days: form.conversation_retention_days,
     })
     apply(r.data)
     ElMessage.success('智能体设置已保存')

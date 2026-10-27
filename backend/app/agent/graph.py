@@ -172,7 +172,12 @@ def build_graph(llm, tools, settings: dict = None):
     return graph.compile()
 
 
-def initial_messages(question: str, data_range: str = "", settings: dict = None) -> list:
+def initial_messages(
+    question: str,
+    data_range: str = "",
+    settings: dict = None,
+    history: list = None,
+) -> list:
     today = datetime.now().strftime("%Y-%m-%d")
     settings = settings or {}
     prompt_template = settings.get("system_prompt") or SYSTEM_PROMPT
@@ -180,4 +185,17 @@ def initial_messages(question: str, data_range: str = "", settings: dict = None)
         prompt = prompt_template.format(current_date=today, data_range=data_range)
     except (KeyError, IndexError):
         prompt = prompt_template
-    return [SystemMessage(content=prompt), HumanMessage(content=question)]
+    messages = [SystemMessage(content=prompt)]
+    for item in history or []:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "user":
+            messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            messages.append(AIMessage(content=content))
+    messages.append(HumanMessage(content=question))
+    return messages

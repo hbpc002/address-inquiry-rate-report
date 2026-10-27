@@ -7,6 +7,8 @@ SYSTEM_TABLES = frozenset({
     "llm_provider_models",
     "app_configs",
     "operation_logs",
+    "agent_conversations",
+    "agent_messages",
 })
 
 TABLE_CATALOG = [

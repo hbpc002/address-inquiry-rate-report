@@ -1,11 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import AgentUserMessage from '@/components/AgentUserMessage.vue'
 import AgentReply from '@/components/AgentReply.vue'
 import AgentComposer from '@/components/AgentComposer.vue'
+import AgentAvatar from '@/components/AgentAvatar.vue'
+import AgentConversations from '@/components/AgentConversations.vue'
+import AgentChat from '@/views/AgentChat.vue'
+import { useLauncherStore } from '@/stores/launcher'
+import { api } from '@/stores/user'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const agentChatVue = readFileSync(path.join(root, '../src/views/AgentChat.vue'), 'utf8')
@@ -32,6 +38,23 @@ describe('AgentChat pi-pocket 风格结构', () => {
     expect(agentLauncherVue).toContain('drawerSize')
     expect(agentLauncherVue).toContain("'560px'")
     expect(agentLauncherVue).toContain("'100%'")
+  })
+
+  it('使用悬浮按钮配置的图标与按钮文字，并接入会话列表', () => {
+    expect(agentChatVue).toContain('AgentAvatar')
+    expect(agentChatVue).toContain('AgentConversations')
+    expect(agentChatVue).toContain('launcher.config.label')
+    expect(agentChatVue).toContain('launcher.config.icon_value')
+    expect(agentChatVue).toContain('store.loadConversations')
+    expect(agentChatVue).toContain('store.loadConversation')
+    expect(agentChatVue).toContain(':show-owner="isAdmin"')
+  })
+
+  it('模型选择旁提供快捷问题下拉', () => {
+    const composerVue = readFileSync(path.join(root, '../src/components/AgentComposer.vue'), 'utf8')
+    expect(composerVue).toContain('快捷问题')
+    expect(composerVue).toContain('suggestions')
+    expect(composerVue).toContain('onSuggestion')
   })
 })
 
@@ -130,5 +153,134 @@ describe('AgentComposer', () => {
     expect(wrapper.find('.send-button').exists()).toBe(false)
     await wrapper.find('.stop-button').trigger('click')
     expect(wrapper.emitted('stop')).toHaveLength(1)
+  })
+
+  it('选择快捷问题后填入输入框', async () => {
+    const SelectStub = {
+      props: ['modelValue'],
+      emits: ['update:modelValue'],
+      template: '<button class="suggestion-select-stub" @click="$emit(\'update:modelValue\', \'最近一周谁工时最低\')"><slot /></button>',
+    }
+    const wrapper = mount(AgentComposer, {
+      props: {
+        modelValue: '',
+        suggestions: ['最近一周谁工时最低'],
+      },
+      global: {
+        stubs: {
+          'el-select': SelectStub,
+          'el-option': { template: '<div />' },
+        },
+      },
+    })
+    await wrapper.find('.suggestion-select-stub').trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['最近一周谁工时最低'])
+  })
+})
+
+
+describe('AgentAvatar', () => {
+  it('渲染 emoji 图标', () => {
+    const wrapper = mount(AgentAvatar, {
+      props: { type: 'emoji', value: '🤖', size: 36 },
+    })
+    expect(wrapper.text()).toContain('🤖')
+  })
+
+  it('渲染图片与 SVG 图标', () => {
+    const image = mount(AgentAvatar, {
+      props: { type: 'url', value: '/static/icon.png' },
+    })
+    expect(image.find('img').attributes('src')).toBe('/static/icon.png')
+
+    const svg = mount(AgentAvatar, {
+      props: { type: 'svg', value: '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></svg>' },
+    })
+    expect(svg.find('svg').exists()).toBe(true)
+  })
+})
+
+describe('AgentConversations', () => {
+  const conversations = [
+    {
+      id: 7,
+      title: '最近一周工时',
+      is_pinned: true,
+      last_message_preview: '谁工时最低',
+      last_message_at: new Date().toISOString(),
+      owner_name: '张三',
+    },
+  ]
+
+  it('渲染会话、置顶、管理员归属并支持搜索/新建', async () => {
+    const wrapper = mount(AgentConversations, {
+      props: {
+        conversations,
+        activeId: 7,
+        total: 1,
+        showOwner: true,
+        search: '',
+      },
+    })
+    expect(wrapper.text()).toContain('最近一周工时')
+    expect(wrapper.text()).toContain('谁工时最低')
+    expect(wrapper.text()).toContain('置顶')
+    expect(wrapper.text()).toContain('张三')
+
+    await wrapper.find('.new-chat-button').trigger('click')
+    await wrapper.find('.search-box input').setValue('工时')
+    expect(wrapper.emitted('new')).toHaveLength(1)
+    expect(wrapper.emitted('search')?.at(-1)).toEqual(['工时'])
+  })
+
+  it('支持选择、置顶、重命名、删除', async () => {
+    const wrapper = mount(AgentConversations, {
+      props: { conversations, activeId: null },
+    })
+    await wrapper.find('.conversation-item').trigger('click')
+    expect(wrapper.emitted('select')?.[0]).toEqual([7])
+
+    const actions = wrapper.findAll('.conversation-actions button')
+    await actions[0].trigger('click')
+    await actions[1].trigger('click')
+    await actions[2].trigger('click')
+    expect(wrapper.emitted('pin')?.[0]?.[0].id).toBe(7)
+    expect(wrapper.emitted('rename')?.[0]?.[0].id).toBe(7)
+    expect(wrapper.emitted('delete')?.[0]?.[0].id).toBe(7)
+  })
+})
+
+
+describe('AgentChat 使用悬浮按钮配置', () => {
+  it('顶栏图标和标题来自 launcher 配置', async () => {
+    const m = new Map()
+    globalThis.localStorage = {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => m.set(k, String(v)),
+      removeItem: (k) => m.delete(k),
+      clear: () => m.clear(),
+    }
+    setActivePinia(createPinia())
+    const launcher = useLauncherStore()
+    launcher.setConfig({ label: '小助手', icon_type: 'emoji', icon_value: '🚀' })
+    launcher.loaded = true
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url.includes('/agent/conversations')) return { data: { items: [], total: 0 } }
+      if (url.includes('/llm-providers')) return { data: [] }
+      return { data: { suggestions: [] } }
+    })
+    const wrapper = mount(AgentChat, {
+      global: {
+        stubs: {
+          AgentConversations: true,
+          AgentComposer: true,
+          AgentReply: true,
+          AgentUserMessage: true,
+        },
+      },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('小助手')
+    expect(wrapper.text()).toContain('🚀')
   })
 })

@@ -3,3 +3,4 @@ from app.api import auth, employees, shift_types, schedules, checkins, reports, 
 __all__ = ["auth", "employees", "shift_types", "schedules", "checkins", "reports", "system", "users"]
 
 import app.api.field_annotations  # noqa: F401, E402
+import app.api.agent_conversations  # noqa: F401, E402
