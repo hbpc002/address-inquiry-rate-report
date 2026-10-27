@@ -61,7 +61,7 @@ watch(html, () => nextTick(decorate))
   word-break: break-word;
 }
 .markdown-body :deep(pre) {
-  background: #f6f8fa;
+  background: var(--agent-raised, #f0efeb);
   padding: 12px 14px;
   border-radius: 6px;
   overflow: auto;
@@ -77,7 +77,7 @@ watch(html, () => nextTick(decorate))
 }
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--agent-line, rgba(31, 32, 38, 0.09));
   padding: 6px 10px;
 }
 .copy-btn {
@@ -85,8 +85,8 @@ watch(html, () => nextTick(decorate))
   top: 6px;
   right: 6px;
   font-size: 12px;
-  border: 1px solid #dcdfe6;
-  background: #fff;
+  border: 1px solid var(--agent-line-strong, rgba(31, 32, 38, 0.14));
+  background: var(--agent-panel, #fffdf9);
   border-radius: 4px;
   padding: 2px 8px;
   cursor: pointer;

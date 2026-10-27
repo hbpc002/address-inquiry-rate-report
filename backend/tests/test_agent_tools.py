@@ -113,9 +113,14 @@ def test_run_sql_tool_description_contains_schema():
         assert "employees" in doc
         assert "schedules" in doc
         assert "daily_reports" in doc
+        assert "workloads" in doc
+        assert "marketing_details" in doc
+        assert "seamless_orders" in doc
+        assert "attendance_configs" in doc
         # 应包含关键列名
         assert "emp_no" in doc
         assert "schedule_date" in doc
+        assert "metrics" in doc
     finally:
         db.close()
 

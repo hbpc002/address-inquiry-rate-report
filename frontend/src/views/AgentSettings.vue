@@ -3,7 +3,7 @@
     <el-card class="section" shadow="never">
       <template #header>系统提示词</template>
       <el-alert type="info" :closable="false" style="margin-bottom: 12px"
-        title="可用占位符：{current_date} 当前日期、{data_range} 数据范围。修改后对新对话立即生效。" />
+        title="可用占位符：{current_date} 当前日期、{data_range} 数据范围。旧版默认提示词会自动升级，自定义提示词不会被覆盖；修改后对新对话立即生效。" />
       <el-input
         v-model="form.system_prompt"
         type="textarea"

@@ -14,14 +14,20 @@
       <span v-else class="fab-emoji">{{ config.icon_value }}</span>
     </button>
 
-    <el-drawer v-model="open" :title="config.label || '哟你通通'" direction="rtl" size="480px">
+    <el-drawer
+      v-model="open"
+      :title="config.label || '哟你通通'"
+      direction="rtl"
+      :size="drawerSize"
+      class="agent-drawer"
+    >
       <AgentChat embedded />
     </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
+import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { api } from '@/stores/user'
 import { useUserStore } from '@/stores/user'
 import { useLauncherStore } from '@/stores/launcher'
@@ -32,6 +38,11 @@ const userStore = useUserStore()
 const launcher = useLauncherStore()
 const open = ref(false)
 const fabEl = ref(null)
+const drawerSize = ref('560px')
+
+function updateDrawerSize() {
+  drawerSize.value = window.innerWidth <= 640 ? '100%' : '560px'
+}
 
 const config = computed(() => launcher.config)
 const pos = computed(() => launcher.pos)
@@ -110,7 +121,15 @@ async function persistPos() {
   } catch (_) { /* 忽略保存失败 */ }
 }
 
-onMounted(() => launcher.load())
+onMounted(() => {
+  updateDrawerSize()
+  window.addEventListener('resize', updateDrawerSize)
+  launcher.load()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateDrawerSize)
+})
 </script>
 
 <style scoped>
@@ -146,4 +165,16 @@ onMounted(() => launcher.load())
   user-drag: none;
 }
 .fab-icon :deep(svg) { width: 30px; height: 30px; fill: #fff; }
+</style>
+
+<style>
+.agent-drawer .el-drawer__body {
+  padding: 0;
+  overflow: hidden;
+}
+.agent-drawer .el-drawer__header {
+  margin-bottom: 0;
+  padding: 12px 18px;
+  border-bottom: 1px solid #ebeef5;
+}
 </style>

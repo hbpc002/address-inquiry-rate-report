@@ -285,15 +285,7 @@ def dashboard_stats(db: Session, year_month: str = None) -> dict:
 
 
 def schema_hint() -> str:
-    """提供给 text-to-SQL 工具的数据库结构说明（只读表）。"""
-    return (
-        "数据库为 PostgreSQL，主要相关表：\n"
-        "- employees(id, emp_no, name, team, dept, status, hire_date)：员工信息\n"
-        "- daily_reports(id, emp_id, schedule_date, status, scheduled_hours, actual_hours, "
-        "overtime_hours, late_minutes, early_minutes)：每日考勤汇总，status 取值为 "
-        "正常/迟到/早退/缺勤/请假/休息\n"
-        "- schedules(id, emp_id, schedule_date, shift_type_id, work_hours)：排班\n"
-        "- shift_types(id, shift_name, work_hours, is_night)：班次类型\n"
-        "- workloads(id, account, date, metrics jsonb)：工作量(含通话量/工单量等)\n"
-        "联表用 employees.id = daily_reports.emp_id。只允许 SELECT，禁止写操作。"
-    )
+    """提供给 text-to-SQL 的数据库结构说明（与智能体数据目录保持一致）。"""
+    from app.agent.data_catalog import build_data_catalog_prompt
+
+    return build_data_catalog_prompt()

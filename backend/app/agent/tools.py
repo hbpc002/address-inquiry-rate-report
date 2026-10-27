@@ -7,6 +7,12 @@ from sqlalchemy import text, inspect
 from langchain_core.tools import tool
 
 from app.services import report_queries
+from app.agent.data_catalog import (
+    SYSTEM_TABLES,
+    TABLE_COLUMNS,
+    TABLE_LABELS,
+    TABLE_NOTES,
+)
 from app.agent.sql_safe import validate_sql
 
 # 单次工具结果回传给 LLM 的最大长度，避免长 JSON 撑爆每轮令牌预算
@@ -75,34 +81,6 @@ def _rows_to_dicts(result) -> list:
 
 # ── 动态表结构：从 SQLAlchemy metadata 自动生成紧凑的 schema 描述 ────────────
 
-# 与考勤报表无关的系统/配置表，不暴露给 LLM 以避免干扰
-_SKIP_TABLES = frozenset({
-    "users", "roles", "llm_providers", "llm_provider_models",
-    "app_configs", "operation_logs", "field_annotations",
-    "attendance_configs", "salary_configs", "work_hour_thresholds",
-    "announcements",
-})
-
-# 只展示给 LLM 的核心列（精简以控制 token 数）
-_SHOW_COLUMNS = {
-    "employees": {"emp_no", "name", "team", "dept", "status", "hire_date"},
-    "schedules": {"emp_id", "schedule_date", "shift_name", "work_hours", "is_night",
-                  "schedule_type", "punctuality_rate", "call_duration",
-                  "organize_duration", "utilization_rate", "attendance_rate"},
-    "daily_reports": {"emp_id", "schedule_date", "shift_type_id", "schedule_type",
-                      "scheduled_start", "scheduled_end", "scheduled_hours",
-                      "actual_checkin", "actual_checkout", "actual_hours",
-                      "status", "late_minutes", "early_minutes", "overtime_hours"},
-    "checkins": {"emp_no", "name", "checkin_time", "checkout_time", "dept"},
-    "monthly_reports": {"emp_id", "year_month", "scheduled_hours", "actual_hours",
-                        "normal_days", "late_days", "early_days", "absent_days",
-                        "leave_days", "timeoff_days", "overtime_hours", "owed_hours"},
-    "workloads": {"account", "name", "emp_no", "team_desc", "date",
-                  "metrics"},
-    "training_records": {"emp_no", "record_date", "start_time", "end_time",
-                         "duration_minutes", "type", "reason"},
-}
-
 
 def _build_data_range(db) -> str:
     """查询真实考勤数据的日期范围，返回人类可读提示（供 system prompt / 工具描述用）。
@@ -125,9 +103,9 @@ def _build_data_range(db) -> str:
 
 
 def _build_schema_description(db) -> str:
-    """通过 SQLAlchemy inspector 从数据库中获取实际表结构，生成紧凑描述。
+    """通过 SQLAlchemy inspector 获取实际表结构，生成业务表/字段描述。
 
-    仅暴露与考勤报表相关的核心表和关键列，不暴露系统/配置表。
+    只暴露数据目录中的业务表；系统、安全、密钥和审计表不暴露。
     """
     try:
         inspector = inspect(db.get_bind())
@@ -135,31 +113,22 @@ def _build_schema_description(db) -> str:
         return ""
 
     lines = []
-    # 额外关系提示
-    rel_hints = {
-        "employees": "PK=id; 员工主表",
-        "schedules": "emp_id→employees.id; 排班表",
-        "daily_reports": "emp_id→employees.id; 考勤日报",
-        "checkins": "签到记录，通过 emp_no 关联 employees.emp_no",
-        "monthly_reports": "emp_id→employees.id; 月度汇总",
-        "workloads": "工作量数据，通过 emp_no 关联 employees.emp_no",
-        "training_records": "培训记录，通过 emp_no 关联 employees.emp_no",
-    }
-
     for table_name in inspector.get_table_names():
-        if table_name in _SKIP_TABLES:
+        if table_name in SYSTEM_TABLES:
             continue
         columns = inspector.get_columns(table_name)
         if not columns:
             continue
-        show = _SHOW_COLUMNS.get(table_name)
+        show = TABLE_COLUMNS.get(table_name)
         if show is not None:
             col_names = [c["name"] for c in columns if c["name"] in show]
         else:
             col_names = [c["name"] for c in columns]
         if not col_names:
             continue
-        hint = rel_hints.get(table_name, "")
+        label = TABLE_LABELS.get(table_name, "")
+        notes = TABLE_NOTES.get(table_name, "")
+        hint = "；".join(part for part in (label, notes) if part)
         lines.append(f"{table_name}({', '.join(col_names)})" + (f"  -- {hint}" if hint else ""))
 
     return "\n".join(lines)
@@ -254,12 +223,13 @@ def _make_run_sql(db, schema_desc: str, data_range: str = ""):
     """构建 run_sql 工具函数（闭包持有 db + schema 描述）。"""
     # 动态 docstring：包含实际表结构，LLM 能直接看到表名和列名
     doc = (
-        "对考勤数据库执行只读 SQL（仅 SELECT）。当现有报表工具无法覆盖自定义分析时使用。\n"
-        "注意：仅允许单条 SELECT，禁止 INSERT/UPDATE/DELETE/DROP/WITH/INTO。\n"
-        "日期列必须使用 'YYYY-MM-DD' 格式（如 '2026-09-03'），禁止使用空字符串。\n"
+        "对业务数据库执行只读 SQL（仅 SELECT）。当现有报表工具无法覆盖自定义分析时使用。\n"
+        "注意：仅允许单条 SELECT，禁止 INSERT/UPDATE/DELETE/DROP/ALTER/WITH/INTO，禁止注释和多语句。\n"
+        "日期列必须使用 'YYYY-MM-DD' 格式（如 '2026-09-03'），月份使用 'YYYY-MM'，禁止使用空字符串。\n"
         "涉及日期范围查询（如'最近一周/本月'）请优先使用 query_date_range 工具。\n"
+        "结果最多回传 50 行、2000 字符，优先写聚合查询。\n"
         f"{data_range}\n"
-        "以下是数据库中实际存在的表和关键列（PostgreSQL 语法）：\n"
+        "以下是数据库中实际存在的业务表和字段（PostgreSQL 语法）：\n"
         f"{schema_desc}"
     )
 

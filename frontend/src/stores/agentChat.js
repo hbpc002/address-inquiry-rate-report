@@ -348,7 +348,13 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     if (!q || streaming.value) return
     input.value = ''
     const uid = 'u' + Date.now() + Math.random().toString(36).slice(2, 6)
-    bubbleItems.value.push({ id: uid, placement: 'end', content: q, variant: 'filled' })
+    bubbleItems.value.push({
+      id: uid,
+      placement: 'end',
+      content: q,
+      variant: 'filled',
+      createdAt: Date.now(),
+    })
     const aid = 'a' + Date.now() + Math.random().toString(36).slice(2, 6)
     bubbleItems.value.push({
       id: aid,
@@ -357,6 +363,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
       variant: 'filled',
       loading: false,
       streaming: true,
+      createdAt: Date.now(),
       startedAt: Date.now(),
       finishedAt: null,
       thoughtItems: [],

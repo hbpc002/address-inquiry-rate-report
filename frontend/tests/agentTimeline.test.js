@@ -74,4 +74,19 @@ describe('AgentTimeline', () => {
     await wrapper.find('.timeline-head').trigger('click')
     expect(wrapper.find('.timeline-body').exists()).toBe(false)
   })
+
+  it('流式结束后自动折叠，用户手动展开后保持展开', async () => {
+    const wrapper = mount(AgentTimeline, {
+      props: { steps, streaming: true, defaultOpen: false },
+    })
+    expect(wrapper.find('.timeline-body').exists()).toBe(true)
+    await wrapper.setProps({ streaming: false })
+    expect(wrapper.find('.timeline-body').exists()).toBe(false)
+
+    await wrapper.find('.timeline-head').trigger('click')
+    expect(wrapper.find('.timeline-body').exists()).toBe(true)
+    await wrapper.setProps({ streaming: true })
+    await wrapper.setProps({ streaming: false })
+    expect(wrapper.find('.timeline-body').exists()).toBe(true)
+  })
 })
