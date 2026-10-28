@@ -4,6 +4,7 @@ import time
 from typing import Optional
 
 from openai import RateLimitError
+from langchain_core.messages import AIMessage
 from fastapi import APIRouter, Depends, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -18,7 +19,7 @@ from app.core.llm import (
     build_fallback_model,
 )
 from app.agent.tools import make_tools, _build_data_range
-from app.agent.graph import build_graph, initial_messages
+from app.agent.graph import build_graph, initial_messages, _message_text
 from app.agent.settings import get_settings
 from app.services.agent_sessions import (
     add_message,
@@ -261,6 +262,42 @@ async def _with_heartbeat(source, interval=HEARTBEAT_INTERVAL):
             pass
 
 
+def _append_missing_text(current: str, text: str) -> str:
+    if not text:
+        return ""
+    if not current:
+        return text
+    if current.endswith(text) or current.startswith(text):
+        return ""
+    if text.startswith(current):
+        return text[len(current):]
+    for size in range(min(len(current), len(text)), 0, -1):
+        if current[-size:] == text[:size]:
+            return text[size:]
+    return text
+
+
+def _extract_final_text(output) -> str:
+    messages = None
+    if isinstance(output, dict):
+        messages = output.get("messages")
+    elif isinstance(output, list):
+        messages = output
+    elif hasattr(output, "messages"):
+        messages = output.messages
+    if not messages:
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, AIMessage):
+            continue
+        if getattr(message, "tool_calls", None):
+            continue
+        text = _message_text(getattr(message, "content", ""))
+        if text.strip():
+            return text
+    return ""
+
+
 def _emit(payload: dict, on_event=None) -> str:
     if on_event:
         try:
@@ -282,6 +319,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
     def emit(payload):
         return _emit(payload, on_event)
 
+    emitted_text = ""
     last_progress = None
     progress_idx = 0
     tool_seq = 0
@@ -301,6 +339,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                 chunk = ev["data"]["chunk"]
                 content = chunk.content if isinstance(chunk.content, str) else ""
                 if content:
+                    emitted_text += content
                     yield emit({"type": "token", "content": content})
                 elif getattr(chunk, "tool_call_chunks", None) or _reasoning_content(chunk):
                     # 模型在生成工具参数：无可视文本，但可据此判断仍在工作
@@ -317,6 +356,12 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
             elif kind == "on_chat_model_end":
                 resp = ev["data"]["output"]
                 tool_calls = getattr(resp, "tool_calls", None)
+                if not tool_calls:
+                    final_text = _message_text(getattr(resp, "content", ""))
+                    missing = _append_missing_text(emitted_text, final_text)
+                    if missing:
+                        emitted_text += missing
+                        yield emit({"type": "token", "content": missing})
                 if tool_calls:
                     yield emit({
                         "type": "status",
@@ -324,6 +369,12 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                         "kind": "thinking",
                         "title": "已获取数据，正在汇总分析",
                     })
+            elif kind == "on_chain_end":
+                final_text = _extract_final_text(ev.get("data", {}).get("output"))
+                missing = _append_missing_text(emitted_text, final_text)
+                if missing:
+                    emitted_text += missing
+                    yield emit({"type": "token", "content": missing})
             elif kind == "on_tool_start":
                 name = _event_name(ev)
                 rid = _run_id(ev)
@@ -371,6 +422,10 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                     "duration_ms": _elapsed_ms(start, _now()),
                     "summary": "执行失败",
                 })
+        if not emitted_text.strip():
+            fallback = "模型未返回文字结果，请重试或更换模型。"
+            emitted_text += fallback
+            yield emit({"type": "token", "content": fallback})
         yield emit({"type": "done", "elapsed_ms": _elapsed_ms({"start": start_time}, _now())})
     except RateLimitError:
         yield emit({"type": "error", "message": "模型限流，请稍后重试或降低查询复杂度"})

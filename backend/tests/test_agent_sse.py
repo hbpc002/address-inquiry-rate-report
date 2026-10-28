@@ -158,6 +158,36 @@ def test_done_emitted_at_end():
     assert result[-1]["type"] == "done"
 
 
+def test_non_streamed_model_content_is_recovered():
+    """模型没有流式 token 但最终有 content 时，也要补发文本，避免空回复。"""
+    events = [
+        _ev("on_chat_model_end", output=AIMessage(content="最终回答")),
+    ]
+    result = asyncio_run(_collect(events))
+    tokens = [e for e in result if e["type"] == "token"]
+    assert tokens and tokens[-1]["content"] == "最终回答"
+
+
+def test_chain_end_final_text_is_emitted_for_force_finalize():
+    """force_finalize 等节点直接返回 AIMessage 时，应从 chain_end 补发文本。"""
+    events = [
+        {
+            "event": "on_chain_end",
+            "name": "LangGraph",
+            "data": {"output": {"messages": [AIMessage(content="已基于已有结果给出结论")]}},
+        },
+    ]
+    result = asyncio_run(_collect(events))
+    assert any(e["type"] == "token" and "已有结果" in e["content"] for e in result)
+
+
+def test_empty_final_response_emits_fallback_instead_of_blank():
+    """模型完全没有文字输出时，应给出可操作的兜底提示。"""
+    result = asyncio_run(_collect([_ev("on_chat_model_end", output=AIMessage(content=""))]))
+    tokens = [e for e in result if e["type"] == "token"]
+    assert tokens and "未返回文字结果" in tokens[-1]["content"]
+
+
 def test_error_on_exception():
     """内部异常时发 error 而非崩溃。"""
 

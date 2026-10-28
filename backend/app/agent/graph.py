@@ -121,6 +121,22 @@ def _count_consecutive_run_sql_failures(state: dict) -> int:
     return count
 
 
+def _message_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content or "")
+
+
 def build_graph(llm, tools, settings: dict = None):
     settings = settings or {}
     max_iterations = settings.get("max_iterations", MAX_ITERATIONS)
@@ -142,7 +158,29 @@ def build_graph(llm, tools, settings: dict = None):
                     "query_dashboard_stats）获取数据，或直接基于已有信息给出结论。"
                 ))
             ]
-        return {"messages": [llm_with_tools.invoke(trimmed)]}
+        response = llm_with_tools.invoke(trimmed)
+        if not getattr(response, "tool_calls", None) and not _message_text(
+            getattr(response, "content", "")
+        ).strip():
+            retry_messages = trimmed + [
+                HumanMessage(
+                    content=(
+                        "请基于以上对话和工具返回结果，直接用中文给出最终回答。"
+                        "不要再调用工具；如果数据为空，请说明查询范围和原因。"
+                    )
+                )
+            ]
+            try:
+                response = llm.invoke(retry_messages)
+            except Exception:  # noqa: BLE001
+                response = AIMessage(
+                    content="模型未返回文字结果，请重试或更换模型。"
+                )
+            if not _message_text(getattr(response, "content", "")).strip():
+                response = AIMessage(
+                    content="模型未返回文字结果，请重试或更换模型。"
+                )
+        return {"messages": [response]}
 
     # 迭代计数，防止无限循环耗尽令牌
     iteration_counter = {"n": 0}
