@@ -33,6 +33,10 @@ from app.services.agent_sessions import (
 # 模型生成工具调用（如 SQL）时 content 为空、无可视文本；节流地发 progress
 # 心跳，让前端在最长空白阶段仍有实时反馈。单位：秒。
 PROGRESS_INTERVAL = 2.0
+# 推理正文的发送节流间隔：避免思考模型每个 token 都发一条 SSE。
+REASONING_INTERVAL = 0.25
+# 单次模型调用的推理正文保存上限，避免 events 无限膨胀。
+REASONING_CHAR_LIMIT = 20000
 # SSE 空闲心跳间隔：复杂查询期间即使没有 token/tool 事件，也保持连接活跃。
 HEARTBEAT_INTERVAL = 15.0
 # 进度文案轮换，避免界面长时间看起来"卡住"
@@ -165,7 +169,7 @@ async def agent_chat(
         if event_type == "token":
             content_parts.append(event.get("content") or "")
         elif event_type in {
-            "status", "progress", "tool_start", "tool_end",
+            "status", "progress", "reasoning", "tool_start", "tool_end",
             "notice", "error", "done",
         }:
             tool_events.append(event)
@@ -311,6 +315,7 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
     """把 LangGraph 的 astream_events 转成 SSE 文本序列（可独立测试）。
 
     - content 非空 → token 事件（逐字流式显示）
+    - reasoning 非空 → reasoning 事件（节流发送思考正文）
     - content 为空但带 tool_call_chunks（模型正在生成工具/SQL 参数）→ 节流发
       progress 事件，让前端在最长空白期有实时更新
 
@@ -324,6 +329,9 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
     progress_idx = 0
     tool_seq = 0
     started = {}
+    reasoning_pending = ""
+    reasoning_total = 0
+    last_reasoning = None
     start_time = _now()
     try:
         async for ev in graph.astream_events({"messages": messages}, version="v2"):
@@ -337,11 +345,34 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                 })
             elif kind == "on_chat_model_stream":
                 chunk = ev["data"]["chunk"]
+                reasoning = _reasoning_text(chunk)
+                if reasoning and reasoning_total < REASONING_CHAR_LIMIT:
+                    remaining = REASONING_CHAR_LIMIT - reasoning_total
+                    piece = reasoning[:remaining]
+                    reasoning_total += len(piece)
+                    reasoning_pending += piece
+                    cur = _now()
+                    if last_reasoning is None or cur - last_reasoning >= REASONING_INTERVAL:
+                        yield emit({
+                            "type": "reasoning",
+                            "id": _run_id(ev),
+                            "text": reasoning_pending,
+                        })
+                        reasoning_pending = ""
+                        last_reasoning = cur
                 content = chunk.content if isinstance(chunk.content, str) else ""
                 if content:
+                    if reasoning_pending:
+                        yield emit({
+                            "type": "reasoning",
+                            "id": _run_id(ev),
+                            "text": reasoning_pending,
+                        })
+                        reasoning_pending = ""
+                        last_reasoning = _now()
                     emitted_text += content
                     yield emit({"type": "token", "content": content})
-                elif getattr(chunk, "tool_call_chunks", None) or _reasoning_content(chunk):
+                elif getattr(chunk, "tool_call_chunks", None):
                     # 模型在生成工具参数：无可视文本，但可据此判断仍在工作
                     cur = _now()
                     if last_progress is None or cur - last_progress >= PROGRESS_INTERVAL:
@@ -354,6 +385,14 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                             "text": text,
                         })
             elif kind == "on_chat_model_end":
+                if reasoning_pending:
+                    yield emit({
+                        "type": "reasoning",
+                        "id": _run_id(ev),
+                        "text": reasoning_pending,
+                    })
+                    reasoning_pending = ""
+                    last_reasoning = _now()
                 resp = ev["data"]["output"]
                 tool_calls = getattr(resp, "tool_calls", None)
                 if not tool_calls:
@@ -376,6 +415,14 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                     emitted_text += missing
                     yield emit({"type": "token", "content": missing})
             elif kind == "on_tool_start":
+                if reasoning_pending:
+                    yield emit({
+                        "type": "reasoning",
+                        "id": _run_id(ev),
+                        "text": reasoning_pending,
+                    })
+                    reasoning_pending = ""
+                    last_reasoning = _now()
                 name = _event_name(ev)
                 rid = _run_id(ev)
                 if not rid:
@@ -422,6 +469,13 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                     "duration_ms": _elapsed_ms(start, _now()),
                     "summary": "执行失败",
                 })
+        if reasoning_pending:
+            yield emit({
+                "type": "reasoning",
+                "id": None,
+                "text": reasoning_pending,
+            })
+            reasoning_pending = ""
         if not emitted_text.strip():
             fallback = "模型未返回文字结果，请重试或更换模型。"
             emitted_text += fallback
@@ -520,16 +574,50 @@ def _tool_summary(output):
     return f"{len(lines)} 行输出"
 
 
-def _reasoning_content(chunk) -> bool:
-    """识别推理类模型（如 Qwen）流式输出的 reasoning 片段。"""
+def _reasoning_value_text(value) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(_reasoning_value_text(item) for item in value)
+    if isinstance(value, dict):
+        for key in ("text", "content", "reasoning"):
+            text = _reasoning_value_text(value.get(key))
+            if text:
+                return text
+    return ""
+
+
+def _reasoning_text(chunk) -> str:
+    """提取推理类模型（如 Qwen）流式输出的 reasoning 正文。"""
     try:
-        for kw in ("reasoning_content", "reasoning"):
-            val = chunk.additional_kwargs.get(kw)
-            if val:
-                return True
+        for source in (
+            getattr(chunk, "additional_kwargs", None),
+            getattr(chunk, "response_metadata", None),
+        ):
+            if not isinstance(source, dict):
+                continue
+            for key in ("reasoning_content", "reasoning"):
+                text = _reasoning_value_text(source.get(key))
+                if text:
+                    return text
+        content = getattr(chunk, "content", None)
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") not in ("reasoning", "thinking"):
+                    continue
+                parts.append(_reasoning_value_text(block))
+            return "".join(parts)
     except Exception:  # noqa: BLE001
         pass
-    return False
+    return ""
+
+
+def _reasoning_content(chunk) -> bool:
+    """兼容旧调用：判断 chunk 是否包含推理正文。"""
+    return bool(_reasoning_text(chunk))
 
 
 def __sse(payload: dict) -> str:

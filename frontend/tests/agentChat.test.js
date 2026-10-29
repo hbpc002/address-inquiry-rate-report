@@ -296,6 +296,7 @@ describe('agentChat store 持久化', () => {
             content: '结果如下',
             events: [
               { type: 'status', id: 's1', title: '正在分析问题', kind: 'thinking' },
+              { type: 'reasoning', id: 's1', text: '先核对考勤，再汇总工时。' },
               { type: 'tool_start', id: 't1', name: 'query_date_range', input: { start_date: '2026-07-01' }, title: '区间汇总', subject: '2026-07-01' },
               { type: 'tool_end', id: 't1', status: 'success', output: '{"rows":[1]}', duration_ms: 12, summary: '返回 1 行' },
             ],
@@ -313,8 +314,60 @@ describe('agentChat store 持久化', () => {
     expect(ai.content).toBe('结果如下')
     expect(ai.streaming).toBe(false)
     expect(ai.thoughtItems.length).toBe(2)
+    expect(ai.thoughtItems[0].thinkContent).toContain('先核对考勤')
     expect(ai.thoughtItems[1].title).toBe('区间汇总')
     expect(ai.thoughtItems[1].status).toBe('success')
+  })
+
+  it('reasoning 事件追加到思考节点，progress 不覆盖推理正文', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    const store = useAgentChatStore()
+    store.activate()
+    const sse =
+      'data: ' + JSON.stringify({ type: 'status', id: 's1', kind: 'thinking', title: '正在分析问题' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'reasoning', id: 's1', text: '先看考勤。' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'reasoning', id: 's1', text: '再核对工时。' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'progress', id: 's1', text: '正在生成查询…' }) + '\n\n' +
+      'data: ' + JSON.stringify({ type: 'done' }) + '\n\n'
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      body: {
+        getReader: () => {
+          const enc = new TextEncoder()
+          let sent = false
+          return {
+            read: async () => {
+              if (sent) return { done: true, value: undefined }
+              sent = true
+              return { done: false, value: enc.encode(sse) }
+            },
+          }
+        },
+      },
+    }))
+    await store.send('最近一周')
+    const ai = store.bubbleItems[1]
+    expect(ai.thoughtItems.length).toBe(1)
+    expect(ai.thoughtItems[0].title).toBe('正在分析问题')
+    expect(ai.thoughtItems[0].thinkContent).toBe('先看考勤。再核对工时。')
+  })
+
+  it('显示思考偏好默认开启，并可从本地恢复', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    localStorage.setItem('agent_show_thinking', 'false')
+    const store = useAgentChatStore()
+    store.activate()
+    expect(store.showThinking).toBe(false)
+  })
+
+  it('显示思考偏好变化后写入本地', async () => {
+    const { useAgentChatStore } = await import('@/stores/agentChat')
+    const store = useAgentChatStore()
+    store.activate()
+    expect(store.showThinking).toBe(true)
+    store.showThinking = false
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(localStorage.getItem('agent_show_thinking')).toBe('false')
   })
 
   it('progress 事件更新当前 loading 节点的文案而不新增节点', async () => {

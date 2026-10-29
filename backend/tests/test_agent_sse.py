@@ -18,6 +18,7 @@ from langchain_core.messages.tool import tool_call_chunk
 from app.api.agent import (
     iter_sse_events,
     _with_heartbeat,
+    _reasoning_text,
     _PROGRESS_TEXTS,
     PROGRESS_INTERVAL,
 )
@@ -327,6 +328,66 @@ def test_heartbeat_emitted_when_stream_is_idle():
     out = asyncio_run(run())
     assert any(item.startswith(": ping") for item in out)
     assert out[-1].startswith("data:")
+
+
+
+def _reasoning_chunk(text, **kwargs):
+    return AIMessage(
+        content="",
+        additional_kwargs={"reasoning_content": text},
+        **kwargs,
+    )
+
+
+def test_reasoning_text_extracts_provider_fields_and_content_blocks():
+    """推理正文可能来自 additional_kwargs、response_metadata 或 content block。"""
+    assert _reasoning_text(_reasoning_chunk("先看考勤")) == "先看考勤"
+    assert _reasoning_text(
+        AIMessage(content="", response_metadata={"reasoning": "再核对工时"})
+    ) == "再核对工时"
+    assert _reasoning_text(
+        AIMessage(content=[{"type": "thinking", "text": "最后生成结论"}])
+    ) == "最后生成结论"
+
+
+def test_reasoning_events_are_emitted_and_persisted():
+    """reasoning 正文应作为独立事件发送，并进入持久化回调。"""
+    events = [
+        _ev("on_chat_model_start", run_id="r1"),
+        _ev("on_chat_model_stream", run_id="r1", chunk=_reasoning_chunk("先分析")),
+        _ev("on_chat_model_stream", run_id="r1", chunk=_reasoning_chunk("再查询")),
+        _ev("on_chat_model_end", run_id="r1", output=AIMessage(content="答案")),
+    ]
+    collected = []
+
+    async def run():
+        parsed = []
+        async for item in iter_sse_events(
+            FakeGraph(events), FakeLLM(), [HumanMessage(content="q")],
+            _now=FakeClock(), on_event=collected.append,
+        ):
+            parsed.append(json.loads(item[len("data: "):].strip()))
+        return parsed
+
+    result = asyncio_run(run())
+    reasoning = [e for e in result if e["type"] == "reasoning"]
+    assert "".join(e["text"] for e in reasoning) == "先分析再查询"
+    assert all(e["id"] == "r1" for e in reasoning)
+    assert any(e["type"] == "reasoning" for e in collected)
+    assert not any(e["type"] == "progress" for e in result)
+
+
+def test_reasoning_is_flushed_before_tool_start():
+    """推理缓冲在工具开始前应刷新，避免正文延迟到工具结束才出现。"""
+    events = [
+        _ev("on_chat_model_stream", run_id="r1", chunk=_reasoning_chunk("先分析")),
+        _ev("on_chat_model_stream", run_id="r1", chunk=_reasoning_chunk("再调用")),
+        _ev("on_tool_start", run_id="tool-1", name="query_date_range", input={}),
+    ]
+    result = asyncio_run(_collect(events, _now=FakeClock()))
+    types = [e["type"] for e in result]
+    assert types.index("reasoning") < types.index("tool_start")
+    assert "".join(e["text"] for e in result if e["type"] == "reasoning") == "先分析再调用"
 
 
 def asyncio_run(coro):

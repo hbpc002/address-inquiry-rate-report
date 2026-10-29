@@ -16,7 +16,12 @@
       <div v-if="open" class="timeline-body">
         <div class="timeline-line" aria-hidden="true"></div>
         <TransitionGroup name="step-in" tag="div" class="timeline-steps">
-          <AgentStep v-for="step in steps" :key="step.id" :step="step" />
+          <AgentStep
+            v-for="step in steps"
+            :key="step.id"
+            :step="step"
+            :show-thinking="showThinking"
+          />
         </TransitionGroup>
       </div>
     </Transition>
@@ -33,12 +38,21 @@ const props = defineProps({
   startedAt: { type: Number, default: null },
   finishedAt: { type: Number, default: null },
   defaultOpen: { type: Boolean, default: false },
+  showThinking: { type: Boolean, default: true },
 })
 
 const open = ref(props.defaultOpen || props.streaming)
 const userToggled = ref(false)
 const now = ref(Date.now())
 let timer = null
+
+const hasThoughtText = computed(() =>
+  props.steps.some((step) => {
+    if (step.kind !== 'thinking' || step.status === 'loading') return false
+    const text = String(step.thinkContent || '').trim()
+    return !!text && text !== String(step.title || '').trim()
+  })
+)
 
 watch(
   () => props.defaultOpen,
@@ -55,7 +69,9 @@ watch(
       startClock()
     } else {
       stopClock()
-      if (!userToggled.value) open.value = props.defaultOpen
+      if (!userToggled.value) {
+        open.value = props.defaultOpen || (props.showThinking && hasThoughtText.value)
+      }
     }
   },
   { immediate: true }
@@ -65,6 +81,15 @@ watch(
   () => props.steps.length,
   (length, previous) => {
     if (length > previous && props.streaming && !userToggled.value) open.value = true
+  }
+)
+
+watch(
+  () => props.showThinking,
+  (value) => {
+    if (!userToggled.value && !props.streaming) {
+      open.value = props.defaultOpen || (value && hasThoughtText.value)
+    }
   }
 )
 

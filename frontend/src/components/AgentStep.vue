@@ -22,7 +22,7 @@
       </div>
       <div v-if="expanded" class="step-detail" @click.stop>
         <template v-if="kind === 'thinking'">
-          <pre>{{ step.thinkContent || step.title }}</pre>
+          <pre>{{ step.thinkContent }}</pre>
         </template>
         <template v-else>
           <div v-if="step.input != null" class="detail-block">
@@ -45,24 +45,27 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   step: { type: Object, required: true },
+  showThinking: { type: Boolean, default: true },
 })
 
 const expanded = ref(false)
+const userToggled = ref(false)
 
 const status = computed(() => props.step.status || 'loading')
 const running = computed(() => status.value === 'loading')
 const kind = computed(() => props.step.kind || (props.step.toolName ? 'tool' : 'status'))
 const label = computed(() => props.step.title || props.step.toolName || '步骤')
 
-const subject = computed(() => {
-  if (props.step.subject) return props.step.subject
-  if (kind.value === 'thinking' && running.value) return props.step.thinkContent || ''
-  return ''
+const hasThinkingText = computed(() => {
+  const text = String(props.step.thinkContent || '').trim()
+  return !!text && text !== String(props.step.title || '').trim()
 })
+
+const subject = computed(() => props.step.subject || '')
 
 const mark = computed(() => {
   if (status.value === 'success') return '✓'
@@ -80,9 +83,22 @@ const meta = computed(() => {
 })
 
 const canExpand = computed(() => {
-  if (kind.value === 'thinking') return !!(props.step.thinkContent || props.step.title)
+  if (kind.value === 'thinking') return hasThinkingText.value
   return !!(props.step.input != null || props.step.output || props.step.error)
 })
+
+watch(
+  [() => props.showThinking, kind, status, hasThinkingText],
+  () => {
+    if (userToggled.value) return
+    expanded.value =
+      props.showThinking &&
+      kind.value === 'thinking' &&
+      status.value !== 'loading' &&
+      hasThinkingText.value
+  },
+  { immediate: true }
+)
 
 function formatDuration(ms) {
   if (ms == null || Number.isNaN(ms)) return ''
@@ -110,7 +126,9 @@ function pretty(value) {
 }
 
 function toggle() {
-  if (canExpand.value) expanded.value = !expanded.value
+  if (!canExpand.value) return
+  userToggled.value = true
+  expanded.value = !expanded.value
 }
 </script>
 
@@ -238,9 +256,12 @@ function toggle() {
   font-size: 11px;
   font-weight: 600;
 }
+.kind-thinking .step-detail {
+  background: var(--agent-raised, #f0efeb);
+}
 .step-detail pre {
   margin: 0;
-  max-height: 240px;
+  max-height: 280px;
   overflow: auto;
   color: var(--agent-muted, #6f7280);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

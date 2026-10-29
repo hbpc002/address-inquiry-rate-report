@@ -51,6 +51,14 @@
           </div>
         </div>
         <div class="agent-top-actions">
+          <button
+            type="button"
+            class="thinking-toggle"
+            :class="{ active: store.showThinking }"
+            :aria-pressed="store.showThinking"
+            :title="store.showThinking ? '隐藏思考过程' : '显示思考过程'"
+            @click="store.showThinking = !store.showThinking"
+          >✦ 思考</button>
           <span class="agent-status" :class="{ live: store.streaming }">
             <span class="status-dot" aria-hidden="true"></span>
             {{ store.streaming ? '生成中' : '在线' }}
@@ -94,6 +102,7 @@
               :message="item"
               :agent-name="agentName"
               :agent-icon="agentIcon"
+              :show-thinking="store.showThinking"
             />
           </template>
         </div>
@@ -455,6 +464,26 @@ onUnmounted(() => clearTimeout(searchTimer))
   background: var(--agent-accent);
   box-shadow: 0 0 0 3px var(--agent-accent-soft);
   animation: agent-status-pulse 1.4s ease-out infinite;
+}
+.thinking-toggle {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--agent-line);
+  border-radius: 999px;
+  background: var(--agent-panel);
+  color: var(--agent-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.thinking-toggle:hover {
+  background: var(--agent-hover);
+  color: var(--agent-text);
+}
+.thinking-toggle.active {
+  border-color: var(--agent-accent-line);
+  background: var(--agent-accent-soft);
+  color: var(--agent-accent-strong);
 }
 .clear-button {
   height: 28px;

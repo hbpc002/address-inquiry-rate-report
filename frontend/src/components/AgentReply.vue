@@ -21,11 +21,38 @@
       :started-at="message.startedAt"
       :finished-at="message.finishedAt"
       :default-open="false"
+      :show-thinking="showThinking"
     />
 
     <MarkdownMessage v-if="content" :content="content" class="reply-markdown" />
 
-    <div v-if="streaming && (!steps.length || content)" class="live-line">
+    <section
+      v-if="liveThoughtVisible && !thinkingFolded"
+      class="live-thought"
+      aria-label="思考过程"
+    >
+      <div class="live-thought-label">{{ liveThoughtLabel }}</div>
+      <div
+        ref="thoughtBox"
+        class="live-thought-text"
+        role="region"
+        tabindex="0"
+        aria-label="思考过程"
+        @scroll.passive="onThoughtScroll"
+      >{{ liveThoughtText || '等待模型返回思考内容…' }}</div>
+    </section>
+
+    <div v-if="streaming" class="live-line">
+      <button
+        v-if="liveThoughtVisible"
+        type="button"
+        class="live-fold"
+        :class="{ open: !thinkingFolded }"
+        :aria-expanded="!thinkingFolded"
+        :aria-label="thinkingFolded ? '展开思考过程' : '收起思考过程'"
+        :title="thinkingFolded ? '展开思考过程' : '收起思考过程'"
+        @click="thinkingFolded = !thinkingFolded"
+      >›</button>
       <span class="live-dot" aria-hidden="true"></span>
       <span class="live-state">{{ liveText }}</span>
       <span v-if="elapsedText" class="live-time">{{ elapsedText }}</span>
@@ -40,7 +67,7 @@
 </template>
 
 <script setup>
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import AgentTimeline from './AgentTimeline.vue'
 import AgentAvatar from './AgentAvatar.vue'
 import MarkdownMessage from './MarkdownMessage.vue'
@@ -48,6 +75,7 @@ import MarkdownMessage from './MarkdownMessage.vue'
 const props = defineProps({
   message: { type: Object, required: true },
   agentName: { type: String, default: '数据智能体' },
+  showThinking: { type: Boolean, default: true },
   agentIcon: {
     type: Object,
     default: () => ({
@@ -63,12 +91,38 @@ const props = defineProps({
 
 const copied = ref(false)
 const now = ref(Date.now())
+const thinkingFolded = ref(false)
+const thoughtBox = ref(null)
+const thoughtFollow = ref(true)
 let timer = null
 let copyTimer = null
 
 const content = computed(() => props.message.content || '')
 const steps = computed(() => props.message.thoughtItems || [])
 const streaming = computed(() => !!props.message.streaming)
+
+const liveThoughtStep = computed(() => {
+  for (let i = steps.value.length - 1; i >= 0; i -= 1) {
+    if (steps.value[i].kind === 'thinking') return steps.value[i]
+  }
+  return null
+})
+
+const liveThoughtText = computed(() => {
+  const step = liveThoughtStep.value
+  if (!step) return ''
+  const text = String(step.thinkContent || '').trim()
+  return text && text !== String(step.title || '').trim() ? text : ''
+})
+
+const liveThoughtVisible = computed(
+  () => props.showThinking && streaming.value && !!liveThoughtStep.value
+)
+
+const liveThoughtLabel = computed(() => {
+  const step = liveThoughtStep.value
+  return step && step.status === 'loading' ? '当前思考' : '最新思考'
+})
 
 const timeText = computed(() => {
   const raw = props.message.createdAt || props.message.startedAt
@@ -123,11 +177,36 @@ function stopClock() {
 watch(
   streaming,
   (value) => {
-    if (value) startClock()
-    else stopClock()
+    if (value) {
+      startClock()
+      thinkingFolded.value = false
+      thoughtFollow.value = true
+    } else {
+      stopClock()
+    }
   },
   { immediate: true }
 )
+
+watch(
+  () => [liveThoughtVisible.value, liveThoughtText.value],
+  () => {
+    if (!liveThoughtVisible.value || thinkingFolded.value) return
+    nextTick(scrollThoughtToBottom)
+  }
+)
+
+function onThoughtScroll() {
+  const el = thoughtBox.value
+  if (!el) return
+  thoughtFollow.value = el.scrollHeight - el.scrollTop - el.clientHeight < 8
+}
+
+function scrollThoughtToBottom() {
+  const el = thoughtBox.value
+  if (!el || !thoughtFollow.value) return
+  el.scrollTop = el.scrollHeight
+}
 
 async function copy() {
   try {
@@ -176,6 +255,31 @@ onUnmounted(() => {
   font-size: 14.5px;
   line-height: 1.68;
 }
+.live-thought {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.live-thought-label {
+  color: var(--agent-faint, #a3a4ad);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.live-thought-text {
+  max-height: min(50vh, 320px);
+  overflow: auto;
+  padding: 9px 11px;
+  border: 1px solid var(--agent-line, rgba(31, 32, 38, 0.09));
+  border-radius: 8px;
+  background: var(--agent-raised, #f0efeb);
+  color: var(--agent-muted, #6f7280);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .live-line {
   display: flex;
   align-items: center;
@@ -185,6 +289,24 @@ onUnmounted(() => {
   color: var(--agent-muted, #6f7280);
   font-size: 13px;
   line-height: 1.5;
+}
+.live-fold {
+  flex: none;
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  color: var(--agent-faint, #a3a4ad);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transform: rotate(90deg);
+  transition: transform 0.18s ease, color 0.14s ease;
+}
+.live-fold:hover {
+  color: var(--agent-text, #1f2026);
+}
+.live-fold.open {
+  transform: rotate(-90deg);
 }
 .live-dot {
   width: 7px;

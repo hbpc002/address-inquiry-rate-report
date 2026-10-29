@@ -50,6 +50,12 @@ describe('AgentChat pi-pocket 风格结构', () => {
     expect(agentChatVue).toContain(':show-owner="isAdmin"')
   })
 
+  it('提供显示思考开关并传给回复组件', () => {
+    expect(agentChatVue).toContain('thinking-toggle')
+    expect(agentChatVue).toContain('store.showThinking')
+    expect(agentChatVue).toContain(':show-thinking="store.showThinking"')
+  })
+
   it('模型选择旁提供快捷问题下拉', () => {
     const composerVue = readFileSync(path.join(root, '../src/components/AgentComposer.vue'), 'utf8')
     expect(composerVue).toContain('快捷问题')
@@ -102,6 +108,57 @@ describe('AgentReply', () => {
     expect(wrapper.find('.timeline-stub').text()).toContain('1-false')
     expect(wrapper.find('.md-stub').text()).toContain('张三本周工时最低')
     expect(wrapper.find('.reply-action').text()).toBe('复制')
+  })
+
+  it('流式时显示当前思考正文，并可折叠', async () => {
+    const wrapper = mount(AgentReply, {
+      props: {
+        message: {
+          content: '',
+          streaming: true,
+          startedAt: Date.now() - 1200,
+          thoughtItems: [
+            {
+              id: 's1',
+              kind: 'thinking',
+              title: '正在分析问题',
+              status: 'loading',
+              thinkContent: '先核对考勤，再汇总工时。',
+            },
+          ],
+        },
+        showThinking: true,
+      },
+      global: { stubs: { AgentTimeline: timelineStub, MarkdownMessage: markdownStub } },
+    })
+    expect(wrapper.find('.live-thought').text()).toContain('当前思考')
+    expect(wrapper.find('.live-thought').text()).toContain('先核对考勤')
+    await wrapper.find('.live-fold').trigger('click')
+    expect(wrapper.find('.live-thought').exists()).toBe(false)
+  })
+
+  it('关闭显示思考时不渲染当前思考正文', () => {
+    const wrapper = mount(AgentReply, {
+      props: {
+        message: {
+          content: '',
+          streaming: true,
+          startedAt: Date.now() - 1200,
+          thoughtItems: [
+            {
+              id: 's1',
+              kind: 'thinking',
+              title: '正在分析问题',
+              status: 'loading',
+              thinkContent: '先核对考勤。',
+            },
+          ],
+        },
+        showThinking: false,
+      },
+      global: { stubs: { AgentTimeline: timelineStub, MarkdownMessage: markdownStub } },
+    })
+    expect(wrapper.find('.live-thought').exists()).toBe(false)
   })
 
   it('流式无正文时显示 live line', () => {

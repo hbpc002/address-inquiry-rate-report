@@ -121,6 +121,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
   const conversationsLoading = ref(false)
   const conversationsTotal = ref(0)
   const conversationSearch = ref('')
+  const showThinking = ref(true)
 
   let _boundKey = null
 
@@ -133,6 +134,8 @@ export const useAgentChatStore = defineStore('agentChat', () => {
         model.value = saved.model || ''
         conversationId.value = saved.conversationId ?? null
       }
+      const thinking = localStorage.getItem('agent_show_thinking')
+      if (thinking != null) showThinking.value = thinking !== 'false'
     } catch (e) { /* 忽略损坏数据 */ }
     bubbleItems.value = []
     thoughtSeq.value = 0
@@ -144,6 +147,14 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     if (key === _boundKey) return
     _hydrate(key)
   }
+
+  watch(showThinking, (value) => {
+    try {
+      localStorage.setItem('agent_show_thinking', value ? 'true' : 'false')
+    } catch (e) {
+      /* 容量超限忽略 */
+    }
+  })
 
   watch(
     [provider, model, conversationId],
@@ -193,6 +204,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
       subject: '',
       outcome: '',
       error: '',
+      hasReasoning: false,
     }
   }
 
@@ -238,7 +250,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     if (existing) {
       existing.title = title || existing.title
       existing.thinkTitle = existing.title
-      existing.thinkContent = title || existing.thinkContent
+      existing.thinkContent = existing.thinkContent || ''
       existing.status = 'loading'
       existing.kind = kind || existing.kind
       existing.startedAt = existing.startedAt || Date.now()
@@ -247,7 +259,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     }
     pendingThoughtId.value = sid
     it.thoughtItems = it.thoughtItems || []
-    it.thoughtItems.push(_newStep({ id: sid, kind, title, thinkContent: title || '正在处理…' }))
+    it.thoughtItems.push(_newStep({ id: sid, kind, title, thinkContent: '' }))
   }
 
   function _addTool(name, input, id, title, subject) {
@@ -282,7 +294,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     bubbleItems.value = [temp]
     currentAiId.value = temp.id
     for (const evt of events || []) {
-      if (['status', 'progress', 'tool_start', 'tool_end', 'done'].includes(evt.type)) {
+      if (['status', 'progress', 'reasoning', 'tool_start', 'tool_end', 'done'].includes(evt.type)) {
         handleEvent(evt)
       }
     }
@@ -432,9 +444,24 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     } else if (evt.type === 'progress') {
       const pending = _findStep(evt.id) || _lastLoading('thinking') || _lastLoading()
       if (pending && evt.text) {
-        pending.title = evt.text
-        pending.thinkTitle = evt.text
-        pending.thinkContent = evt.text
+        if (!pending.hasReasoning) {
+          pending.title = evt.text
+          pending.thinkTitle = evt.text
+          pending.thinkContent = evt.text
+        } else {
+          pending.thinkTitle = pending.title
+        }
+      }
+    } else if (evt.type === 'reasoning') {
+      let pending = _findStep(evt.id) || _lastLoading('thinking')
+      if (!pending) {
+        _addStatus('正在分析问题', evt.id, 'thinking')
+        pending = _findStep(evt.id) || _lastLoading('thinking')
+      }
+      if (pending && evt.text) {
+        if (pending.thinkContent === pending.title) pending.thinkContent = ''
+        pending.hasReasoning = true
+        pending.thinkContent = (pending.thinkContent || '') + evt.text
       }
     } else if (evt.type === 'tool_start') {
       _addTool(evt.name, evt.input, evt.id, evt.title, evt.subject)
@@ -585,6 +612,7 @@ export const useAgentChatStore = defineStore('agentChat', () => {
     conversationsLoading,
     conversationsTotal,
     conversationSearch,
+    showThinking,
     activate,
     clear,
     newConversation,
