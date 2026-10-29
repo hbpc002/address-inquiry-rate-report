@@ -1,8 +1,8 @@
-FROM node:18-alpine as build
+FROM node:22-alpine as build
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
+COPY package*.json .npmrc ./
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build

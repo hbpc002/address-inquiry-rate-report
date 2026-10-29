@@ -7,11 +7,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ /app/
 RUN pip install --no-cache-dir gunicorn
 
-FROM node:18-alpine as frontend-builder
+FROM node:22-alpine as frontend-builder
 
 WORKDIR /app
-COPY frontend/package*.json ./
-RUN npm install
+COPY frontend/package*.json frontend/.npmrc ./
+RUN npm ci --no-audit --no-fund
 
 COPY frontend/ ./
 RUN npm run build
