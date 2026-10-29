@@ -39,7 +39,7 @@
         tabindex="0"
         aria-label="思考过程"
         @scroll.passive="onThoughtScroll"
-      >{{ liveThoughtText || '等待模型返回思考内容…' }}</div>
+      >{{ liveThoughtText }}</div>
     </section>
 
     <div v-if="streaming" class="live-line">
@@ -116,7 +116,7 @@ const liveThoughtText = computed(() => {
 })
 
 const liveThoughtVisible = computed(
-  () => props.showThinking && streaming.value && !!liveThoughtStep.value
+  () => props.showThinking && streaming.value && !!liveThoughtText.value
 )
 
 const liveThoughtLabel = computed(() => {

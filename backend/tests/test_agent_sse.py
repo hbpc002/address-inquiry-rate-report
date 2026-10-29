@@ -377,6 +377,30 @@ def test_reasoning_events_are_emitted_and_persisted():
     assert not any(e["type"] == "progress" for e in result)
 
 
+def test_reasoning_from_final_output_is_emitted_when_stream_has_none():
+    """部分兼容接口只在最终 output 返回推理正文，on_chat_model_end 需补发。"""
+    events = [
+        _ev(
+            "on_chat_model_end",
+            run_id="r1",
+            output=_reasoning_chunk("最终思考"),
+        ),
+    ]
+    result = asyncio_run(_collect(events, _now=FakeClock()))
+    reasoning = [e for e in result if e["type"] == "reasoning"]
+    assert "".join(e["text"] for e in reasoning) == "最终思考"
+
+
+def test_final_reasoning_only_sends_missing_suffix():
+    """流式已发送前缀时，最终 output 只补发剩余部分，避免重复。"""
+    events = [
+        _ev("on_chat_model_stream", run_id="r1", chunk=_reasoning_chunk("先")),
+        _ev("on_chat_model_end", run_id="r1", output=_reasoning_chunk("先分析")),
+    ]
+    result = asyncio_run(_collect(events, _now=FakeClock()))
+    assert "".join(e["text"] for e in result if e["type"] == "reasoning") == "先分析"
+
+
 def test_reasoning_is_flushed_before_tool_start():
     """推理缓冲在工具开始前应刷新，避免正文延迟到工具结束才出现。"""
     events = [

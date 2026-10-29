@@ -137,6 +137,32 @@ describe('AgentReply', () => {
     expect(wrapper.find('.live-thought').exists()).toBe(false)
   })
 
+  it('模型尚未返回思考正文时不渲染空的思考框', () => {
+    const wrapper = mount(AgentReply, {
+      props: {
+        message: {
+          content: '',
+          streaming: true,
+          startedAt: Date.now() - 1200,
+          thoughtItems: [
+            {
+              id: 's1',
+              kind: 'thinking',
+              title: '正在分析问题',
+              status: 'loading',
+              thinkContent: '',
+            },
+          ],
+        },
+        showThinking: true,
+      },
+      global: { stubs: { AgentTimeline: timelineStub, MarkdownMessage: markdownStub } },
+    })
+    expect(wrapper.find('.live-thought').exists()).toBe(false)
+    expect(wrapper.find('.live-fold').exists()).toBe(false)
+    expect(wrapper.find('.live-line').text()).toContain('正在分析问题')
+  })
+
   it('关闭显示思考时不渲染当前思考正文', () => {
     const wrapper = mount(AgentReply, {
       props: {

@@ -4,6 +4,31 @@ from app.models.llm_provider import LLMProvider, LLMProviderModel
 from app.core.crypto import decrypt_secret
 
 
+def _reasoning_payload_text(value) -> str:
+    """把 provider 返回的 reasoning_content/reasoning 字段转成纯文本。"""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(_reasoning_payload_text(item) for item in value)
+    if isinstance(value, dict):
+        for key in ("text", "content", "reasoning"):
+            text = _reasoning_payload_text(value.get(key))
+            if text:
+                return text
+    return ""
+
+
+def _extract_reasoning(payload) -> str:
+    """从 OpenAI 兼容接口的 message/delta 中提取非标准推理字段。"""
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning"):
+        text = _reasoning_payload_text(payload.get(key))
+        if text:
+            return text
+    return ""
+
+
 class NoProviderError(Exception):
     """未配置任何可用模型提供商时抛出。"""
 
@@ -30,6 +55,54 @@ def list_providers(db: Session) -> list:
 DEFAULT_MAX_RETRIES = 3
 
 
+def _reasoning_chat_openai_class():
+    """构造保留 reasoning_content 的 ChatOpenAI 子类。
+
+    langchain-openai 的 ChatOpenAI 只实现 OpenAI 官方字段，会丢弃
+    DeepSeek/Qwen/vLLM 等兼容接口返回的 reasoning_content。这里在流式
+    chunk 和最终响应两处把推理正文补回 additional_kwargs。
+    """
+    from langchain_core.messages import AIMessage, AIMessageChunk
+    from langchain_openai import ChatOpenAI
+
+    class ReasoningChatOpenAI(ChatOpenAI):
+        def _convert_chunk_to_generation_chunk(
+            self, chunk, default_chunk_class, base_generation_info
+        ):
+            generation_chunk = super()._convert_chunk_to_generation_chunk(
+                chunk, default_chunk_class, base_generation_info
+            )
+            if generation_chunk is None:
+                return None
+            choices = chunk.get("choices") or chunk.get("chunk", {}).get("choices") or []
+            if not choices:
+                return generation_chunk
+            delta = choices[0].get("delta") or {}
+            text = _extract_reasoning(delta)
+            message = generation_chunk.message
+            if text and isinstance(message, AIMessageChunk):
+                previous = message.additional_kwargs.get("reasoning_content", "")
+                message.additional_kwargs["reasoning_content"] = previous + text
+            return generation_chunk
+
+        def _create_chat_result(self, response, generation_info=None):
+            result = super()._create_chat_result(response, generation_info)
+            if isinstance(response, dict):
+                response_dict = response
+            else:
+                response_dict = response.model_dump(warnings=False)
+            choices = response_dict.get("choices") or []
+            for generation, choice in zip(result.generations, choices):
+                text = _extract_reasoning(choice.get("message") or {})
+                if text and isinstance(generation.message, AIMessage):
+                    generation.message.additional_kwargs.setdefault(
+                        "reasoning_content", text
+                    )
+            return result
+
+    return ReasoningChatOpenAI
+
+
 def build_chat_model(provider: LLMProvider, model: str = None, temperature: float = 0.2, **kwargs):
     """根据提供商配置构建 LangChain ChatOpenAI（兼容任意 OpenAI 接口）。
 
@@ -37,7 +110,7 @@ def build_chat_model(provider: LLMProvider, model: str = None, temperature: floa
     max_retries 默认 3：OpenAI SDK 内置指数退避 + 随机抖动，自动处理瞬时 429/5xx。
     request_timeout 默认 60 秒：避免接口长时间挂起导致前端无反馈。
     """
-    from langchain_openai import ChatOpenAI
+    ReasoningChatOpenAI = _reasoning_chat_openai_class()
 
     api_key = decrypt_secret(provider.api_key_encrypted) or "EMPTY"
     params = dict(
@@ -50,7 +123,7 @@ def build_chat_model(provider: LLMProvider, model: str = None, temperature: floa
     )
     params.setdefault("request_timeout", kwargs.pop("request_timeout", 60))
     params.update(kwargs)
-    return ChatOpenAI(**params)
+    return ReasoningChatOpenAI(**params)
 
 
 def fallback_models(db: Session, provider: LLMProvider, requested_model: str = None) -> list:

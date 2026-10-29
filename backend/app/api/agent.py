@@ -394,6 +394,16 @@ async def iter_sse_events(graph, llm, messages, _now=time.monotonic, on_event=No
                     reasoning_pending = ""
                     last_reasoning = _now()
                 resp = ev["data"]["output"]
+                final_reasoning = _reasoning_text(resp)
+                if final_reasoning and len(final_reasoning) > reasoning_total:
+                    piece = final_reasoning[reasoning_total:REASONING_CHAR_LIMIT]
+                    if piece:
+                        reasoning_total += len(piece)
+                        yield emit({
+                            "type": "reasoning",
+                            "id": _run_id(ev),
+                            "text": piece,
+                        })
                 tool_calls = getattr(resp, "tool_calls", None)
                 if not tool_calls:
                     final_text = _message_text(getattr(resp, "content", ""))
