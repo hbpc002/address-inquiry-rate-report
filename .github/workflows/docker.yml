@@ -60,8 +60,12 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.VERSION }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=backend
+            ${{ github.event_name != 'pull_request' && format('type=registry,ref={0}/{1}-backend:buildcache', env.REGISTRY, env.IMAGE_NAME) || '' }}
+          cache-to: |
+            type=gha,mode=max,scope=backend
+            ${{ github.event_name != 'pull_request' && format('type=registry,ref={0}/{1}-backend:buildcache,mode=max,ignore-error=true', env.REGISTRY, env.IMAGE_NAME) || '' }}
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
@@ -72,8 +76,12 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.VERSION }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=frontend
+            ${{ github.event_name != 'pull_request' && format('type=registry,ref={0}/{1}-frontend:buildcache', env.REGISTRY, env.IMAGE_NAME) || '' }}
+          cache-to: |
+            type=gha,mode=max,scope=frontend
+            ${{ github.event_name != 'pull_request' && format('type=registry,ref={0}/{1}-frontend:buildcache,mode=max,ignore-error=true', env.REGISTRY, env.IMAGE_NAME) || '' }}
 
       - name: Print image URLs
         if: github.event_name != 'pull_request'

@@ -17,3 +17,11 @@ build/
 .git
 .gitignore
 .DS_Store
+tests/
+.pytest_cache/
+nohup.out
+uploads/
+test_file/
+*.md
+*.xlsx
+*.xls
