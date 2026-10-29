@@ -66,7 +66,7 @@ describe('AgentTimeline', () => {
     expect(wrapper.find('.agent-step.is-loading').exists()).toBe(true)
   })
 
-  it('开启显示思考时，完成的思考步骤自动展开正文', () => {
+  it('完成的思考步骤默认折叠，点击后可展开正文', async () => {
     const wrapper = mount(AgentTimeline, {
       props: {
         steps: [
@@ -83,6 +83,8 @@ describe('AgentTimeline', () => {
         showThinking: true,
       },
     })
+    expect(wrapper.find('.step-detail').exists()).toBe(false)
+    await wrapper.find('.agent-step').trigger('click')
     expect(wrapper.find('.step-detail').exists()).toBe(true)
     expect(wrapper.text()).toContain('先核对考勤')
   })
@@ -107,7 +109,7 @@ describe('AgentTimeline', () => {
     expect(wrapper.find('.step-detail').exists()).toBe(false)
   })
 
-  it('流式结束且开启显示思考时保留展开，关闭时自动折叠', async () => {
+  it('流式结束后步骤列表自动折叠，手动展开后保留', async () => {
     const thoughtSteps = [
       {
         id: 's1',
@@ -120,14 +122,15 @@ describe('AgentTimeline', () => {
     const wrapper = mount(AgentTimeline, {
       props: { steps: thoughtSteps, streaming: true, showThinking: true },
     })
+    expect(wrapper.find('.timeline-body').exists()).toBe(true)
+    await wrapper.setProps({ streaming: false })
+    expect(wrapper.find('.timeline-body').exists()).toBe(false)
+
+    await wrapper.find('.timeline-head').trigger('click')
+    expect(wrapper.find('.timeline-body').exists()).toBe(true)
+    await wrapper.setProps({ streaming: true })
     await wrapper.setProps({ streaming: false })
     expect(wrapper.find('.timeline-body').exists()).toBe(true)
-
-    const folded = mount(AgentTimeline, {
-      props: { steps: thoughtSteps, streaming: true, showThinking: false },
-    })
-    await folded.setProps({ streaming: false })
-    expect(folded.find('.timeline-body').exists()).toBe(false)
   })
 
   it('点击标题栏可折叠步骤列表', async () => {

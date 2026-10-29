@@ -70,7 +70,7 @@ watch(
     } else {
       stopClock()
       if (!userToggled.value) {
-        open.value = props.defaultOpen || (props.showThinking && hasThoughtText.value)
+        open.value = props.defaultOpen
       }
     }
   },

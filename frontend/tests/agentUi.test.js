@@ -34,10 +34,12 @@ describe('AgentChat pi-pocket 风格结构', () => {
     expect(agentChatVue).toContain('loadSuggestions')
   })
 
-  it('抽屉改为响应式宽度', () => {
+  it('抽屉改为响应式宽度并保留内容内边距', () => {
     expect(agentLauncherVue).toContain('drawerSize')
     expect(agentLauncherVue).toContain("'560px'")
     expect(agentLauncherVue).toContain("'100%'")
+    expect(agentChatVue).toContain('.agent-chat.is-embedded .agent-transcript')
+    expect(agentChatVue).toContain('padding: 20px 22px 10px;')
   })
 
   it('使用悬浮按钮配置的图标与按钮文字，并接入会话列表', () => {

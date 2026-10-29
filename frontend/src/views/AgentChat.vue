@@ -601,10 +601,10 @@ onUnmounted(() => clearTimeout(searchTimer))
   transform: translate(-50%, 4px);
 }
 .agent-chat.is-embedded .agent-topbar {
-  padding: 10px 14px;
+  padding: 12px 22px;
 }
 .agent-chat.is-embedded .agent-transcript {
-  padding: 16px 14px 6px;
+  padding: 20px 22px 10px;
 }
 .agent-chat.is-embedded .turns {
   gap: 15px;
@@ -633,6 +633,12 @@ onUnmounted(() => clearTimeout(searchTimer))
   }
   .agent-transcript {
     padding: 16px 12px 4px;
+  }
+  .agent-chat.is-embedded .agent-topbar {
+    padding: 12px 16px;
+  }
+  .agent-chat.is-embedded .agent-transcript {
+    padding: 16px 16px 8px;
   }
   .turns {
     gap: 16px;

@@ -53,7 +53,6 @@ const props = defineProps({
 })
 
 const expanded = ref(false)
-const userToggled = ref(false)
 
 const status = computed(() => props.step.status || 'loading')
 const running = computed(() => status.value === 'loading')
@@ -83,21 +82,15 @@ const meta = computed(() => {
 })
 
 const canExpand = computed(() => {
-  if (kind.value === 'thinking') return hasThinkingText.value
+  if (kind.value === 'thinking') return props.showThinking && hasThinkingText.value
   return !!(props.step.input != null || props.step.output || props.step.error)
 })
 
 watch(
-  [() => props.showThinking, kind, status, hasThinkingText],
-  () => {
-    if (userToggled.value) return
-    expanded.value =
-      props.showThinking &&
-      kind.value === 'thinking' &&
-      status.value !== 'loading' &&
-      hasThinkingText.value
-  },
-  { immediate: true }
+  () => props.showThinking,
+  (value) => {
+    if (!value) expanded.value = false
+  }
 )
 
 function formatDuration(ms) {
@@ -127,7 +120,6 @@ function pretty(value) {
 
 function toggle() {
   if (!canExpand.value) return
-  userToggled.value = true
   expanded.value = !expanded.value
 }
 </script>
