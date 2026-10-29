@@ -75,6 +75,7 @@ def get_user_from_token(token: str, db: Session) -> dict:
     role_name = user.role
     data_scope = "all"
     data_scope_config = "{}"
+    employee_write_scope = "dept"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
@@ -83,6 +84,7 @@ def get_user_from_token(token: str, db: Session) -> dict:
             role_name = role.name
             data_scope = role.data_scope or "all"
             data_scope_config = role.data_scope_config or "{}"
+            employee_write_scope = role.employee_write_scope or "dept"
 
     if not is_system and user.role == "admin":
         is_system = True
@@ -107,6 +109,7 @@ def get_user_from_token(token: str, db: Session) -> dict:
         "department_group_paths": group_paths,
         "data_scope": data_scope,
         "data_scope_config": data_scope_config,
+        "employee_write_scope": employee_write_scope,
         "is_system": is_system,
     }
 

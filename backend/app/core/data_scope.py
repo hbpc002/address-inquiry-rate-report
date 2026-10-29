@@ -81,6 +81,13 @@ def apply_employee_scope(query, user: dict, module: str = "employees"):
     return query.filter(or_(*_path_filters(paths, Employee.dept)))
 
 
+def apply_employee_dept_scope(query, user: dict):
+    paths = get_user_scope_paths(user)
+    if not paths:
+        return query.filter(false())
+    return query.filter(or_(*_path_filters(paths, Employee.dept)))
+
+
 def ensure_dept_in_scope(dept: str | None, user: dict, module: str = "employees") -> str:
     if is_all_scope(user, module):
         return (dept or "").strip()
@@ -114,6 +121,53 @@ def apply_marketing_scope(query, db: Session, user: dict, module: str = "marketi
         or_(*_path_filters(paths, Employee.dept))
     )
     return query.filter(func.upper(MarketingDetail.kf_id).in_(emp_nos))
+
+
+def is_all_employee_write_scope(user: dict) -> bool:
+    if user.get("is_system") or user.get("role") == "admin":
+        return True
+    return (user.get("employee_write_scope") or DEPT_SCOPE) == ALL_SCOPE
+
+
+def employee_writable(employee: Employee, user: dict) -> bool:
+    if is_all_employee_write_scope(user):
+        return True
+    paths = get_user_scope_paths(user)
+    return bool(
+        employee.dept
+        and any(employee.dept.startswith(path) for path in paths)
+    )
+
+
+def apply_employee_write_scope(query, user: dict):
+    if is_all_employee_write_scope(user):
+        return query
+    paths = get_user_scope_paths(user)
+    if not paths:
+        return query.filter(false())
+    return query.filter(or_(*_path_filters(paths, Employee.dept)))
+
+
+def ensure_dept_writable(dept: str | None, user: dict) -> str:
+    if is_all_employee_write_scope(user):
+        return (dept or "").strip()
+
+    paths = get_user_scope_paths(user)
+    if not paths:
+        raise HTTPException(status_code=403, detail="当前账号未配置所属部门组，无法维护员工")
+
+    target = (dept or "").strip()
+    if not target:
+        return paths[0]
+    if not any(target.startswith(path) for path in paths):
+        raise HTTPException(status_code=403, detail="无权修改其他部门的员工")
+    return target
+
+
+def ensure_employee_writable(employee: Employee | None, user: dict) -> Employee:
+    if not employee or not employee_writable(employee, user):
+        raise HTTPException(status_code=404, detail="员工不存在")
+    return employee
 
 
 def require_all_scope(user: dict, detail: str = "仅全部数据权限的账号可执行该操作", module: str | None = None):

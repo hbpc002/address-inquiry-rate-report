@@ -77,6 +77,8 @@ def create_role(
         raise HTTPException(status_code=400, detail="角色名称已存在")
     if role.data_scope not in ("all", "dept"):
         raise HTTPException(status_code=400, detail="无效的数据范围")
+    if role.employee_write_scope not in ("all", "dept"):
+        raise HTTPException(status_code=400, detail="无效的员工编辑范围")
 
     valid_keys = set(get_all_permission_keys())
     perms = {}
@@ -90,6 +92,7 @@ def create_role(
         permissions=json.dumps(perms, ensure_ascii=False),
         data_scope=role.data_scope,
         data_scope_config=json.dumps(_clean_scope_config(role.data_scope_config), ensure_ascii=False),
+        employee_write_scope=role.employee_write_scope,
     )
     db.add(db_role)
     db.commit()
@@ -116,6 +119,8 @@ def update_role(
     update_data = role.model_dump(exclude_unset=True)
     if "data_scope" in update_data and update_data["data_scope"] not in ("all", "dept"):
         raise HTTPException(status_code=400, detail="无效的数据范围")
+    if "employee_write_scope" in update_data and update_data["employee_write_scope"] not in ("all", "dept"):
+        raise HTTPException(status_code=400, detail="无效的员工编辑范围")
     if "data_scope_config" in update_data:
         update_data["data_scope_config"] = json.dumps(
             _clean_scope_config(update_data["data_scope_config"] or {}), ensure_ascii=False

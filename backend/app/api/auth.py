@@ -34,6 +34,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     is_system = False
     data_scope = "all"
     data_scope_config = "{}"
+    employee_write_scope = "dept"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
@@ -42,6 +43,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             is_system = role.is_system
             data_scope = role.data_scope or "all"
             data_scope_config = role.data_scope_config or "{}"
+            employee_write_scope = role.employee_write_scope or "dept"
     group = None
     group_paths = []
     if user.department_group_id:
@@ -68,6 +70,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             permissions=role_permissions,
             data_scope=data_scope,
             data_scope_config=data_scope_config,
+            employee_write_scope=employee_write_scope,
             is_system=is_system,
             is_active=user.is_active,
             created_at=user.created_at,
@@ -92,6 +95,7 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
     is_system = False
     data_scope = "all"
     data_scope_config = "{}"
+    employee_write_scope = "dept"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
@@ -100,6 +104,7 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
             is_system = role.is_system
             data_scope = role.data_scope or "all"
             data_scope_config = role.data_scope_config or "{}"
+            employee_write_scope = role.employee_write_scope or "dept"
     group = None
     group_paths = []
     if user.department_group_id:
@@ -123,6 +128,7 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
         permissions=role_permissions,
         data_scope=data_scope,
         data_scope_config=data_scope_config,
+        employee_write_scope=employee_write_scope,
         is_system=is_system,
         is_active=user.is_active,
         created_at=user.created_at,

@@ -9,6 +9,7 @@ class RoleCreate(BaseModel):
     permissions: dict = {}
     data_scope: str = "all"
     data_scope_config: dict = {}
+    employee_write_scope: str = "dept"
 
 
 class RoleUpdate(BaseModel):
@@ -17,6 +18,7 @@ class RoleUpdate(BaseModel):
     permissions: Optional[dict] = None
     data_scope: Optional[str] = None
     data_scope_config: Optional[dict] = None
+    employee_write_scope: Optional[str] = None
 
 
 class RoleResponse(BaseModel):
@@ -26,6 +28,7 @@ class RoleResponse(BaseModel):
     permissions: str = "{}"
     data_scope: str = "all"
     data_scope_config: str = "{}"
+    employee_write_scope: str = "dept"
     is_system: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

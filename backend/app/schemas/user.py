@@ -33,6 +33,7 @@ class UserResponse(UserBase):
     permissions: Optional[str] = "{}"
     data_scope: Optional[str] = "all"
     data_scope_config: Optional[str] = "{}"
+    employee_write_scope: Optional[str] = "dept"
     is_system: Optional[bool] = False
     is_active: bool
     created_at: datetime

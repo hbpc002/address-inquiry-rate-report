@@ -74,6 +74,7 @@ def get_users(
         is_system = False
         data_scope = "all"
         data_scope_config = "{}"
+        employee_write_scope = "dept"
         if u.role_id:
             r = db.query(Role).filter(Role.id == u.role_id).first()
             if r:
@@ -82,6 +83,7 @@ def get_users(
                 is_system = r.is_system
                 data_scope = r.data_scope or "all"
                 data_scope_config = r.data_scope_config or "{}"
+                employee_write_scope = r.employee_write_scope or "dept"
         group = db.query(DepartmentGroup).filter(DepartmentGroup.id == u.department_group_id).first() if u.department_group_id else None
         group_id, group_name, group_paths = _group_response_fields(group)
         result_items.append(UserResponse(
@@ -97,6 +99,7 @@ def get_users(
             permissions=role_permissions,
             data_scope=data_scope,
             data_scope_config=data_scope_config,
+            employee_write_scope=employee_write_scope,
             is_system=is_system,
             is_active=u.is_active,
             created_at=u.created_at,

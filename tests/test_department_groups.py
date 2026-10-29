@@ -121,6 +121,7 @@ def test_auth_me_returns_department_group_and_page_scope():
     assert set(data["department_group_paths"]) == {DEPT_A, DEPT_A2}
     assert data["data_scope"] == "dept"
     assert data["data_scope_config"] == '{"marketing_overall": "all"}'
+    assert data["employee_write_scope"] == "dept"
 
 
 def test_multi_path_employee_scope():
@@ -262,3 +263,96 @@ def test_legacy_user_department_is_migrated_to_group():
         assert [item.path for item in group.paths] == [legacy_dept]
     finally:
         db.close()
+
+
+def _create_scope_user(role_payload, username):
+    role_res = client.post(
+        "/api/roles",
+        json=role_payload,
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert role_res.status_code == 200, role_res.text
+    role_id = role_res.json()["id"]
+
+    user_res = client.post(
+        "/api/users",
+        json={
+            "username": username,
+            "password": "pass123",
+            "display_name": username,
+            "role_id": role_id,
+            "department_group_id": GROUP_ID,
+        },
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert user_res.status_code == 200, user_res.text
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_res.json()["id"]).first()
+        return create_access_token(data={"sub": str(user.id)})
+    finally:
+        db.close()
+
+
+def test_employee_read_all_but_write_only_own_department():
+    token = _create_scope_user({
+        "name": "employee_read_all_write_dept",
+        "data_scope": "dept",
+        "data_scope_config": {"employees": "all"},
+        "employee_write_scope": "dept",
+        "permissions": {"employees.view": True, "employees.edit": True, "employees.delete": True},
+    }, "dg_read_all_write_dept")
+
+    all_res = client.get("/api/employees", params={"scope": "all"}, headers=auth_header(token))
+    assert all_res.status_code == 200
+    assert {item["emp_no"] for item in all_res.json()["items"]} == {"DGA001", "DGA002", "DGB001"}
+
+    dept_res = client.get("/api/employees", params={"scope": "dept"}, headers=auth_header(token))
+    assert dept_res.status_code == 200
+    assert {item["emp_no"] for item in dept_res.json()["items"]} == {"DGA001", "DGA002"}
+
+    db = TestingSessionLocal()
+    try:
+        emp_b = db.query(Employee).filter(Employee.emp_no == "DGB001").first()
+        emp_a = db.query(Employee).filter(Employee.emp_no == "DGA001").first()
+        emp_b_id, emp_a_id = emp_b.id, emp_a.id
+    finally:
+        db.close()
+
+    forbidden = client.put(
+        f"/api/employees/{emp_b_id}",
+        json={"name": "越权改名"},
+        headers=auth_header(token),
+    )
+    assert forbidden.status_code == 404
+
+    allowed = client.put(
+        f"/api/employees/{emp_a_id}",
+        json={"name": "A员工改名"},
+        headers=auth_header(token),
+    )
+    assert allowed.status_code == 200
+
+
+def test_employee_write_all_role_can_edit_other_department():
+    token = _create_scope_user({
+        "name": "employee_write_all",
+        "data_scope": "dept",
+        "data_scope_config": {"employees": "all"},
+        "employee_write_scope": "all",
+        "permissions": {"employees.view": True, "employees.edit": True},
+    }, "dg_write_all")
+
+    db = TestingSessionLocal()
+    try:
+        emp_b = db.query(Employee).filter(Employee.emp_no == "DGB001").first()
+        emp_b_id = emp_b.id
+    finally:
+        db.close()
+
+    res = client.put(
+        f"/api/employees/{emp_b_id}",
+        json={"name": "B员工被授权修改"},
+        headers=auth_header(token),
+    )
+    assert res.status_code == 200

@@ -22,6 +22,13 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="员工编辑" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.employee_write_scope === 'all' ? 'success' : 'warning'">
+              {{ row.employee_write_scope === 'all' ? '全部员工' : '本部门' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="权限" min-width="300">
           <template #default="{ row }">
             <el-tag v-if="row.is_system" type="danger">全部权限</el-tag>
@@ -64,6 +71,15 @@
           </el-radio-group>
           <div class="form-tip">
             “仅本部门数据”需要同时在用户管理中给用户填写所属部门，按部门路径前缀匹配。
+          </div>
+        </el-form-item>
+        <el-form-item label="员工编辑范围">
+          <el-radio-group v-model="form.employee_write_scope">
+            <el-radio value="dept">仅本部门员工</el-radio>
+            <el-radio value="all">全部员工</el-radio>
+          </el-radio-group>
+          <div class="form-tip">
+            该配置只影响新增、编辑、删除、导入员工；查看范围由上面的页面数据范围控制。
           </div>
         </el-form-item>
         <el-form-item label="页面数据范围">
@@ -179,7 +195,7 @@ const registry = ref(PERMISSION_REGISTRY)
 const tableData = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
-const form = reactive({ id: null, name: '', description: '', data_scope: 'all', data_scope_config: {}, permissions: [] })
+const form = reactive({ id: null, name: '', description: '', data_scope: 'all', employee_write_scope: 'dept', data_scope_config: {}, permissions: [] })
 const scopeModuleRows = Object.entries(DATA_SCOPE_MODULES).map(([key, label]) => ({ key, label }))
 
 const assignDialogVisible = ref(false)
@@ -328,6 +344,7 @@ function handleAdd() {
     name: '',
     description: '',
     data_scope: 'all',
+    employee_write_scope: 'dept',
     data_scope_config: {},
     permissions: [...allKeys.value],
   })
@@ -342,6 +359,7 @@ function handleEdit(row) {
     name: row.name,
     description: row.description,
     data_scope: row.data_scope || 'all',
+    employee_write_scope: row.employee_write_scope || 'dept',
     data_scope_config: parseScopeConfig(row.data_scope_config),
     permissions: Object.keys(perms),
   })
@@ -374,6 +392,7 @@ async function handleSubmit() {
         permissions: permObj,
         description: form.description,
         data_scope: form.data_scope,
+        employee_write_scope: form.employee_write_scope,
         data_scope_config: scopeConfig,
       })
       ElMessage.success('更新成功')
@@ -382,6 +401,7 @@ async function handleSubmit() {
         name: form.name,
         description: form.description,
         data_scope: form.data_scope,
+        employee_write_scope: form.employee_write_scope,
         data_scope_config: scopeConfig,
         permissions: permObj,
       })

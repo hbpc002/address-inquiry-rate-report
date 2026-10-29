@@ -12,6 +12,7 @@ class Role(Base):
     permissions = Column(Text, default="{}")
     data_scope = Column(String(20), default="all", nullable=False)
     data_scope_config = Column(Text, default="{}")
+    employee_write_scope = Column(String(20), default="dept", nullable=False)
     is_system = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

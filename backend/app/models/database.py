@@ -112,6 +112,13 @@ def _migrate_db():
                     print("Added column data_scope_config to roles")
                 except Exception as e:
                     print(f"Failed to add column data_scope_config: {e}")
+            if 'employee_write_scope' not in existing_columns:
+                try:
+                    db.execute(text("ALTER TABLE roles ADD COLUMN employee_write_scope VARCHAR(20) DEFAULT 'dept'"))
+                    db.execute(text("UPDATE roles SET employee_write_scope = 'dept' WHERE employee_write_scope IS NULL"))
+                    print("Added column employee_write_scope to roles")
+                except Exception as e:
+                    print(f"Failed to add column employee_write_scope: {e}")
 
         if 'schedules' in tables:
             schedule_cols = {col['name'] for col in inspector.get_columns('schedules')}

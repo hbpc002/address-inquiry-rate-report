@@ -5,7 +5,9 @@
         <div class="card-header">
           <span>
             {{ ui.labels.employees }}
-            <el-tag v-if="isDeptScope" type="warning" size="small" style="margin-left: 8px">仅本部门数据</el-tag>
+            <el-tag :type="viewScope === 'all' ? 'success' : 'warning'" size="small" style="margin-left: 8px">
+              {{ viewScope === 'all' ? '全部部门' : '本部门' }}
+            </el-tag>
           </span>
           <el-space>
             <template v-if="activeTab === 'active'">
@@ -21,6 +23,13 @@
           </el-space>
         </div>
       </template>
+
+      <div v-if="canViewAll" class="scope-switch">
+        <el-radio-group v-model="viewScope" size="small" @change="handleScopeChange">
+          <el-radio-button value="dept">本部门</el-radio-button>
+          <el-radio-button value="all">全部部门</el-radio-button>
+        </el-radio-group>
+      </div>
 
       <el-tabs v-model="activeTab" @tab-change="handleTabChange">
         <el-tab-pane label="在职员工" name="active">
@@ -70,10 +79,13 @@
                 {{ row.created_at?.slice(0, 19) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="150">
+            <el-table-column label="操作" width="160">
               <template #default="{ row }">
-                <el-button v-if="userStore.hasPermission('employees.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
-                <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
+                <template v-if="isRowWritable(row)">
+                  <el-button v-if="userStore.hasPermission('employees.edit')" type="primary" link @click="handleEdit(row)">编辑</el-button>
+                  <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleDelete(row)">删除</el-button>
+                </template>
+                <el-tag v-else type="info" size="small">只读</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -109,7 +121,7 @@
           </el-form>
 
           <el-table :data="tableData" border stripe @selection-change="handleSelectionChange">
-            <el-table-column type="selection" width="50" />
+            <el-table-column type="selection" width="50" :selectable="isRowWritable" />
             <el-table-column prop="emp_no" label="工号" width="100" />
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="120" />
@@ -127,8 +139,11 @@
             </el-table-column>
             <el-table-column label="操作" width="180">
               <template #default="{ row }">
-                <el-button v-if="userStore.hasPermission('employees.restore')" type="primary" link @click="handleRestore(row)">恢复</el-button>
-                <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleHardDelete(row)">彻底删除</el-button>
+                <template v-if="isRowWritable(row)">
+                  <el-button v-if="userStore.hasPermission('employees.restore')" type="primary" link @click="handleRestore(row)">恢复</el-button>
+                  <el-button v-if="userStore.hasPermission('employees.delete')" type="danger" link @click="handleHardDelete(row)">彻底删除</el-button>
+                </template>
+                <el-tag v-else type="info" size="small">只读</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -208,8 +223,34 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
-const isDeptScope = computed(() => userStore.user?.data_scope === 'dept')
-const userDept = computed(() => userStore.user?.dept || '')
+const viewScope = ref('dept')
+const canViewAll = computed(() => {
+  const user = userStore.user || {}
+  if (user.is_system || user.role === 'admin') return true
+  try {
+    const config = typeof user.data_scope_config === 'string' ? JSON.parse(user.data_scope_config || '{}') : (user.data_scope_config || {})
+    if (config.employees === 'all') return true
+    if (config.employees === 'dept') return false
+  } catch {}
+  return (user.data_scope || 'all') === 'all'
+})
+const canEditAll = computed(() => {
+  const user = userStore.user || {}
+  return user.is_system || user.role === 'admin' || user.employee_write_scope === 'all'
+})
+const writePaths = computed(() => {
+  const user = userStore.user || {}
+  const paths = user.department_group_paths || []
+  if (paths.length) return paths
+  return user.dept ? [user.dept] : []
+})
+const userDept = computed(() => writePaths.value[0] || '')
+
+function isRowWritable(row) {
+  if (canEditAll.value) return true
+  if (!row?.dept) return false
+  return writePaths.value.some(path => row.dept.startsWith(path))
+}
 const tableData = ref([])
 const dialogVisible = ref(false)
 const importVisible = ref(false)
@@ -245,6 +286,7 @@ async function loadData() {
       page: p.page,
       limit: p.limit,
       status: getStatusFilter(),
+      scope: viewScope.value,
       ...search
     }
     const res = await api.get('/employees', { params })
@@ -258,10 +300,11 @@ async function loadData() {
 
 async function loadFilters() {
   try {
+    const params = { scope: viewScope.value }
     const [tRes, dRes, rRes] = await Promise.all([
-      api.get('/employees/teams'),
-      api.get('/employees/departments'),
-      api.get('/employees/roles')
+      api.get('/employees/teams', { params }),
+      api.get('/employees/departments', { params }),
+      api.get('/employees/roles', { params })
     ])
     teams.value = tRes.data
     departments.value = dRes.data
@@ -271,13 +314,19 @@ async function loadFilters() {
   }
 }
 
+function handleScopeChange() {
+  selectedIds.value = []
+  loadFilters()
+  loadData()
+}
+
 function handleTabChange() {
   selectedIds.value = []
   loadData()
 }
 
 function handleAdd() {
-  Object.assign(form, { emp_no: '', name: '', team: '', dept: isDeptScope.value ? userDept.value : '', role: '组员', hire_date: '' })
+  Object.assign(form, { emp_no: '', name: '', team: '', dept: canEditAll.value ? '' : userDept.value, role: '组员', hire_date: '' })
   isEdit.value = false
   dialogVisible.value = true
 }
@@ -289,6 +338,7 @@ async function handleExport() {
     if (search.team) params.team = search.team
     if (search.dept) params.dept = search.dept
     params.status = getStatusFilter()
+    params.scope = viewScope.value
     const res = await api.get('/employees/export', { params, responseType: 'blob' })
     const disposition = res.headers?.['content-disposition'] || ''
     const match = disposition.match(/filename\*?=(?:UTF-8'')?([^;\s]+)/i)
@@ -463,5 +513,9 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.scope-switch {
+  margin-bottom: 12px;
 }
 </style>
