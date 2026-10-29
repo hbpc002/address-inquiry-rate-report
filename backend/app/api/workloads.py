@@ -83,6 +83,7 @@ def get_workloads(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "workload.view")
     query = db.query(Workload)
     if import_batch:
         query = query.filter(Workload.import_batch == import_batch)
@@ -284,6 +285,7 @@ def get_metrics_fields(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "workload.view")
     sample = db.query(Workload.metrics).filter(Workload.metrics.isnot(None)).first()
     if sample and sample[0]:
         keys = set(sample[0].keys())
@@ -306,6 +308,7 @@ def get_workload_report(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "workload_report.view")
 
     if year_month:
         start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
@@ -507,6 +510,7 @@ def get_daily_production(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_permission(current_user, "workload_report.view")
     if year_month:
         parts = year_month.split("-")
         year, month = int(parts[0]), int(parts[1])
@@ -574,6 +578,7 @@ def get_team_production(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_permission(current_user, "workload_report.view")
     if year_month:
         parts = year_month.split("-")
         year, month = int(parts[0]), int(parts[1])
@@ -630,6 +635,7 @@ def get_daily_state_trend(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_permission(current_user, "workload_report.view")
     """按日汇总示忙/休息次数、时长与频次（频次=次数/有数据人数）"""
     if year_month:
         parts = year_month.split("-")

@@ -11,6 +11,8 @@ import pytest
 from app.models.database import SessionLocal, engine, Base
 from app.models.workload import Workload
 from app.models.employee import Employee
+from app.models.user import User
+from app.core.security import get_password_hash
 from datetime import date
 import openpyxl
 
@@ -69,6 +71,8 @@ def setup_db():
     try:
         db.query(Workload).delete()
         db.query(Employee).delete()
+        if not db.query(User).filter(User.id == 1).first():
+            db.add(User(id=1, username="workload_admin", password_hash=get_password_hash("pass"), role="admin"))
         db.commit()
     finally:
         db.close()

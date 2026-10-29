@@ -18,6 +18,10 @@ from app.schemas.employee import (
     EmployeeListResponse
 )
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import (
+    apply_employee_scope, employee_in_scope, ensure_dept_in_scope,
+    ensure_employee_in_scope, get_user_dept, is_all_scope,
+)
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/employees", tags=["员工管理"])
@@ -35,7 +39,8 @@ def get_employees(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    query = db.query(Employee)
+    require_permission(current_user, "employees.view")
+    query = apply_employee_scope(db.query(Employee), current_user)
     if team:
         query = query.filter(Employee.team == team)
     if dept:
@@ -69,7 +74,9 @@ def create_employee(
     if existing:
         raise HTTPException(status_code=400, detail="工号已存在")
 
-    db_employee = Employee(**employee.model_dump(), created_by=current_user["id"])
+    data = employee.model_dump()
+    data["dept"] = ensure_dept_in_scope(data.get("dept"), current_user)
+    db_employee = Employee(**data, created_by=current_user["id"])
     db.add(db_employee)
     db.commit()
     db.refresh(db_employee)
@@ -85,9 +92,9 @@ def update_employee(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.edit")
-    db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not db_employee:
-        raise HTTPException(status_code=404, detail="员工不存在")
+    db_employee = ensure_employee_in_scope(
+        db.query(Employee).filter(Employee.id == employee_id).first(), current_user
+    )
 
     old_emp_no = None
     if employee.emp_no is not None and employee.emp_no != db_employee.emp_no:
@@ -99,7 +106,10 @@ def update_employee(
             raise HTTPException(status_code=400, detail="工号已存在")
         old_emp_no = db_employee.emp_no
 
-    for key, value in employee.model_dump(exclude_unset=True).items():
+    update_data = employee.model_dump(exclude_unset=True)
+    if "dept" in update_data:
+        update_data["dept"] = ensure_dept_in_scope(update_data["dept"], current_user)
+    for key, value in update_data.items():
         setattr(db_employee, key, value)
     db.commit()
 
@@ -119,9 +129,9 @@ def delete_employee(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.delete")
-    db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not db_employee:
-        raise HTTPException(status_code=404, detail="员工不存在")
+    db_employee = ensure_employee_in_scope(
+        db.query(Employee).filter(Employee.id == employee_id).first(), current_user
+    )
 
     db_employee.status = "离职"
     db_employee.deleted_at = func.now()
@@ -137,9 +147,9 @@ def restore_employee(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.restore")
-    db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not db_employee:
-        raise HTTPException(status_code=404, detail="员工不存在")
+    db_employee = ensure_employee_in_scope(
+        db.query(Employee).filter(Employee.id == employee_id).first(), current_user
+    )
     if db_employee.status != "离职":
         raise HTTPException(status_code=400, detail="员工状态不为离职，无需恢复")
 
@@ -157,9 +167,9 @@ def hard_delete_employee(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.delete")
-    db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not db_employee:
-        raise HTTPException(status_code=404, detail="员工不存在")
+    db_employee = ensure_employee_in_scope(
+        db.query(Employee).filter(Employee.id == employee_id).first(), current_user
+    )
 
     db.query(MonthlyReport).filter(MonthlyReport.emp_id == employee_id).delete()
     db.query(DailyReport).filter(DailyReport.emp_id == employee_id).delete()
@@ -177,8 +187,10 @@ def batch_restore_employees(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.restore")
+    scoped = apply_employee_scope(db.query(Employee), current_user)
+    allowed_ids = [row[0] for row in scoped.filter(Employee.id.in_(ids)).with_entities(Employee.id).all()]
     count = db.query(Employee).filter(
-        Employee.id.in_(ids),
+        Employee.id.in_(allowed_ids),
         Employee.status == "离职"
     ).update({"status": "在职", "deleted_at": None}, synchronize_session=False)
     db.commit()
@@ -193,10 +205,12 @@ def batch_hard_delete_employees(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.delete")
-    db.query(MonthlyReport).filter(MonthlyReport.emp_id.in_(ids)).delete(synchronize_session=False)
-    db.query(DailyReport).filter(DailyReport.emp_id.in_(ids)).delete(synchronize_session=False)
-    db.query(Schedule).filter(Schedule.emp_id.in_(ids)).delete(synchronize_session=False)
-    count = db.query(Employee).filter(Employee.id.in_(ids)).delete(synchronize_session=False)
+    scoped = apply_employee_scope(db.query(Employee), current_user)
+    allowed_ids = [row[0] for row in scoped.filter(Employee.id.in_(ids)).with_entities(Employee.id).all()]
+    db.query(MonthlyReport).filter(MonthlyReport.emp_id.in_(allowed_ids)).delete(synchronize_session=False)
+    db.query(DailyReport).filter(DailyReport.emp_id.in_(allowed_ids)).delete(synchronize_session=False)
+    db.query(Schedule).filter(Schedule.emp_id.in_(allowed_ids)).delete(synchronize_session=False)
+    count = db.query(Employee).filter(Employee.id.in_(allowed_ids)).delete(synchronize_session=False)
     db.commit()
     log_operation(db, current_user["id"], "batch_hard_delete_employees", "employees", None, {"ids": ids, "count": count})
     return {"message": f"已彻底删除{count}名员工", "count": count}
@@ -207,8 +221,10 @@ def get_departments(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    results = db.query(Employee.dept, func.count(Employee.id)).filter(
-        Employee.status == "在职"
+    require_permission(current_user, "employees.view")
+    results = apply_employee_scope(
+        db.query(Employee.dept, func.count(Employee.id)).filter(Employee.status == "在职"),
+        current_user,
     ).group_by(Employee.dept).all()
     return [{"dept": r[0] or "未设置", "count": r[1]} for r in results if r[0]]
 
@@ -218,8 +234,10 @@ def get_teams(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    results = db.query(Employee.team, func.count(Employee.id)).filter(
-        Employee.status == "在职"
+    require_permission(current_user, "employees.view")
+    results = apply_employee_scope(
+        db.query(Employee.team, func.count(Employee.id)).filter(Employee.status == "在职"),
+        current_user,
     ).group_by(Employee.team).all()
     return [{"team": r[0], "count": r[1]} for r in results if r[0]]
 
@@ -229,9 +247,13 @@ def get_team_leaders(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    results = db.query(Employee.team, Employee.name).filter(
-        Employee.role == "组长",
-        Employee.status == "在职"
+    require_permission(current_user, "employees.view")
+    results = apply_employee_scope(
+        db.query(Employee.team, Employee.name).filter(
+            Employee.role == "组长",
+            Employee.status == "在职",
+        ),
+        current_user,
     ).all()
     seen = {}
     for team, name in results:
@@ -245,8 +267,10 @@ def get_roles(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    results = db.query(Employee.role, func.count(Employee.id)).filter(
-        Employee.status == "在职"
+    require_permission(current_user, "employees.view")
+    results = apply_employee_scope(
+        db.query(Employee.role, func.count(Employee.id)).filter(Employee.status == "在职"),
+        current_user,
     ).group_by(Employee.role).all()
     return [{"role": r[0], "count": r[1]} for r in results if r[0]]
 
@@ -275,14 +299,28 @@ def import_employees(
     created = 0
     updated = 0
     skipped = 0
-    
-    for _, row in df.iterrows():
+    errors = []
+    scope_dept = None if is_all_scope(current_user) else get_user_dept(current_user)
+    if not is_all_scope(current_user) and not scope_dept:
+        raise HTTPException(status_code=403, detail="当前账号未配置所属部门，无法导入员工")
+
+    for idx, row in df.iterrows():
         emp_no = str(row.get('工号', '')).strip()
         name = str(row.get('姓名', '')).strip()
         
         if not emp_no or not name or emp_no == 'nan':
             skipped += 1
             continue
+
+        row_dept = str(row.get('部门', '')).strip() if pd.notna(row.get('部门')) else ''
+        if scope_dept:
+            if row_dept and not row_dept.startswith(scope_dept):
+                skipped += 1
+                errors.append(f"第{idx + 2}行: 无权导入其他部门员工")
+                continue
+            target_dept = row_dept or scope_dept
+        else:
+            target_dept = row_dept
         
         def _parse_hire_date(row):
             raw = row.get('入职日期')
@@ -297,9 +335,14 @@ def import_employees(
         
         existing = db.query(Employee).filter(Employee.emp_no == emp_no).first()
         if existing:
+            if scope_dept and not employee_in_scope(existing, current_user):
+                skipped += 1
+                errors.append(f"第{idx + 2}行: 工号'{emp_no}'属于其他部门，已跳过")
+                continue
             existing.name = name
             existing.team = str(row.get('班组', existing.team or '')).strip() if pd.notna(row.get('班组')) else existing.team
-            existing.dept = str(row.get('部门', existing.dept or '')).strip() if pd.notna(row.get('部门')) else existing.dept
+            if target_dept:
+                existing.dept = target_dept
             existing.role = str(row.get('岗位', existing.role or '')).strip() if pd.notna(row.get('岗位')) else existing.role
             if pd.notna(row.get('状态')):
                 existing.status = str(row.get('状态', '在职')).strip()
@@ -311,7 +354,7 @@ def import_employees(
                 emp_no=emp_no,
                 name=name,
                 team=str(row.get('班组', '')).strip() if pd.notna(row.get('班组')) else '',
-                dept=str(row.get('部门', '客服中心')).strip() if pd.notna(row.get('部门')) else '客服中心',
+                dept=target_dept or '客服中心',
                 role=str(row.get('岗位', '组员')).strip() if pd.notna(row.get('岗位')) else '组员',
                 status=str(row.get('状态', '在职')).strip() if pd.notna(row.get('状态')) else '在职',
                 hire_date=hire_date,
@@ -326,7 +369,8 @@ def import_employees(
         "message": "导入完成",
         "created": created,
         "updated": updated,
-        "skipped": skipped
+        "skipped": skipped,
+        "errors": errors,
     }
 
 
@@ -339,7 +383,7 @@ def export_employees(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.export")
-    query = db.query(Employee)
+    query = apply_employee_scope(db.query(Employee), current_user)
     if team:
         query = query.filter(Employee.team == team)
     if dept:

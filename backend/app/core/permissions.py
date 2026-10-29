@@ -1,6 +1,106 @@
 PERMISSION_REGISTRY = {
+    "dashboard": {
+        "label": "首页概览",
+        "group": "概览",
+        "order": 10,
+        "permissions": {
+            "view": "查看",
+        },
+    },
+    "marketing": {
+        "label": "营销明细",
+        "group": "营销管理",
+        "order": 20,
+        "permissions": {
+            "view": "查看",
+            "upload": "导入",
+            "delete": "删除",
+        },
+    },
+    "marketing_report": {
+        "label": "营销统计",
+        "group": "营销管理",
+        "order": 21,
+        "permissions": {
+            "view": "查看",
+            "export": "导出",
+        },
+    },
+    "marketing_overall": {
+        "label": "总体营销",
+        "group": "营销管理",
+        "order": 22,
+        "permissions": {
+            "view": "查看",
+            "export": "导出",
+        },
+    },
+    "marketing_settings": {
+        "label": "营销设置",
+        "group": "营销管理",
+        "order": 23,
+        "permissions": {
+            "view": "查看",
+            "edit": "编辑",
+        },
+    },
+    "checkins": {
+        "label": "签到记录",
+        "group": "考勤管理",
+        "order": 30,
+        "permissions": {
+            "view": "查看",
+            "delete": "删除",
+            "upload": "导入",
+        },
+    },
+    "checkin_report": {
+        "label": "排班调度",
+        "group": "考勤管理",
+        "order": 31,
+        "permissions": {
+            "view": "查看",
+            "export": "导出",
+        },
+    },
+    "reports": {
+        "label": "考勤报表",
+        "group": "考勤管理",
+        "order": 32,
+        "permissions": {
+            "view": "查看",
+            "recalculate": "重算考勤",
+            "export": "导出报表",
+            "dashboard_export": "仪表盘导出",
+            "efficiency_export": "效能监控导出",
+        },
+    },
+    "schedules": {
+        "label": "排班管理",
+        "group": "考勤管理",
+        "order": 33,
+        "permissions": {
+            "view": "查看",
+            "create": "新增",
+            "edit": "编辑",
+            "delete": "删除",
+            "upload": "导入",
+        },
+    },
+    "training_records": {
+        "label": "培训记录",
+        "group": "考勤管理",
+        "order": 34,
+        "permissions": {
+            "view": "查看",
+            "create": "新增",
+            "delete": "删除",
+        },
+    },
     "employees": {
         "label": "员工管理",
+        "group": "基础数据",
+        "order": 40,
         "permissions": {
             "view": "查看",
             "create": "新增",
@@ -11,33 +111,10 @@ PERMISSION_REGISTRY = {
             "export": "导出",
         },
     },
-    "schedules": {
-        "label": "排班管理",
-        "permissions": {
-            "view": "查看",
-            "create": "新增",
-            "edit": "编辑",
-            "delete": "删除",
-            "upload": "导入",
-        },
-    },
-    "checkins": {
-        "label": "签到记录",
-        "permissions": {
-            "view": "查看",
-            "delete": "删除",
-            "upload": "导入",
-        },
-    },
-    "checkin_report": {
-        "label": "排班调度",
-        "permissions": {
-            "view": "查看",
-            "export": "导出",
-        },
-    },
     "workload": {
         "label": "工作量详单",
+        "group": "基础数据",
+        "order": 41,
         "permissions": {
             "view": "查看",
             "upload": "导入",
@@ -46,6 +123,8 @@ PERMISSION_REGISTRY = {
     },
     "workload_report": {
         "label": "团队管理",
+        "group": "基础数据",
+        "order": 42,
         "permissions": {
             "view": "查看",
             "export": "导出",
@@ -59,6 +138,8 @@ PERMISSION_REGISTRY = {
     },
     "broadband": {
         "label": "无缝订单",
+        "group": "基础数据",
+        "order": 43,
         "permissions": {
             "view": "查看",
             "upload": "导入",
@@ -67,52 +148,17 @@ PERMISSION_REGISTRY = {
     },
     "broadband_report": {
         "label": "宽带营销画像",
+        "group": "基础数据",
+        "order": 44,
         "permissions": {
             "view": "查看",
             "export": "导出",
-        },
-    },
-    "marketing": {
-        "label": "营销明细",
-        "permissions": {
-            "view": "查看",
-            "upload": "导入",
-            "delete": "删除",
-        },
-    },
-    "marketing_report": {
-        "label": "营销统计",
-        "permissions": {
-            "view": "查看",
-            "export": "导出",
-        },
-    },
-    "marketing_overall": {
-        "label": "总体营销",
-        "permissions": {
-            "view": "查看",
-            "export": "导出",
-        },
-    },
-    "marketing_settings": {
-        "label": "营销设置",
-        "permissions": {
-            "view": "查看",
-            "edit": "编辑",
-        },
-    },
-    "reports": {
-        "label": "考勤报表",
-        "permissions": {
-            "view": "查看",
-            "recalculate": "重算考勤",
-            "export": "导出报表",
-            "dashboard_export": "仪表盘导出",
-            "efficiency_export": "效能监控导出",
         },
     },
     "shift_types": {
         "label": "班次管理",
+        "group": "基础数据",
+        "order": 45,
         "permissions": {
             "view": "查看",
             "create": "新增",
@@ -122,6 +168,8 @@ PERMISSION_REGISTRY = {
     },
     "work_hour_settings": {
         "label": "工时预警设置",
+        "group": "基础数据",
+        "order": 46,
         "permissions": {
             "view": "查看",
             "create": "新增",
@@ -129,8 +177,27 @@ PERMISSION_REGISTRY = {
             "delete": "删除",
         },
     },
+    "salary_config": {
+        "label": "绩效配置",
+        "group": "基础数据",
+        "order": 47,
+        "permissions": {
+            "view": "查看",
+        },
+    },
+    "field_annotations": {
+        "label": "字段批注",
+        "group": "基础数据",
+        "order": 48,
+        "permissions": {
+            "view": "查看",
+            "edit": "编辑",
+        },
+    },
     "system": {
         "label": "系统管理",
+        "group": "系统管理",
+        "order": 50,
         "permissions": {
             "view": "查看",
             "clear_data": "清除数据",
@@ -141,6 +208,8 @@ PERMISSION_REGISTRY = {
     },
     "users": {
         "label": "用户管理",
+        "group": "系统管理",
+        "order": 51,
         "permissions": {
             "view": "查看",
             "manage": "管理用户",
@@ -148,34 +217,17 @@ PERMISSION_REGISTRY = {
     },
     "roles": {
         "label": "角色管理",
+        "group": "系统管理",
+        "order": 52,
         "permissions": {
             "view": "查看",
             "manage": "管理角色",
         },
     },
-    "salary_config": {
-        "label": "绩效配置",
-        "permissions": {
-            "view": "查看",
-        },
-    },
-    "field_annotations": {
-        "label": "字段批注",
-        "permissions": {
-            "view": "查看",
-            "edit": "编辑",
-        },
-    },
-    "training_records": {
-        "label": "培训记录",
-        "permissions": {
-            "view": "查看",
-            "create": "新增",
-            "delete": "删除",
-        },
-    },
     "agent": {
-        "label": "哟你通通",
+        "label": "智能助手",
+        "group": "智能助手",
+        "order": 60,
         "permissions": {
             "use": "使用对话",
             "config": "模型与界面配置",

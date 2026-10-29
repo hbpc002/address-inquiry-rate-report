@@ -84,6 +84,7 @@ def get_checkins(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkins.view")
     query = db.query(Checkin)
     if import_batch:
         query = query.filter(Checkin.import_batch == import_batch)
@@ -111,6 +112,7 @@ def get_checkin_departments(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkins.view")
     results = db.query(Checkin.dept, func.count(Checkin.id)).group_by(Checkin.dept).all()
     return [{"dept": r[0], "count": r[1]} for r in results if r[0]]
 
@@ -321,6 +323,7 @@ def get_checkin_report(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkin_report.view")
     """签入签出报表"""
     from datetime import timedelta
 
@@ -591,6 +594,7 @@ def get_time_analysis(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkin_report.view")
     """按时段规律分析：分时签入/签出分布、班次分布、分时工时利用率"""
     from datetime import timedelta
 
@@ -782,6 +786,7 @@ def get_time_analysis_persons(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkin_report.view")
     """时段分析人员明细：按小时(签入/签出)或按班次返回人员列表"""
     from datetime import timedelta
 
@@ -888,6 +893,7 @@ def get_team_report(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkin_report.view")
     """按班组报表：统计每位员工的晚签/早退情况，便于查看组内谁晚签多、谁提前签出多（可排序）"""
     from datetime import timedelta
 
@@ -982,6 +988,7 @@ def get_personal_report(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "checkin_report.view")
     """个人签到多维度统计"""
     from datetime import timedelta
 

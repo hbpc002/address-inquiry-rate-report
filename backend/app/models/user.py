@@ -10,6 +10,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(50))
+    dept = Column(String(200), index=True)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
     role = Column(String(20), default="user")
     is_active = Column(Boolean, default=True)

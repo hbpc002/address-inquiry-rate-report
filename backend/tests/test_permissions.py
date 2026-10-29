@@ -33,7 +33,7 @@ def test_registry_contains_workload_report():
 
 def test_registry_contains_agent():
     assert "agent" in PERMISSION_REGISTRY
-    assert PERMISSION_REGISTRY["agent"]["label"] == "哟你通通"
+    assert PERMISSION_REGISTRY["agent"]["label"] == "智能助手"
     assert "use" in PERMISSION_REGISTRY["agent"]["permissions"]
     assert "config" in PERMISSION_REGISTRY["agent"]["permissions"]
 

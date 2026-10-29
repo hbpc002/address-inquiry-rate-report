@@ -35,6 +35,7 @@ def get_daily_reports(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "reports.view")
     query = db.query(DailyReport).join(Employee)
 
     schedule_date_obj = datetime.strptime(schedule_date, '%Y-%m-%d').date()
@@ -99,6 +100,7 @@ def get_reports_by_date_range(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "reports.view")
     """按日期范围查询考勤报表"""
     start = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
@@ -198,6 +200,7 @@ def get_month_reports(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "reports.view")
     year, month = map(int, year_month.split('-'))
 
     query = db.query(DailyReport).filter(
@@ -232,6 +235,7 @@ def get_month_summary(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "reports.view")
     year, month = map(int, year_month.split('-'))
 
     emp_query = db.query(Employee).filter(Employee.status == "在职")
@@ -305,6 +309,7 @@ def get_team_ranking(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_permission(current_user, "reports.view")
     year, month = map(int, year_month.split('-'))
 
     teams = db.query(Employee.team, func.count(Employee.id)).filter(

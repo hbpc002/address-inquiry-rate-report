@@ -4,7 +4,7 @@ import { PERMISSION_REGISTRY, getAllPermissionKeys } from '@/permissions'
 describe('PERMISSION_REGISTRY.agent', () => {
   it('包含智能体分组及使用/配置权限', () => {
     expect(PERMISSION_REGISTRY.agent).toBeDefined()
-    expect(PERMISSION_REGISTRY.agent.label).toBe('哟你通通')
+    expect(PERMISSION_REGISTRY.agent.label).toBe('智能助手')
     expect(PERMISSION_REGISTRY.agent.permissions.use).toBe('使用对话')
     expect(PERMISSION_REGISTRY.agent.permissions.config).toBe('模型与界面配置')
   })
@@ -31,7 +31,7 @@ describe('菜单名称重命名', () => {
     expect(PERMISSION_REGISTRY.workload_report.label).toBe('团队管理')
   })
   it('agent 标签为 哟你通通', () => {
-    expect(PERMISSION_REGISTRY.agent.label).toBe('哟你通通')
+    expect(PERMISSION_REGISTRY.agent.label).toBe('智能助手')
   })
 })
 
@@ -48,5 +48,13 @@ describe('营销统计权限', () => {
     for (const key of ['marketing.view', 'marketing.upload', 'marketing.delete', 'marketing_report.view', 'marketing_report.export', 'marketing_overall.view', 'marketing_overall.export', 'marketing_settings.view', 'marketing_settings.edit']) {
       expect(keys).toContain(key)
     }
+  })
+})
+
+
+describe('首页与数据范围权限', () => {
+  it('包含首页查看权限', () => {
+    expect(PERMISSION_REGISTRY.dashboard.permissions.view).toBe('查看')
+    expect(getAllPermissionKeys()).toContain('dashboard.view')
   })
 })

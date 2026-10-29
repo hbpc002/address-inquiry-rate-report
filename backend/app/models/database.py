@@ -66,6 +66,7 @@ def _migrate_db():
                 'username': 'VARCHAR(50)',
                 'password_hash': 'VARCHAR(255)',
                 'display_name': 'VARCHAR(50)',
+                'dept': 'VARCHAR(200)',
                 'role': "VARCHAR(20) DEFAULT 'user'",
                 'role_id': 'INTEGER',
                 'is_active': 'BOOLEAN DEFAULT TRUE',
@@ -80,6 +81,20 @@ def _migrate_db():
                         print(f"Added column {col_name} to users")
                     except Exception as e:
                         print(f"Failed to add column {col_name}: {e}")
+            try:
+                db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_dept ON users (dept)"))
+            except Exception as e:
+                print(f"Failed to create users dept index: {e}")
+
+        if 'roles' in tables:
+            existing_columns = [col['name'] for col in inspector.get_columns('roles')]
+            if 'data_scope' not in existing_columns:
+                try:
+                    db.execute(text("ALTER TABLE roles ADD COLUMN data_scope VARCHAR(20) DEFAULT 'all'"))
+                    db.execute(text("UPDATE roles SET data_scope = 'all' WHERE data_scope IS NULL"))
+                    print("Added column data_scope to roles")
+                except Exception as e:
+                    print(f"Failed to add column data_scope: {e}")
 
         if 'schedules' in tables:
             schedule_cols = {col['name'] for col in inspector.get_columns('schedules')}

@@ -12,7 +12,8 @@ describe('Roles page - permission registry', () => {
     expect(groups).toContain('marketing_report')
     expect(groups).toContain('marketing_overall')
     expect(groups).toContain('marketing_settings')
-    expect(groups.length).toBe(22)
+    expect(groups.length).toBe(23)
+    expect(groups).toContain('dashboard')
   })
 
   it('getAllPermissionKeys should include salary_config.view', () => {

@@ -31,12 +31,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     role_permissions = "{}"
     role_name = user.role
     is_system = False
+    data_scope = "all"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
             role_permissions = role.permissions or "{}"
             role_name = role.name
             is_system = role.is_system
+            data_scope = role.data_scope or "all"
 
     access_token = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -48,9 +50,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             id=user.id,
             username=user.username,
             display_name=user.display_name,
+            dept=user.dept,
             role=role_name,
             role_id=user.role_id,
             permissions=role_permissions,
+            data_scope=data_scope,
             is_system=is_system,
             is_active=user.is_active,
             created_at=user.created_at,
@@ -73,12 +77,14 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
     role_permissions = "{}"
     role_name = user.role
     is_system = False
+    data_scope = "all"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
             role_permissions = role.permissions or "{}"
             role_name = role.name
             is_system = role.is_system
+            data_scope = role.data_scope or "all"
 
     if not is_system and user.role == "admin":
         is_system = True
@@ -87,9 +93,11 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
         id=user.id,
         username=user.username,
         display_name=user.display_name,
+        dept=user.dept,
         role=role_name,
         role_id=user.role_id,
         permissions=role_permissions,
+        data_scope=data_scope,
         is_system=is_system,
         is_active=user.is_active,
         created_at=user.created_at,

@@ -6,6 +6,7 @@ from datetime import datetime
 class UserBase(BaseModel):
     username: str
     display_name: Optional[str] = None
+    dept: Optional[str] = None
     role: str = "user"
 
 
@@ -16,6 +17,7 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     display_name: Optional[str] = None
+    dept: Optional[str] = None
     role: Optional[str] = None
     role_id: Optional[int] = None
     is_active: Optional[bool] = None
@@ -25,6 +27,7 @@ class UserResponse(UserBase):
     id: int
     role_id: Optional[int] = None
     permissions: Optional[str] = "{}"
+    data_scope: Optional[str] = "all"
     is_system: Optional[bool] = False
     is_active: bool
     created_at: datetime

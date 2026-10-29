@@ -50,6 +50,8 @@ def create_role(
     existing = db.query(Role).filter(Role.name == role.name).first()
     if existing:
         raise HTTPException(status_code=400, detail="角色名称已存在")
+    if role.data_scope not in ("all", "dept"):
+        raise HTTPException(status_code=400, detail="无效的数据范围")
 
     valid_keys = set(get_all_permission_keys())
     perms = {}
@@ -61,6 +63,7 @@ def create_role(
         name=role.name,
         description=role.description or "",
         permissions=json.dumps(perms, ensure_ascii=False),
+        data_scope=role.data_scope,
     )
     db.add(db_role)
     db.commit()
@@ -85,6 +88,8 @@ def update_role(
         raise HTTPException(status_code=400, detail="系统角色不允许修改")
 
     update_data = role.model_dump(exclude_unset=True)
+    if "data_scope" in update_data and update_data["data_scope"] not in ("all", "dept"):
+        raise HTTPException(status_code=400, detail="无效的数据范围")
     if "permissions" in update_data:
         valid_keys = set(get_all_permission_keys())
         perms = {}
@@ -136,7 +141,10 @@ def get_role_users(
         raise HTTPException(status_code=404, detail="角色不存在")
 
     users = db.query(User).filter(User.role_id == role_id).all()
-    return [{"id": u.id, "username": u.username, "display_name": u.display_name} for u in users]
+    return [
+        {"id": u.id, "username": u.username, "display_name": u.display_name, "dept": u.dept}
+        for u in users
+    ]
 
 
 @router.get("/all-users", response_model=list)
@@ -148,7 +156,10 @@ def get_all_users_for_assignment(
         raise HTTPException(status_code=403, detail="权限不足")
 
     users = db.query(User).all()
-    return [{"id": u.id, "username": u.username, "display_name": u.display_name} for u in users]
+    return [
+        {"id": u.id, "username": u.username, "display_name": u.display_name, "dept": u.dept}
+        for u in users
+    ]
 
 
 @router.put("/{role_id}/users", response_model=dict)

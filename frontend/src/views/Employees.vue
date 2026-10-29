@@ -3,7 +3,10 @@
     <el-card>
       <template #header>
         <div class="card-header">
-          <span>{{ ui.labels.employees }}</span>
+          <span>
+            {{ ui.labels.employees }}
+            <el-tag v-if="isDeptScope" type="warning" size="small" style="margin-left: 8px">仅本部门数据</el-tag>
+          </span>
           <el-space>
             <template v-if="activeTab === 'active'">
               <el-button v-if="userStore.hasPermission('employees.export')" @click="handleExport">导出员工</el-button>
@@ -197,7 +200,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
@@ -205,6 +208,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
+const isDeptScope = computed(() => userStore.user?.data_scope === 'dept')
+const userDept = computed(() => userStore.user?.dept || '')
 const tableData = ref([])
 const dialogVisible = ref(false)
 const importVisible = ref(false)
@@ -255,7 +260,7 @@ async function loadFilters() {
   try {
     const [tRes, dRes, rRes] = await Promise.all([
       api.get('/employees/teams'),
-      api.get('/checkins/departments'),
+      api.get('/employees/departments'),
       api.get('/employees/roles')
     ])
     teams.value = tRes.data
@@ -272,7 +277,7 @@ function handleTabChange() {
 }
 
 function handleAdd() {
-  Object.assign(form, { emp_no: '', name: '', team: '', dept: '', role: '组员', hire_date: '' })
+  Object.assign(form, { emp_no: '', name: '', team: '', dept: isDeptScope.value ? userDept.value : '', role: '组员', hire_date: '' })
   isEdit.value = false
   dialogVisible.value = true
 }

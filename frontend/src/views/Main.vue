@@ -14,7 +14,7 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
-        <el-menu-item index="/">
+        <el-menu-item v-if="userStore.canView('dashboard')" index="/">
           <el-icon><House /></el-icon>
           <span>{{ ui.labels.dashboard }}</span>
         </el-menu-item>

@@ -72,12 +72,14 @@ def get_user_from_token(token: str, db: Session) -> dict:
     role_permissions = "{}"
     is_system = False
     role_name = user.role
+    data_scope = "all"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
             role_permissions = role.permissions or "{}"
             is_system = role.is_system
             role_name = role.name
+            data_scope = role.data_scope or "all"
 
     if not is_system and user.role == "admin":
         is_system = True
@@ -89,6 +91,8 @@ def get_user_from_token(token: str, db: Session) -> dict:
         "role_id": user.role_id,
         "permissions": role_permissions,
         "display_name": user.display_name,
+        "dept": user.dept,
+        "data_scope": data_scope,
         "is_system": is_system,
     }
 

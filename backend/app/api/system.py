@@ -22,7 +22,7 @@ try:
 except Exception:
     _DB_CONFIG = False
     _AUTO_CONFIG = {'enabled': True, 'retention_days': 90}
-from app.core.security import get_current_user, require_permission
+from app.core.security import get_current_user, require_permission, require_any_permission
 
 router = APIRouter(prefix="/api", tags=["系统管理"])
 
@@ -48,6 +48,7 @@ def get_stats(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     employee_count = db.query(Employee).filter(Employee.status == "在职").count()
 
     latest_date = db.query(func.max(DailyReport.schedule_date)).scalar()
@@ -117,6 +118,7 @@ def get_daily_trend(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     if year_month:
         parts = year_month.split("-")
         year, month = int(parts[0]), int(parts[1])
@@ -196,6 +198,7 @@ def get_daily_detail(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     schedule_date = datetime.strptime(date, "%Y-%m-%d").date()
     query = db.query(DailyReport).join(
         Employee, DailyReport.emp_id == Employee.id
@@ -230,6 +233,7 @@ def get_hour_bucket_detail(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     schedule_date = datetime.strptime(date, "%Y-%m-%d").date()
     threshold = _get_long_hour_threshold(db)
 
@@ -271,6 +275,7 @@ def get_consecutive_overtime(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     if year_month:
         parts = year_month.split("-")
         year, month = int(parts[0]), int(parts[1])
@@ -326,6 +331,7 @@ def get_shift_distribution(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     if year_month:
         parts = year_month.split("-")
         year, month = int(parts[0]), int(parts[1])
@@ -351,6 +357,7 @@ def get_team_hours(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     if year_month:
         parts = year_month.split("-")
         year, month = int(parts[0]), int(parts[1])
@@ -494,6 +501,7 @@ def get_departments(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     results = db.query(Employee.dept, func.count(Employee.id)).filter(
         Employee.status == "在职"
     ).group_by(Employee.dept).all()
@@ -505,6 +513,7 @@ def get_teams(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    require_any_permission(current_user, ["dashboard.view", "system.view"])
     results = db.query(Employee.team, func.count(Employee.id)).filter(
         Employee.status == "在职"
     ).group_by(Employee.team).all()

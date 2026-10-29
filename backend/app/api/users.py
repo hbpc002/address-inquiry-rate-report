@@ -47,19 +47,23 @@ def get_users(
         role_name = u.role
         role_permissions = "{}"
         is_system = False
+        data_scope = "all"
         if u.role_id:
             r = db.query(Role).filter(Role.id == u.role_id).first()
             if r:
                 role_name = r.name
                 role_permissions = r.permissions or "{}"
                 is_system = r.is_system
+                data_scope = r.data_scope or "all"
         result_items.append(UserResponse(
             id=u.id,
             username=u.username,
             display_name=u.display_name,
+            dept=u.dept,
             role=role_name,
             role_id=u.role_id,
             permissions=role_permissions,
+            data_scope=data_scope,
             is_system=is_system,
             is_active=u.is_active,
             created_at=u.created_at,
@@ -92,6 +96,7 @@ def create_user(
         username=user.username,
         password_hash=get_password_hash(user.password),
         display_name=user.display_name,
+        dept=(user.dept or "").strip() or None,
         role=role_name,
         role_id=role_id,
     )
@@ -303,6 +308,7 @@ def import_users(
         username = str(row.get('用户名', '')).strip()
         password = str(row.get('密码', '')).strip()
         display_name = str(row.get('显示名', '')).strip() if pd.notna(row.get('显示名')) else ''
+        dept = str(row.get('部门', '')).strip() if pd.notna(row.get('部门')) else ''
         role_name = str(row.get('角色', '')).strip() if pd.notna(row.get('角色')) else ''
 
         if not username or not password or username == 'nan' or password == 'nan':
@@ -327,6 +333,7 @@ def import_users(
             username=username,
             password_hash=get_password_hash(password),
             display_name=display_name or None,
+            dept=dept or None,
             role=role_name or 'user',
             role_id=role_id,
         )
@@ -351,8 +358,8 @@ def download_import_template(
     require_permission(current_user, "users.manage")
 
     import pandas as pd
-    df = pd.DataFrame(columns=['用户名', '密码', '显示名', '角色'])
-    df.loc[0] = ['张三', 'password123', '张三', 'user']
+    df = pd.DataFrame(columns=['用户名', '密码', '显示名', '部门', '角色'])
+    df.loc[0] = ['张三', 'password123', '张三', '广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表', 'user']
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:

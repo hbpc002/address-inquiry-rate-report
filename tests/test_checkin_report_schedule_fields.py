@@ -22,6 +22,7 @@ from app.core.security import get_password_hash
 
 def clear_tables(db):
     from app.models.operation_log import OperationLog
+    Base.metadata.create_all(bind=db.get_bind())
     db.query(OperationLog).delete()
     db.query(WorkHourThreshold).delete()
     db.query(DailyReport).delete()
@@ -213,7 +214,10 @@ def test_report_aggregation_schedule_fields():
         start = (datetime.now().date() - timedelta(days=2)).isoformat()
         end = datetime.now().date().isoformat()
 
-        result = get_checkin_report(db=db, start_date=start, end_date=end)
+        result = get_checkin_report(
+            db=db, start_date=start, end_date=end,
+            current_user={"id": 1, "username": "admin", "role": "admin", "is_system": True, "permissions": "{}"},
+        )
         items = {item["emp_no"]: item for item in result["items"]}
 
         assert "E001" in items

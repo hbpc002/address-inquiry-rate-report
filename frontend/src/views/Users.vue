@@ -27,6 +27,7 @@
        <el-table :data="tableData" border stripe>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="display_name" label="显示名" width="120" />
+        <el-table-column prop="dept" label="所属部门" min-width="220" show-overflow-tooltip />
         <el-table-column prop="role" label="角色" width="100">
           <template #default="{ row }">
             <el-tag :type="row.is_system ? 'danger' : row.role === 'manager' ? 'warning' : 'success'">
@@ -96,6 +97,19 @@
         <el-form-item label="显示名">
           <el-input v-model="form.display_name" />
         </el-form-item>
+        <el-form-item label="所属部门">
+          <el-select
+            v-model="form.dept"
+            filterable
+            allow-create
+            clearable
+            default-first-option
+            placeholder="选择或输入部门全路径"
+            style="width: 100%"
+          >
+            <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="form.role_id" placeholder="选择角色" @change="handleRoleChange">
             <el-option v-for="r in roles" :key="r.id" :label="r.name" :value="r.id" :disabled="r.is_system && !userStore.isSystem">
@@ -124,10 +138,11 @@ const ui = useUiConfigStore()
 
 const tableData = ref([])
 const roles = ref([])
+const departments = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const searchForm = reactive({ search: '', role: '' })
-const form = reactive({ id: null, username: '', password: '', display_name: '', role_id: null })
+const form = reactive({ id: null, username: '', password: '', display_name: '', dept: '', role_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 
 const importVisible = ref(false)
@@ -206,6 +221,15 @@ async function loadRoles() {
   }
 }
 
+async function loadDepartments() {
+  try {
+    const res = await api.get('/employees/departments')
+    departments.value = res.data || []
+  } catch (e) {
+    departments.value = []
+  }
+}
+
 async function loadData() {
   try {
     const params = { page: pagination.page, limit: pagination.limit, ...searchForm }
@@ -218,13 +242,13 @@ async function loadData() {
 }
 
 function handleAdd() {
-  Object.assign(form, { id: null, username: '', password: '', display_name: '', role_id: null })
+  Object.assign(form, { id: null, username: '', password: '', display_name: '', dept: '', role_id: null })
   isEdit.value = false
   dialogVisible.value = true
 }
 
 function handleEdit(row) {
-  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, role_id: row.role_id })
+  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, dept: row.dept || '', role_id: row.role_id })
   isEdit.value = true
   dialogVisible.value = true
 }
@@ -232,10 +256,10 @@ function handleEdit(row) {
 async function handleSubmit() {
   try {
     if (isEdit.value) {
-      await api.put(`/users/${form.id}`, { display_name: form.display_name, role_id: form.role_id })
+      await api.put(`/users/${form.id}`, { display_name: form.display_name, dept: form.dept, role_id: form.role_id })
       ElMessage.success('更新成功')
     } else {
-      await api.post('/users', { username: form.username, password: form.password, display_name: form.display_name, role_id: form.role_id })
+      await api.post('/users', { username: form.username, password: form.password, display_name: form.display_name, dept: form.dept, role_id: form.role_id })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -295,6 +319,7 @@ function resetForm() {
 
 onMounted(() => {
   loadRoles()
+  loadDepartments()
   loadData()
 })
 </script>

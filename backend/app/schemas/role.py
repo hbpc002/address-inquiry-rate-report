@@ -7,12 +7,14 @@ class RoleCreate(BaseModel):
     name: str
     description: Optional[str] = ""
     permissions: dict = {}
+    data_scope: str = "all"
 
 
 class RoleUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     permissions: Optional[dict] = None
+    data_scope: Optional[str] = None
 
 
 class RoleResponse(BaseModel):
@@ -20,6 +22,7 @@ class RoleResponse(BaseModel):
     name: str
     description: Optional[str] = ""
     permissions: str = "{}"
+    data_scope: str = "all"
     is_system: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

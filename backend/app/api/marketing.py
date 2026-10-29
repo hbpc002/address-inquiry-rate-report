@@ -18,6 +18,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import apply_marketing_scope, require_all_scope
 from app.models.app_config import AppConfig
 from app.models.database import get_db
 from app.models.employee import Employee
@@ -647,10 +648,14 @@ def _match_valid_filter(detail: MarketingDetail, valid_type: str) -> bool:
     return _valid_key(detail.valid_type or "") == mapping.get(valid_type)
 
 
-def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]) -> Dict[str, Any]:
-    query = db.query(MarketingDetail).filter(
-        MarketingDetail.finish_date >= start,
-        MarketingDetail.finish_date <= end,
+def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any], current_user: dict) -> Dict[str, Any]:
+    query = apply_marketing_scope(
+        db.query(MarketingDetail).filter(
+            MarketingDetail.finish_date >= start,
+            MarketingDetail.finish_date <= end,
+        ),
+        db,
+        current_user,
     )
     data_type = filters.get("data_type") or ""
     if data_type in (SOURCE_XSZB, SOURCE_FWGD):
@@ -864,6 +869,7 @@ def _compute_key_product_table(
     config: Dict[str, Any],
     org_map: Dict[str, str],
     cache: Dict[str, str],
+    current_user: dict,
 ) -> Dict[str, Any]:
     products = _sorted_key_products(_key_product_config(db))
     columns = []
@@ -887,9 +893,13 @@ def _compute_key_product_table(
     if not products:
         return empty
 
-    query = db.query(MarketingDetail).filter(
-        MarketingDetail.finish_date >= start,
-        MarketingDetail.finish_date <= end,
+    query = apply_marketing_scope(
+        db.query(MarketingDetail).filter(
+            MarketingDetail.finish_date >= start,
+            MarketingDetail.finish_date <= end,
+        ),
+        db,
+        current_user,
     )
     if product_source in (SOURCE_XSZB, SOURCE_FWGD):
         query = query.filter(_source_condition(product_source))
@@ -982,6 +992,7 @@ def _source_date_ranges(
     db: Session,
     start: Optional[date] = None,
     end: Optional[date] = None,
+    current_user: dict = None,
 ) -> Dict[str, Dict[str, Optional[str]]]:
     ranges = {}
     for source in (SOURCE_XSZB, SOURCE_FWGD):
@@ -989,6 +1000,8 @@ def _source_date_ranges(
             func.min(MarketingDetail.finish_date),
             func.max(MarketingDetail.finish_date),
         ).filter(_source_condition(source))
+        if current_user:
+            query = apply_marketing_scope(query, db, current_user)
         if start:
             query = query.filter(MarketingDetail.finish_date >= start)
         if end:
@@ -1006,6 +1019,7 @@ def _compute_overall(
     start: date,
     end: date,
     product_source: str = SOURCE_XSZB,
+    current_user: dict = None,
 ) -> Dict[str, Any]:
     config = _overall_config(db)
     cache: Dict[str, str] = {}
@@ -1014,11 +1028,14 @@ def _compute_overall(
     unclassified_rows = 0
     unclassified_business_rows = 0
 
-    online_details = db.query(MarketingDetail).filter(
+    online_query = db.query(MarketingDetail).filter(
         MarketingDetail.finish_date >= start,
         MarketingDetail.finish_date <= end,
         _source_condition(SOURCE_XSZB),
-    ).all()
+    )
+    if current_user:
+        online_query = apply_marketing_scope(online_query, db, current_user)
+    online_details = online_query.all()
     for detail in online_details:
         biz = _business_key(detail.service_type or "")
         if biz not in ("overlay", "package_change"):
@@ -1032,11 +1049,14 @@ def _compute_overall(
             continue
         row_counts[row_label][biz] += 1
 
-    work_order_details = db.query(MarketingDetail).filter(
+    work_order_query = db.query(MarketingDetail).filter(
         MarketingDetail.finish_date >= start,
         MarketingDetail.finish_date <= end,
         _source_condition(SOURCE_FWGD),
-    ).all()
+    )
+    if current_user:
+        work_order_query = apply_marketing_scope(work_order_query, db, current_user)
+    work_order_details = work_order_query.all()
     for detail in work_order_details:
         biz = _business_key(detail.service_type or "")
         if biz not in ("overlay", "package_change"):
@@ -1108,7 +1128,9 @@ def _compute_overall(
         "total": sum(total_counts.values()),
         "ratio": 1 if total_counts else None,
     }
-    key_product = _compute_key_product_table(db, start, end, product_source, config, org_map, cache)
+    key_product = _compute_key_product_table(
+        db, start, end, product_source, config, org_map, cache, current_user
+    )
     return {
         "stats": {
             "start_date": start.isoformat(),
@@ -1131,6 +1153,7 @@ def import_details(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.upload")
+    require_all_scope(current_user, "仅全部数据权限的账号可导入营销数据")
     batch = uuid.uuid4().hex[:8]
     content = file.file.read()
     data, mapping = _read_excel(content)
@@ -1247,7 +1270,7 @@ def get_details(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.view")
-    query = db.query(MarketingDetail)
+    query = apply_marketing_scope(db.query(MarketingDetail), db, current_user)
     if import_batch:
         query = query.filter(MarketingDetail.import_batch == import_batch)
     if data_type in (SOURCE_XSZB, SOURCE_FWGD):
@@ -1343,6 +1366,7 @@ def delete_details_by_date(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.delete")
+    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据")
     target = _date_param(date)
     count = db.query(MarketingDetail).filter(MarketingDetail.finish_date == target).delete(synchronize_session=False)
     db.commit()
@@ -1357,6 +1381,7 @@ def delete_details_batch(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.delete")
+    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据")
     count = db.query(MarketingDetail).filter(MarketingDetail.import_batch == batch).delete(synchronize_session=False)
     db.commit()
     log_operation(db, current_user["id"], "delete_marketing_batch", "marketing", None, {"batch": batch, "count": count})
@@ -1370,6 +1395,7 @@ def delete_detail(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.delete")
+    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据")
     record = db.query(MarketingDetail).filter(MarketingDetail.id == detail_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -1395,6 +1421,7 @@ def update_overall_row_rules(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_settings.edit")
+    require_all_scope(current_user, "仅全部数据权限的账号可修改营销设置")
     cleaned = _clean_rules(body.rules)
     for rule in cleaned:
         if rule.get("row_label") not in OVERALL_ROW_LABELS:
@@ -1423,6 +1450,7 @@ def update_key_products(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_settings.edit")
+    require_all_scope(current_user, "仅全部数据权限的账号可修改营销设置")
     cleaned = _clean_key_products(body.products)
     _set_config(db, KEY_PRODUCT_CONFIG_KEY, {"products": cleaned})
     db.commit()
@@ -1437,7 +1465,7 @@ def get_product_options(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_settings.view")
-    query = db.query(
+    query = apply_marketing_scope(db.query(
         MarketingDetail.product_id,
         MarketingDetail.product_name,
         func.count(MarketingDetail.id),
@@ -1446,7 +1474,7 @@ def get_product_options(
             MarketingDetail.product_id.isnot(None),
             MarketingDetail.product_name.isnot(None),
         )
-    ).group_by(
+    ), db, current_user).group_by(
         MarketingDetail.product_id,
         MarketingDetail.product_name,
     ).order_by(func.count(MarketingDetail.id).desc())
@@ -1481,7 +1509,8 @@ def get_organizations(
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
     counter: Dict[tuple, int] = {}
-    for detail in db.query(MarketingDetail).all():
+    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user).all()
+    for detail in details:
         source = _detail_source(detail)
         if source == SOURCE_FWGD:
             row_label = _classify_work_order_row(detail, config, org_map, cache) or UNCLASSIFIED_GROUP
@@ -1514,7 +1543,7 @@ def get_row_rule_preview(
     config = _overall_config(db)
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
-    details = db.query(MarketingDetail).all()
+    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user).all()
     unclassified = 0
     counter: Dict[tuple, int] = {}
     for detail in details:
@@ -1574,7 +1603,7 @@ def get_report(
         "lh_qh": lh_qh,
         "product": product,
         "data_type": data_type,
-    })
+    }, current_user)
 
 
 @router.get("/report/export")
@@ -1609,7 +1638,7 @@ def export_report(
         "lh_qh": lh_qh,
         "product": product,
         "data_type": data_type,
-    })
+    }, current_user)
     output = io.StringIO()
     import csv
 
@@ -1657,10 +1686,10 @@ def get_overall_report(
     require_permission(current_user, "marketing_overall.view")
     start, end = _resolve_range(year_month, start_date, end_date)
     source = _normalize_product_source(product_source)
-    data = _compute_overall(db, start, end, source)
+    data = _compute_overall(db, start, end, source, current_user)
     data["data_ranges"] = {
-        "database": _source_date_ranges(db),
-        "query": _source_date_ranges(db, start, end),
+        "database": _source_date_ranges(db, current_user=current_user),
+        "query": _source_date_ranges(db, start, end, current_user=current_user),
     }
     return data
 
@@ -1695,7 +1724,7 @@ def export_overall_report(
     require_permission(current_user, "marketing_overall.export")
     start, end = _resolve_range(year_month, start_date, end_date)
     source = _normalize_product_source(product_source)
-    data = _compute_overall(db, start, end, source)
+    data = _compute_overall(db, start, end, source, current_user)
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "总体营销"

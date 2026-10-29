@@ -16,6 +16,15 @@ def setup_module():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     init_db()
+    db = SessionLocal()
+    try:
+        if not db.query(Role).filter(Role.name == "manager").first():
+            db.add(Role(name="manager", description="经理", permissions="{}", data_scope="all"))
+        if not db.query(Role).filter(Role.name == "user").first():
+            db.add(Role(name="user", description="普通用户", permissions="{}", data_scope="dept"))
+        db.commit()
+    finally:
+        db.close()
 
 
 def test_migration_adds_missing_keys_to_existing_role():

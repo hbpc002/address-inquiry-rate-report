@@ -15,7 +15,8 @@ const routes = [
       {
         path: '',
         name: 'Dashboard',
-        component: () => import('../views/Dashboard.vue')
+        component: () => import('../views/Dashboard.vue'),
+        meta: { permission: 'dashboard.view' }
       },
       {
         path: 'employees',

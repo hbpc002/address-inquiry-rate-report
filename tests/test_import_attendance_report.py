@@ -17,6 +17,8 @@ from app.models.schedule import Schedule
 from app.models.shift_type import ShiftType
 from app.models.daily_report import DailyReport
 from app.models.monthly_report import MonthlyReport
+from app.models.user import User
+from app.core.security import get_password_hash
 from app.api.schedules import _parse_attendance_report_xlsx
 
 
@@ -511,6 +513,9 @@ class TestImportAttendanceReport:
 def db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+    if not db.query(User).filter(User.id == 1).first():
+        db.add(User(id=1, username="import_attendance_admin", password_hash=get_password_hash("pass"), role="admin"))
+        db.commit()
     try:
         yield db
     finally:
