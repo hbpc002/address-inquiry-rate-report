@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.models.database import init_db
-from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads, salary_config, field_annotations, training_records
+from app.api import auth, employees, shift_types, schedules, checkins, reports, system, users, work_hour_thresholds, attendance_config, roles, announcements, workloads, salary_config, field_annotations, training_records, department_groups
 from app.api import llm_providers, agent, agent_conversations, ui_config, broadband, agent_settings, marketing
 from app.models.database import SessionLocal
 import asyncio
@@ -67,6 +67,7 @@ app.include_router(checkins.router)
 app.include_router(reports.router)
 app.include_router(system.router)
 app.include_router(users.router)
+app.include_router(department_groups.router)
 app.include_router(work_hour_thresholds.router)
 app.include_router(attendance_config.router)
 app.include_router(roles.router)

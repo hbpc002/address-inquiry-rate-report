@@ -83,6 +83,9 @@
           <el-menu-item v-if="userStore.canView('roles')" index="/roles">
             <span>{{ ui.labels.roles }}</span>
           </el-menu-item>
+          <el-menu-item v-if="userStore.canView('department_groups')" index="/department-groups">
+            <span>部门设置</span>
+          </el-menu-item>
           <el-menu-item v-if="userStore.canView('work_hour_settings')" index="/work-hour-settings">
             <span>{{ ui.labels.work_hour_settings }}</span>
           </el-menu-item>
@@ -162,6 +165,7 @@ const SYSTEM_ITEMS = [
   { path: '/system', key: 'system' },
   { path: '/users', key: 'users' },
   { path: '/roles', key: 'roles' },
+  { path: '/department-groups', key: 'department_groups' },
   { path: '/work-hour-settings', key: 'work_hour_settings' },
   { path: '/salary-settings', key: 'salary_config' },
   { path: '/field-annotations', key: 'field_annotations' },

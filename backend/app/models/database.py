@@ -24,6 +24,7 @@ def get_db():
 def init_db():
     from app.models.user import User
     from app.models.role import Role
+    from app.models.department_group import DepartmentGroup, DepartmentGroupPath
     from app.models.employee import Employee
     from app.models.shift_type import ShiftType
     from app.models.schedule import Schedule
@@ -67,7 +68,8 @@ def _migrate_db():
                 'password_hash': 'VARCHAR(255)',
                 'display_name': 'VARCHAR(50)',
                 'dept': 'VARCHAR(200)',
-                'role': "VARCHAR(20) DEFAULT 'user'",
+                'department_group_id': 'INTEGER',
+                'role': "VARCHAR(50) DEFAULT 'user'",
                 'role_id': 'INTEGER',
                 'is_active': 'BOOLEAN DEFAULT TRUE',
                 'created_at': 'TIMESTAMP',
@@ -85,6 +87,14 @@ def _migrate_db():
                 db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_dept ON users (dept)"))
             except Exception as e:
                 print(f"Failed to create users dept index: {e}")
+            role_col = next((col for col in inspector.get_columns('users') if col['name'] == 'role'), None)
+            try:
+                role_length = getattr(role_col.get('type'), 'length', None) if role_col else None
+                if role_length is not None and role_length < 50:
+                    db.execute(text("ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(50)"))
+                    print("Altered users.role to VARCHAR(50)")
+            except Exception as e:
+                print(f"Failed to alter users.role: {e}")
 
         if 'roles' in tables:
             existing_columns = [col['name'] for col in inspector.get_columns('roles')]
@@ -95,6 +105,13 @@ def _migrate_db():
                     print("Added column data_scope to roles")
                 except Exception as e:
                     print(f"Failed to add column data_scope: {e}")
+            if 'data_scope_config' not in existing_columns:
+                try:
+                    db.execute(text("ALTER TABLE roles ADD COLUMN data_scope_config TEXT DEFAULT '{}'"))
+                    db.execute(text("UPDATE roles SET data_scope_config = '{}' WHERE data_scope_config IS NULL"))
+                    print("Added column data_scope_config to roles")
+                except Exception as e:
+                    print(f"Failed to add column data_scope_config: {e}")
 
         if 'schedules' in tables:
             schedule_cols = {col['name'] for col in inspector.get_columns('schedules')}
@@ -233,11 +250,49 @@ def _migrate_db():
                 print(f"Failed to create training_records: {e}")
 
         db.commit()
+        _migrate_legacy_user_departments(db)
     except Exception as e:
         print(f"Migration error: {e}")
         db.rollback()
     finally:
         db.close()
+
+
+def _migrate_legacy_user_departments(db):
+    from app.models.user import User
+    from app.models.department_group import DepartmentGroup, DepartmentGroupPath
+
+    users = db.query(User).filter(
+        User.department_group_id.is_(None),
+        User.dept.isnot(None),
+        User.dept != "",
+    ).all()
+    if not users:
+        return
+
+    for user in users:
+        path = (user.dept or "").strip()
+        if not path:
+            continue
+        path_row = db.query(DepartmentGroupPath).filter(DepartmentGroupPath.path == path).first()
+        if path_row:
+            group = path_row.group
+        else:
+            base_name = path.split(">>")[-1].strip() or path[:100]
+            name = base_name[:100]
+            suffix = 1
+            while db.query(DepartmentGroup).filter(DepartmentGroup.name == name).first():
+                suffix += 1
+                tail = f"({suffix})"
+                name = f"{base_name[:100 - len(tail)]}{tail}"
+            group = DepartmentGroup(name=name, description="由历史用户部门自动迁移")
+            db.add(group)
+            db.flush()
+            db.add(DepartmentGroupPath(group_id=group.id, path=path))
+            db.flush()
+        user.department_group_id = group.id
+
+    db.commit()
 
 
 def _init_default_data():

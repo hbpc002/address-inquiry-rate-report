@@ -103,7 +103,7 @@
 | username | VARCHAR(50) | UNIQUE, NOT NULL | 用户名 |
 | password_hash | VARCHAR(255) | NOT NULL | 密码哈希(bcrypt) |
 | display_name | VARCHAR(50) | | 显示名称 |
-| role | VARCHAR(20) | DEFAULT 'user' | 角色(admin/user) |
+| role | VARCHAR(50) | DEFAULT 'user' | 角色名称(兼容字段) |
 | is_active | BOOLEAN | DEFAULT TRUE | 是否激活 |
 | created_at | TIMESTAMP | DEFAULT NOW() | 创建时间 |
 | updated_at | TIMESTAMP | | 更新时间 |
@@ -1175,7 +1175,7 @@ def get_default_permissions(role_name):
     if role_name == "admin":
         return {all_permissions: True}     # admin 全部权限
     
-    admin_only_views = {"system", "users", "roles"}
+    admin_only_views = {"system", "users", "roles", "department_groups"}
     admin_only_actions = {"clear_data", "manage"}
     
     for each permission key:
@@ -1200,15 +1200,21 @@ def get_default_permissions(role_name):
 | GET | /api/roles/permissions | 获取权限注册表 |
 | GET | /api/users/roles | 获取角色下拉列表 |
 
-### 13.7 数据范围（部门隔离）
+### 13.7 数据范围（部门组隔离）
 
-- 角色新增 `data_scope`：
-  - `all`：查看和管理全部部门数据。
-  - `dept`：仅查看和管理本部门数据。
-- 用户新增 `dept`：填写与员工表一致的部门全路径，按前缀匹配下级部门。
-- 员工管理、营销明细、营销统计、总体营销及导出均按当前用户的数据范围过滤。
-- `dept` 范围角色可以更新本部门员工；营销导入/删除仅允许 `all` 范围角色操作。
-- 未配置部门的 `dept` 范围账号默认看不到员工和营销数据，避免误放开。
+- 新增“部门设置”：一个部门组可以配置一个或多个组织路径，路径按前缀匹配并包含下级部门。
+- 用户关联一个部门组；旧 `users.dept` 会在升级时自动迁移为部门组。
+- 角色保留 `data_scope` 作为默认范围：
+  - `all`：查看和管理全部数据。
+  - `dept`：仅查看和管理本部门组数据。
+- 角色新增 `data_scope_config`，按页面覆盖默认范围：
+  - `employees`：员工管理
+  - `marketing`：营销明细
+  - `marketing_report`：营销统计
+  - `marketing_overall`：总体营销
+- 每个页面可设置为 `all` 或 `dept`；未配置时跟随角色默认范围。
+- 例如：角色默认 `dept`，把 `marketing_overall` 设为 `all`，则总体营销查看全部汇总数据，营销明细和营销统计仍按部门组过滤。
+- 部门组范围角色可以更新本部门组员工；营销导入/删除仅允许对应页面为 `all` 范围的角色操作。
 - 新部门如不需要考勤报表，不勾选 `dashboard.view`、`reports.view`、`checkin_report.view`、`checkins.view` 即可。
 
 ---
@@ -1225,6 +1231,7 @@ def get_default_permissions(role_name):
 | v1.5 | 2026-10-21 | 接入营销工单 `fwgd` 来源：按组织机构/建单租户分类，总体营销调整 13 行并支持来源筛选 |
 | v1.6 | 2026-10-23 | 总体营销新增重点业务产品统计表、产品配置与线上直办/办理工单/合计来源切换 |
 | v1.7 | 2026-10-29 | 新增角色数据范围与用户部门，员工/营销按部门隔离，整理权限管理与只读接口校验 |
+| v1.8 | 2026-10-29 | 新增部门组多组织路径、用户关联部门组、角色页面级数据范围，修复长角色名保存失败 |
 
 ---
 

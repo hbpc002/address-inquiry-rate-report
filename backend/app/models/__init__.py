@@ -1,5 +1,6 @@
 from app.models.database import Base, get_db, init_db
 from app.models.user import User
+from app.models.department_group import DepartmentGroup, DepartmentGroupPath
 from app.models.employee import Employee
 from app.models.shift_type import ShiftType
 from app.models.schedule import Schedule
@@ -23,6 +24,8 @@ __all__ = [
     "get_db",
     "init_db",
     "User",
+    "DepartmentGroup",
+    "DepartmentGroupPath",
     "Employee",
     "ShiftType",
     "Schedule",

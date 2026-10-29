@@ -5,6 +5,7 @@ from datetime import timedelta
 from app.models.database import get_db
 from app.models.user import User
 from app.models.role import Role
+from app.models.department_group import DepartmentGroup
 from app.schemas.user import LoginRequest, TokenResponse, UserResponse
 from app.core.security import verify_password, create_access_token, get_current_user
 from app.core.config import settings
@@ -32,6 +33,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     role_name = user.role
     is_system = False
     data_scope = "all"
+    data_scope_config = "{}"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
@@ -39,6 +41,13 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             role_name = role.name
             is_system = role.is_system
             data_scope = role.data_scope or "all"
+            data_scope_config = role.data_scope_config or "{}"
+    group = None
+    group_paths = []
+    if user.department_group_id:
+        group = db.query(DepartmentGroup).filter(DepartmentGroup.id == user.department_group_id).first()
+        if group:
+            group_paths = [item.path for item in group.paths]
 
     access_token = create_access_token(
         data={"sub": user.id}, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -51,10 +60,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             username=user.username,
             display_name=user.display_name,
             dept=user.dept,
+            department_group_id=user.department_group_id,
+            department_group_name=group.name if group else None,
+            department_group_paths=group_paths,
             role=role_name,
             role_id=user.role_id,
             permissions=role_permissions,
             data_scope=data_scope,
+            data_scope_config=data_scope_config,
             is_system=is_system,
             is_active=user.is_active,
             created_at=user.created_at,
@@ -78,6 +91,7 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
     role_name = user.role
     is_system = False
     data_scope = "all"
+    data_scope_config = "{}"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
@@ -85,6 +99,13 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
             role_name = role.name
             is_system = role.is_system
             data_scope = role.data_scope or "all"
+            data_scope_config = role.data_scope_config or "{}"
+    group = None
+    group_paths = []
+    if user.department_group_id:
+        group = db.query(DepartmentGroup).filter(DepartmentGroup.id == user.department_group_id).first()
+        if group:
+            group_paths = [item.path for item in group.paths]
 
     if not is_system and user.role == "admin":
         is_system = True
@@ -94,10 +115,14 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
         username=user.username,
         display_name=user.display_name,
         dept=user.dept,
+        department_group_id=user.department_group_id,
+        department_group_name=group.name if group else None,
+        department_group_paths=group_paths,
         role=role_name,
         role_id=user.role_id,
         permissions=role_permissions,
         data_scope=data_scope,
+        data_scope_config=data_scope_config,
         is_system=is_system,
         is_active=user.is_active,
         created_at=user.created_at,

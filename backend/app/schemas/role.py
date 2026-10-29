@@ -1,20 +1,22 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
 
 class RoleCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=50)
     description: Optional[str] = ""
     permissions: dict = {}
     data_scope: str = "all"
+    data_scope_config: dict = {}
 
 
 class RoleUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=50)
     description: Optional[str] = None
     permissions: Optional[dict] = None
     data_scope: Optional[str] = None
+    data_scope_config: Optional[dict] = None
 
 
 class RoleResponse(BaseModel):
@@ -23,6 +25,7 @@ class RoleResponse(BaseModel):
     description: Optional[str] = ""
     permissions: str = "{}"
     data_scope: str = "all"
+    data_scope_config: str = "{}"
     is_system: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

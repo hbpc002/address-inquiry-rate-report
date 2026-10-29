@@ -1,0 +1,264 @@
+import os
+from datetime import date
+from pathlib import Path
+import sys
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'backend'))
+
+from app.main import app
+from app.models.database import Base, get_db
+from app.models.department_group import DepartmentGroup, DepartmentGroupPath
+from app.models.employee import Employee
+from app.models.marketing_detail import MarketingDetail
+from app.models.role import Role
+from app.models.user import User
+from app.core.security import create_access_token, get_password_hash
+
+TEST_DB_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:admin123%40kf@localhost:5432/schedule_test",
+)
+engine = create_engine(TEST_DB_URL, pool_pre_ping=True)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+app.dependency_overrides[get_db] = override_get_db
+client = TestClient(app)
+
+DEPT_A = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>A部门"
+DEPT_A2 = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>A2部门"
+DEPT_B = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>B部门"
+
+
+def auth_header(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def setup_module():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    try:
+        admin_role = Role(name="admin", is_system=True, permissions="{}", data_scope="all")
+        dept_role = Role(
+            name="dept_overall_all",
+            permissions='{"employees.view": true, "employees.edit": true, "marketing.view": true, "marketing_report.view": true, "marketing_report.export": true, "marketing_overall.view": true, "marketing_overall.export": true}',
+            data_scope="dept",
+            data_scope_config='{"marketing_overall": "all"}',
+        )
+        db.add_all([admin_role, dept_role])
+        db.commit()
+
+        group = DepartmentGroup(name="A部门组", description="多路径测试")
+        db.add(group)
+        db.flush()
+        db.add_all([
+            DepartmentGroupPath(group_id=group.id, path=DEPT_A),
+            DepartmentGroupPath(group_id=group.id, path=DEPT_A2),
+        ])
+        db.commit()
+
+        admin = User(
+            username="dg_admin", password_hash=get_password_hash("pass"),
+            display_name="管理员", role="admin", role_id=admin_role.id,
+        )
+        scoped = User(
+            username="dg_scoped", password_hash=get_password_hash("pass"),
+            display_name="部门组用户", role="dept_overall_all", role_id=dept_role.id,
+            department_group_id=group.id,
+        )
+        db.add_all([admin, scoped])
+        db.commit()
+
+        db.add_all([
+            Employee(emp_no="DGA001", name="A员工", team="A组", dept=DEPT_A, role="组员", status="在职"),
+            Employee(emp_no="DGA002", name="A2员工", team="A2组", dept=DEPT_A2, role="组员", status="在职"),
+            Employee(emp_no="DGB001", name="B员工", team="B组", dept=DEPT_B, role="组员", status="在职"),
+        ])
+        db.commit()
+
+        db.add_all([
+            MarketingDetail(kf_id="DGA001", data_type="xszb", finish_date=date(2026, 1, 10), service_type="叠加包", valid_type="日包", trade_id="DGA-T1", product_id="P1", product_name="产品1"),
+            MarketingDetail(kf_id="DGA002", data_type="xszb", finish_date=date(2026, 1, 11), service_type="叠加包", valid_type="日包", trade_id="DGA-T2", product_id="P1", product_name="产品1"),
+            MarketingDetail(kf_id="DGB001", data_type="xszb", finish_date=date(2026, 2, 5), service_type="叠加包", valid_type="日包", trade_id="DGB-T1", product_id="P2", product_name="产品2"),
+        ])
+        db.commit()
+
+        global ADMIN_TOKEN, SCOPED_TOKEN, GROUP_ID
+        ADMIN_TOKEN = create_access_token(data={"sub": str(admin.id)})
+        SCOPED_TOKEN = create_access_token(data={"sub": str(scoped.id)})
+        GROUP_ID = group.id
+    finally:
+        db.close()
+
+
+def test_department_group_options_and_paths():
+    res = client.get("/api/department-groups/options", headers=auth_header(ADMIN_TOKEN))
+    assert res.status_code == 200
+    data = res.json()
+    group = next(item for item in data if item["id"] == GROUP_ID)
+    assert set(group["paths"]) == {DEPT_A, DEPT_A2}
+
+
+def test_auth_me_returns_department_group_and_page_scope():
+    res = client.get("/api/auth/me", headers=auth_header(SCOPED_TOKEN))
+    assert res.status_code == 200
+    data = res.json()
+    assert data["department_group_name"] == "A部门组"
+    assert set(data["department_group_paths"]) == {DEPT_A, DEPT_A2}
+    assert data["data_scope"] == "dept"
+    assert data["data_scope_config"] == '{"marketing_overall": "all"}'
+
+
+def test_multi_path_employee_scope():
+    res = client.get("/api/employees", headers=auth_header(SCOPED_TOKEN))
+    assert res.status_code == 200
+    emp_nos = {item["emp_no"] for item in res.json()["items"]}
+    assert emp_nos == {"DGA001", "DGA002"}
+
+
+def test_page_level_scope_all_for_overall_only():
+    details = client.get("/api/marketing/details", headers=auth_header(SCOPED_TOKEN))
+    assert details.status_code == 200
+    assert {item["kf_id"] for item in details.json()["items"]} == {"DGA001", "DGA002"}
+
+    report = client.get(
+        "/api/marketing/report",
+        params={"start_date": "2026-01-01", "end_date": "2026-02-28"},
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert report.status_code == 200
+    assert {item["kf_id"] for item in report.json()["employees"]} == {"DGA001", "DGA002"}
+
+    overall = client.get(
+        "/api/marketing/overall-report",
+        params={"start_date": "2026-01-01", "end_date": "2026-02-28"},
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert overall.status_code == 200
+    assert overall.json()["data_ranges"]["database"]["xszb"]["end_date"] == "2026-02-05"
+
+
+def test_department_group_crud_requires_permission_and_blocks_delete_in_use():
+    denied = client.post(
+        "/api/department-groups",
+        json={"name": "越权部门", "paths": [DEPT_A]},
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert denied.status_code == 403
+
+    created = client.post(
+        "/api/department-groups",
+        json={"name": "临时部门组", "paths": [DEPT_A], "description": "test"},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert created.status_code == 200
+    group_id = created.json()["id"]
+
+    updated = client.put(
+        f"/api/department-groups/{group_id}",
+        json={"paths": [DEPT_A, DEPT_A2]},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert updated.status_code == 200
+
+    in_use = client.delete(f"/api/department-groups/{GROUP_ID}", headers=auth_header(ADMIN_TOKEN))
+    assert in_use.status_code == 400
+
+    deleted = client.delete(f"/api/department-groups/{group_id}", headers=auth_header(ADMIN_TOKEN))
+    assert deleted.status_code == 200
+
+
+def test_long_role_name_can_create_and_update_user():
+    role_name = "ComplaintsHandlingTeam"
+    created_role = client.post(
+        "/api/roles",
+        json={"name": role_name, "data_scope": "dept", "permissions": {"employees.view": True}},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert created_role.status_code == 200
+    role_id = created_role.json()["id"]
+
+    created_user = client.post(
+        "/api/users",
+        json={"username": "dg_long_role", "password": "pass123", "display_name": "长角色", "role_id": role_id, "department_group_id": GROUP_ID},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert created_user.status_code == 200
+    user_id = created_user.json()["id"]
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        assert user.role == role_name
+        assert user.department_group_id == GROUP_ID
+    finally:
+        db.close()
+
+    updated = client.put(
+        f"/api/users/{user_id}",
+        json={"display_name": "长角色改名", "role_id": role_id, "department_group_id": GROUP_ID},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert updated.status_code == 200
+
+    too_long = client.post(
+        "/api/roles",
+        json={"name": "x" * 51, "data_scope": "dept", "permissions": {}},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert too_long.status_code == 422
+
+
+def test_role_page_scope_config_is_saved_and_filtered():
+    created = client.post(
+        "/api/roles",
+        json={
+            "name": "dept_page_scope",
+            "data_scope": "dept",
+            "data_scope_config": {"marketing_overall": "all", "invalid": "all"},
+            "permissions": {"marketing_overall.view": True},
+        },
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert created.status_code == 200
+
+    roles = client.get("/api/roles/all", headers=auth_header(ADMIN_TOKEN)).json()
+    role = next(item for item in roles if item["name"] == "dept_page_scope")
+    assert role["data_scope"] == "dept"
+    assert role["data_scope_config"] == '{"marketing_overall": "all"}'
+
+
+def test_legacy_user_department_is_migrated_to_group():
+    from app.models.database import _migrate_legacy_user_departments
+
+    legacy_dept = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>历史部门"
+    db = TestingSessionLocal()
+    try:
+        user = User(
+            username="dg_legacy", password_hash=get_password_hash("pass"),
+            display_name="历史用户", role="user", dept=legacy_dept,
+        )
+        db.add(user)
+        db.commit()
+        _migrate_legacy_user_departments(db)
+        db.refresh(user)
+        assert user.department_group_id is not None
+        group = db.query(DepartmentGroup).filter(DepartmentGroup.id == user.department_group_id).first()
+        assert group is not None
+        assert [item.path for item in group.paths] == [legacy_dept]
+    finally:
+        db.close()

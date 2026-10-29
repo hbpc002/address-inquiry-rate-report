@@ -20,7 +20,7 @@ from app.schemas.employee import (
 from app.core.security import get_current_user, require_permission
 from app.core.data_scope import (
     apply_employee_scope, employee_in_scope, ensure_dept_in_scope,
-    ensure_employee_in_scope, get_user_dept, is_all_scope,
+    ensure_employee_in_scope, get_user_scope_paths, is_all_scope,
 )
 from app.utils.logger import log_operation
 
@@ -300,9 +300,9 @@ def import_employees(
     updated = 0
     skipped = 0
     errors = []
-    scope_dept = None if is_all_scope(current_user) else get_user_dept(current_user)
-    if not is_all_scope(current_user) and not scope_dept:
-        raise HTTPException(status_code=403, detail="当前账号未配置所属部门，无法导入员工")
+    scope_paths = [] if is_all_scope(current_user) else get_user_scope_paths(current_user)
+    if not is_all_scope(current_user) and not scope_paths:
+        raise HTTPException(status_code=403, detail="当前账号未配置所属部门组，无法导入员工")
 
     for idx, row in df.iterrows():
         emp_no = str(row.get('工号', '')).strip()
@@ -313,12 +313,12 @@ def import_employees(
             continue
 
         row_dept = str(row.get('部门', '')).strip() if pd.notna(row.get('部门')) else ''
-        if scope_dept:
-            if row_dept and not row_dept.startswith(scope_dept):
+        if scope_paths:
+            if row_dept and not any(row_dept.startswith(path) for path in scope_paths):
                 skipped += 1
                 errors.append(f"第{idx + 2}行: 无权导入其他部门员工")
                 continue
-            target_dept = row_dept or scope_dept
+            target_dept = row_dept or scope_paths[0]
         else:
             target_dept = row_dept
         
@@ -335,7 +335,7 @@ def import_employees(
         
         existing = db.query(Employee).filter(Employee.emp_no == emp_no).first()
         if existing:
-            if scope_dept and not employee_in_scope(existing, current_user):
+            if scope_paths and not employee_in_scope(existing, current_user):
                 skipped += 1
                 errors.append(f"第{idx + 2}行: 工号'{emp_no}'属于其他部门，已跳过")
                 continue

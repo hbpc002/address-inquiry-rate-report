@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { PERMISSION_REGISTRY, getAllPermissionKeys } from '@/permissions'
+import { PERMISSION_REGISTRY, getAllPermissionKeys, DATA_SCOPE_MODULES } from '@/permissions'
 
 describe('PERMISSION_REGISTRY.agent', () => {
   it('包含智能体分组及使用/配置权限', () => {
@@ -56,5 +56,20 @@ describe('首页与数据范围权限', () => {
   it('包含首页查看权限', () => {
     expect(PERMISSION_REGISTRY.dashboard.permissions.view).toBe('查看')
     expect(getAllPermissionKeys()).toContain('dashboard.view')
+  })
+})
+
+
+describe('部门设置与页面数据范围', () => {
+  it('包含部门设置权限', () => {
+    expect(PERMISSION_REGISTRY.department_groups.permissions.view).toBe('查看')
+    expect(PERMISSION_REGISTRY.department_groups.permissions.manage).toBe('管理部门组')
+    expect(getAllPermissionKeys()).toContain('department_groups.manage')
+  })
+
+  it('包含数据页面范围配置项', () => {
+    expect(DATA_SCOPE_MODULES.employees).toBe('员工管理')
+    expect(DATA_SCOPE_MODULES.marketing_report).toBe('营销统计')
+    expect(DATA_SCOPE_MODULES.marketing_overall).toBe('总体营销')
   })
 })

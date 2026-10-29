@@ -66,6 +66,23 @@
             “仅本部门数据”需要同时在用户管理中给用户填写所属部门，按部门路径前缀匹配。
           </div>
         </el-form-item>
+        <el-form-item label="页面数据范围">
+          <el-table :data="scopeModuleRows" border size="small" style="width: 100%">
+            <el-table-column prop="label" label="页面" width="150" />
+            <el-table-column label="数据范围">
+              <template #default="{ row }">
+                <el-radio-group v-model="form.data_scope_config[row.key]" size="small">
+                  <el-radio value="">跟随默认</el-radio>
+                  <el-radio value="all">全部数据</el-radio>
+                  <el-radio value="dept">本部门数据</el-radio>
+                </el-radio-group>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="form-tip">
+            例如全局设为“本部门数据”，再把“总体营销”单独设为“全部数据”。
+          </div>
+        </el-form-item>
         <el-form-item label="权限">
           <div style="margin-bottom: 12px">
             <el-checkbox :indeterminate="isIndeterminate" :model-value="checkAll" @change="handleCheckAll">全选所有权限</el-checkbox>
@@ -153,7 +170,7 @@ import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { PERMISSION_REGISTRY, getAllPermissionKeys } from '../permissions'
+import { PERMISSION_REGISTRY, getAllPermissionKeys, DATA_SCOPE_MODULES } from '../permissions'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
@@ -162,7 +179,8 @@ const registry = ref(PERMISSION_REGISTRY)
 const tableData = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
-const form = reactive({ id: null, name: '', description: '', data_scope: 'all', permissions: [] })
+const form = reactive({ id: null, name: '', description: '', data_scope: 'all', data_scope_config: {}, permissions: [] })
+const scopeModuleRows = Object.entries(DATA_SCOPE_MODULES).map(([key, label]) => ({ key, label }))
 
 const assignDialogVisible = ref(false)
 const assignRole = ref(null)
@@ -280,7 +298,8 @@ function handlePermissionGroupCheckAll(group, checked) {
 
 function formatUserLabel(user) {
   const base = user.display_name ? `${user.username} (${user.display_name})` : user.username
-  return user.dept ? `${base} - ${user.dept}` : base
+  const group = user.department_group_name || user.dept
+  return group ? `${base} - ${group}` : base
 }
 
 async function loadRegistry() {
@@ -309,6 +328,7 @@ function handleAdd() {
     name: '',
     description: '',
     data_scope: 'all',
+    data_scope_config: {},
     permissions: [...allKeys.value],
   })
   isEdit.value = false
@@ -322,16 +342,30 @@ function handleEdit(row) {
     name: row.name,
     description: row.description,
     data_scope: row.data_scope || 'all',
+    data_scope_config: parseScopeConfig(row.data_scope_config),
     permissions: Object.keys(perms),
   })
   isEdit.value = true
   dialogVisible.value = true
 }
 
+function parseScopeConfig(value) {
+  try {
+    const obj = typeof value === 'string' ? JSON.parse(value || '{}') : (value || {})
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch {
+    return {}
+  }
+}
+
 async function handleSubmit() {
   try {
     const permObj = {}
     form.permissions.forEach(p => { permObj[p] = true })
+    const scopeConfig = {}
+    for (const [key, value] of Object.entries(form.data_scope_config || {})) {
+      if (value === 'all' || value === 'dept') scopeConfig[key] = value
+    }
     for (const key of allKeys.value) {
       if (!permObj[key]) permObj[key] = false
     }
@@ -340,6 +374,7 @@ async function handleSubmit() {
         permissions: permObj,
         description: form.description,
         data_scope: form.data_scope,
+        data_scope_config: scopeConfig,
       })
       ElMessage.success('更新成功')
     } else {
@@ -347,6 +382,7 @@ async function handleSubmit() {
         name: form.name,
         description: form.description,
         data_scope: form.data_scope,
+        data_scope_config: scopeConfig,
         permissions: permObj,
       })
       ElMessage.success('创建成功')

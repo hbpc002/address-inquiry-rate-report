@@ -656,6 +656,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         ),
         db,
         current_user,
+        "marketing_report",
     )
     data_type = filters.get("data_type") or ""
     if data_type in (SOURCE_XSZB, SOURCE_FWGD):
@@ -900,6 +901,7 @@ def _compute_key_product_table(
         ),
         db,
         current_user,
+        "marketing_overall",
     )
     if product_source in (SOURCE_XSZB, SOURCE_FWGD):
         query = query.filter(_source_condition(product_source))
@@ -1001,7 +1003,7 @@ def _source_date_ranges(
             func.max(MarketingDetail.finish_date),
         ).filter(_source_condition(source))
         if current_user:
-            query = apply_marketing_scope(query, db, current_user)
+            query = apply_marketing_scope(query, db, current_user, "marketing_overall")
         if start:
             query = query.filter(MarketingDetail.finish_date >= start)
         if end:
@@ -1034,7 +1036,7 @@ def _compute_overall(
         _source_condition(SOURCE_XSZB),
     )
     if current_user:
-        online_query = apply_marketing_scope(online_query, db, current_user)
+        online_query = apply_marketing_scope(online_query, db, current_user, "marketing_overall")
     online_details = online_query.all()
     for detail in online_details:
         biz = _business_key(detail.service_type or "")
@@ -1055,7 +1057,7 @@ def _compute_overall(
         _source_condition(SOURCE_FWGD),
     )
     if current_user:
-        work_order_query = apply_marketing_scope(work_order_query, db, current_user)
+        work_order_query = apply_marketing_scope(work_order_query, db, current_user, "marketing_overall")
     work_order_details = work_order_query.all()
     for detail in work_order_details:
         biz = _business_key(detail.service_type or "")
@@ -1153,7 +1155,7 @@ def import_details(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.upload")
-    require_all_scope(current_user, "仅全部数据权限的账号可导入营销数据")
+    require_all_scope(current_user, "仅全部数据权限的账号可导入营销数据", "marketing")
     batch = uuid.uuid4().hex[:8]
     content = file.file.read()
     data, mapping = _read_excel(content)
@@ -1270,7 +1272,7 @@ def get_details(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.view")
-    query = apply_marketing_scope(db.query(MarketingDetail), db, current_user)
+    query = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing")
     if import_batch:
         query = query.filter(MarketingDetail.import_batch == import_batch)
     if data_type in (SOURCE_XSZB, SOURCE_FWGD):
@@ -1366,7 +1368,7 @@ def delete_details_by_date(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.delete")
-    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据")
+    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据", "marketing")
     target = _date_param(date)
     count = db.query(MarketingDetail).filter(MarketingDetail.finish_date == target).delete(synchronize_session=False)
     db.commit()
@@ -1381,7 +1383,7 @@ def delete_details_batch(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.delete")
-    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据")
+    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据", "marketing")
     count = db.query(MarketingDetail).filter(MarketingDetail.import_batch == batch).delete(synchronize_session=False)
     db.commit()
     log_operation(db, current_user["id"], "delete_marketing_batch", "marketing", None, {"batch": batch, "count": count})
@@ -1395,7 +1397,7 @@ def delete_detail(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.delete")
-    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据")
+    require_all_scope(current_user, "仅全部数据权限的账号可删除营销数据", "marketing")
     record = db.query(MarketingDetail).filter(MarketingDetail.id == detail_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
@@ -1474,7 +1476,7 @@ def get_product_options(
             MarketingDetail.product_id.isnot(None),
             MarketingDetail.product_name.isnot(None),
         )
-    ), db, current_user).group_by(
+    ), db, current_user, "marketing").group_by(
         MarketingDetail.product_id,
         MarketingDetail.product_name,
     ).order_by(func.count(MarketingDetail.id).desc())
@@ -1509,7 +1511,7 @@ def get_organizations(
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
     counter: Dict[tuple, int] = {}
-    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user).all()
+    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing").all()
     for detail in details:
         source = _detail_source(detail)
         if source == SOURCE_FWGD:
@@ -1543,7 +1545,7 @@ def get_row_rule_preview(
     config = _overall_config(db)
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
-    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user).all()
+    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing").all()
     unclassified = 0
     counter: Dict[tuple, int] = {}
     for detail in details:

@@ -121,6 +121,12 @@ const routes = [
         meta: { permission: 'roles.view' }
       },
       {
+        path: 'department-groups',
+        name: 'DepartmentGroups',
+        component: () => import('../views/DepartmentGroups.vue'),
+        meta: { permission: 'department_groups.view' }
+      },
+      {
         path: 'salary-settings',
         name: 'SalarySettings',
         component: () => import('../views/SalarySettings.vue'),

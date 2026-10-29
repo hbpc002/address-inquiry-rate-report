@@ -62,6 +62,7 @@ def get_user_from_token(token: str, db: Session) -> dict:
 
     from app.models.user import User
     from app.models.role import Role
+    from app.models.department_group import DepartmentGroup
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(
@@ -73,6 +74,7 @@ def get_user_from_token(token: str, db: Session) -> dict:
     is_system = False
     role_name = user.role
     data_scope = "all"
+    data_scope_config = "{}"
     if user.role_id:
         role = db.query(Role).filter(Role.id == user.role_id).first()
         if role:
@@ -80,9 +82,17 @@ def get_user_from_token(token: str, db: Session) -> dict:
             is_system = role.is_system
             role_name = role.name
             data_scope = role.data_scope or "all"
+            data_scope_config = role.data_scope_config or "{}"
 
     if not is_system and user.role == "admin":
         is_system = True
+
+    group = None
+    group_paths = []
+    if user.department_group_id:
+        group = db.query(DepartmentGroup).filter(DepartmentGroup.id == user.department_group_id).first()
+        if group:
+            group_paths = [item.path for item in group.paths]
 
     return {
         "id": user.id,
@@ -92,7 +102,11 @@ def get_user_from_token(token: str, db: Session) -> dict:
         "permissions": role_permissions,
         "display_name": user.display_name,
         "dept": user.dept,
+        "department_group_id": user.department_group_id,
+        "department_group_name": group.name if group else None,
+        "department_group_paths": group_paths,
         "data_scope": data_scope,
+        "data_scope_config": data_scope_config,
         "is_system": is_system,
     }
 

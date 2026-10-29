@@ -27,7 +27,17 @@
        <el-table :data="tableData" border stripe>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="display_name" label="显示名" width="120" />
-        <el-table-column prop="dept" label="所属部门" min-width="220" show-overflow-tooltip />
+        <el-table-column label="所属部门组" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-tooltip v-if="row.department_group_name" placement="top">
+              <template #content>
+                <div v-for="path in (row.department_group_paths || [])" :key="path">{{ path }}</div>
+              </template>
+              <span>{{ row.department_group_name }}</span>
+            </el-tooltip>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="role" label="角色" width="100">
           <template #default="{ row }">
             <el-tag :type="row.is_system ? 'danger' : row.role === 'manager' ? 'warning' : 'success'">
@@ -97,17 +107,12 @@
         <el-form-item label="显示名">
           <el-input v-model="form.display_name" />
         </el-form-item>
-        <el-form-item label="所属部门">
-          <el-select
-            v-model="form.dept"
-            filterable
-            allow-create
-            clearable
-            default-first-option
-            placeholder="选择或输入部门全路径"
-            style="width: 100%"
-          >
-            <el-option v-for="d in departments" :key="d.dept" :label="d.dept" :value="d.dept" />
+        <el-form-item label="所属部门组">
+          <el-select v-model="form.department_group_id" filterable clearable placeholder="选择部门组" style="width: 100%">
+            <el-option v-for="g in departmentGroups" :key="g.id" :label="g.name" :value="g.id">
+              <span>{{ g.name }}</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px">{{ (g.paths || []).length }} 条路径</span>
+            </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="角色">
@@ -138,11 +143,11 @@ const ui = useUiConfigStore()
 
 const tableData = ref([])
 const roles = ref([])
-const departments = ref([])
+const departmentGroups = ref([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const searchForm = reactive({ search: '', role: '' })
-const form = reactive({ id: null, username: '', password: '', display_name: '', dept: '', role_id: null })
+const form = reactive({ id: null, username: '', password: '', display_name: '', department_group_id: null, role_id: null })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 
 const importVisible = ref(false)
@@ -221,12 +226,12 @@ async function loadRoles() {
   }
 }
 
-async function loadDepartments() {
+async function loadDepartmentGroups() {
   try {
-    const res = await api.get('/employees/departments')
-    departments.value = res.data || []
+    const res = await api.get('/department-groups/options')
+    departmentGroups.value = res.data || []
   } catch (e) {
-    departments.value = []
+    departmentGroups.value = []
   }
 }
 
@@ -242,13 +247,13 @@ async function loadData() {
 }
 
 function handleAdd() {
-  Object.assign(form, { id: null, username: '', password: '', display_name: '', dept: '', role_id: null })
+  Object.assign(form, { id: null, username: '', password: '', display_name: '', department_group_id: null, role_id: null })
   isEdit.value = false
   dialogVisible.value = true
 }
 
 function handleEdit(row) {
-  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, dept: row.dept || '', role_id: row.role_id })
+  Object.assign(form, { id: row.id, username: row.username, display_name: row.display_name, department_group_id: row.department_group_id || null, role_id: row.role_id })
   isEdit.value = true
   dialogVisible.value = true
 }
@@ -256,10 +261,10 @@ function handleEdit(row) {
 async function handleSubmit() {
   try {
     if (isEdit.value) {
-      await api.put(`/users/${form.id}`, { display_name: form.display_name, dept: form.dept, role_id: form.role_id })
+      await api.put(`/users/${form.id}`, { display_name: form.display_name, department_group_id: form.department_group_id, role_id: form.role_id })
       ElMessage.success('更新成功')
     } else {
-      await api.post('/users', { username: form.username, password: form.password, display_name: form.display_name, dept: form.dept, role_id: form.role_id })
+      await api.post('/users', { username: form.username, password: form.password, display_name: form.display_name, department_group_id: form.department_group_id, role_id: form.role_id })
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -319,7 +324,7 @@ function resetForm() {
 
 onMounted(() => {
   loadRoles()
-  loadDepartments()
+  loadDepartmentGroups()
   loadData()
 })
 </script>

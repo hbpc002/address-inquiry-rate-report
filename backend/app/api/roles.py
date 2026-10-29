@@ -4,10 +4,35 @@ from typing import Optional
 from app.models.database import get_db
 from app.models.role import Role
 from app.models.user import User
+from app.models.department_group import DepartmentGroup
 from app.schemas.role import RoleCreate, RoleUpdate, RoleResponse, RoleListResponse, RoleAssignUsers
 from app.core.security import get_current_user, check_permission
 from app.core.permissions import get_all_permission_keys
+from app.core.data_scope import DATA_SCOPE_MODULES
 import json
+
+
+def _clean_scope_config(config: dict) -> dict:
+    cleaned = {}
+    for key, value in (config or {}).items():
+        if key in DATA_SCOPE_MODULES and value in ("all", "dept"):
+            cleaned[key] = value
+    return cleaned
+
+
+def _assignment_user(db: Session, user: User) -> dict:
+    group = None
+    if user.department_group_id:
+        group = db.query(DepartmentGroup).filter(DepartmentGroup.id == user.department_group_id).first()
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "dept": user.dept,
+        "department_group_id": user.department_group_id,
+        "department_group_name": group.name if group else None,
+        "department_group_paths": [item.path for item in group.paths] if group else [],
+    }
 
 router = APIRouter(prefix="/api/roles", tags=["角色管理"])
 
@@ -64,6 +89,7 @@ def create_role(
         description=role.description or "",
         permissions=json.dumps(perms, ensure_ascii=False),
         data_scope=role.data_scope,
+        data_scope_config=json.dumps(_clean_scope_config(role.data_scope_config), ensure_ascii=False),
     )
     db.add(db_role)
     db.commit()
@@ -90,6 +116,10 @@ def update_role(
     update_data = role.model_dump(exclude_unset=True)
     if "data_scope" in update_data and update_data["data_scope"] not in ("all", "dept"):
         raise HTTPException(status_code=400, detail="无效的数据范围")
+    if "data_scope_config" in update_data:
+        update_data["data_scope_config"] = json.dumps(
+            _clean_scope_config(update_data["data_scope_config"] or {}), ensure_ascii=False
+        )
     if "permissions" in update_data:
         valid_keys = set(get_all_permission_keys())
         perms = {}
@@ -97,8 +127,13 @@ def update_role(
             if k in valid_keys:
                 perms[k] = v
         update_data["permissions"] = json.dumps(perms, ensure_ascii=False)
+    old_name = db_role.name
     for key, value in update_data.items():
         setattr(db_role, key, value)
+    if db_role.name != old_name:
+        db.query(User).filter(User.role_id == db_role.id).update(
+            {"role": db_role.name}, synchronize_session=False
+        )
     db.commit()
     return {"id": db_role.id}
 
@@ -141,10 +176,7 @@ def get_role_users(
         raise HTTPException(status_code=404, detail="角色不存在")
 
     users = db.query(User).filter(User.role_id == role_id).all()
-    return [
-        {"id": u.id, "username": u.username, "display_name": u.display_name, "dept": u.dept}
-        for u in users
-    ]
+    return [_assignment_user(db, u) for u in users]
 
 
 @router.get("/all-users", response_model=list)
@@ -156,10 +188,7 @@ def get_all_users_for_assignment(
         raise HTTPException(status_code=403, detail="权限不足")
 
     users = db.query(User).all()
-    return [
-        {"id": u.id, "username": u.username, "display_name": u.display_name, "dept": u.dept}
-        for u in users
-    ]
+    return [_assignment_user(db, u) for u in users]
 
 
 @router.put("/{role_id}/users", response_model=dict)

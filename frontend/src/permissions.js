@@ -215,6 +215,15 @@ export const PERMISSION_REGISTRY = {
       "manage": "管理用户"
     }
   },
+  "department_groups": {
+    "label": "部门设置",
+    "group": "系统管理",
+    "order": 53,
+    "permissions": {
+      "view": "查看",
+      "manage": "管理部门组"
+    }
+  },
   "roles": {
     "label": "角色管理",
     "group": "系统管理",
@@ -271,7 +280,7 @@ export function getDefaultPermissions(roleName) {
     return Object.fromEntries(allKeys.map(k => [k, true]))
   }
 
-  const adminOnlyViews = new Set(['system', 'users', 'roles'])
+  const adminOnlyViews = new Set(['system', 'users', 'roles', 'department_groups'])
   const adminOnlyActions = new Set(['clear_data', 'manage'])
 
   const result = {}
@@ -287,4 +296,11 @@ export function getDefaultPermissions(roleName) {
     }
   }
   return result
+}
+
+export const DATA_SCOPE_MODULES = {
+  employees: '员工管理',
+  marketing: '营销明细',
+  marketing_report: '营销统计',
+  marketing_overall: '总体营销',
 }

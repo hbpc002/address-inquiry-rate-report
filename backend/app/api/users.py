@@ -8,6 +8,7 @@ from typing import Optional
 from app.models.database import get_db
 from app.models.user import User
 from app.models.role import Role
+from app.models.department_group import DepartmentGroup, DepartmentGroupPath
 from app.schemas.user import (
     UserCreate, UserUpdate, UserResponse,
     UserListResponse, ChangePasswordRequest, SetPermissionsRequest
@@ -16,6 +17,30 @@ from app.core.security import get_current_user, get_password_hash, verify_passwo
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/users", tags=["用户管理"])
+
+
+def _get_department_group(db: Session, group_id: int | None):
+    if not group_id:
+        return None
+    group = db.query(DepartmentGroup).filter(DepartmentGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=400, detail="所属部门组不存在")
+    return group
+
+
+def _resolve_role(db: Session, role_id: int | None, fallback: str = "user"):
+    if not role_id:
+        return None, fallback
+    role = db.query(Role).filter(Role.id == role_id).first()
+    if not role:
+        raise HTTPException(status_code=400, detail="角色不存在")
+    return role.id, role.name
+
+
+def _group_response_fields(group):
+    if not group:
+        return None, None, None
+    return group.id, group.name, [item.path for item in group.paths]
 
 
 @router.get("", response_model=UserListResponse)
@@ -48,6 +73,7 @@ def get_users(
         role_permissions = "{}"
         is_system = False
         data_scope = "all"
+        data_scope_config = "{}"
         if u.role_id:
             r = db.query(Role).filter(Role.id == u.role_id).first()
             if r:
@@ -55,15 +81,22 @@ def get_users(
                 role_permissions = r.permissions or "{}"
                 is_system = r.is_system
                 data_scope = r.data_scope or "all"
+                data_scope_config = r.data_scope_config or "{}"
+        group = db.query(DepartmentGroup).filter(DepartmentGroup.id == u.department_group_id).first() if u.department_group_id else None
+        group_id, group_name, group_paths = _group_response_fields(group)
         result_items.append(UserResponse(
             id=u.id,
             username=u.username,
             display_name=u.display_name,
             dept=u.dept,
+            department_group_id=group_id,
+            department_group_name=group_name,
+            department_group_paths=group_paths,
             role=role_name,
             role_id=u.role_id,
             permissions=role_permissions,
             data_scope=data_scope,
+            data_scope_config=data_scope_config,
             is_system=is_system,
             is_active=u.is_active,
             created_at=u.created_at,
@@ -85,18 +118,16 @@ def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="用户名已存在")
 
-    role_id = user.role_id
-    role_name = user.role
-    if role_id:
-        role = db.query(Role).filter(Role.id == role_id).first()
-        if role:
-            role_name = role.name
+    role_id, role_name = _resolve_role(db, user.role_id, user.role)
+    group = _get_department_group(db, user.department_group_id)
+    dept = (user.dept or "").strip() or (group.paths[0].path if group and group.paths else None)
 
     db_user = User(
         username=user.username,
         password_hash=get_password_hash(user.password),
         display_name=user.display_name,
-        dept=(user.dept or "").strip() or None,
+        dept=dept,
+        department_group_id=group.id if group else None,
         role=role_name,
         role_id=role_id,
     )
@@ -127,10 +158,15 @@ def update_user(
             raise HTTPException(status_code=400, detail="不能取消自己的管理员权限")
 
     update_data = user.model_dump(exclude_unset=True)
-    if "role_id" in update_data and update_data["role_id"] is not None:
-        role = db.query(Role).filter(Role.id == update_data["role_id"]).first()
-        if role:
-            update_data["role"] = role.name
+    if "role_id" in update_data:
+        role_id, role_name = _resolve_role(db, update_data["role_id"], "user")
+        update_data["role_id"] = role_id
+        update_data["role"] = role_name
+    if "department_group_id" in update_data:
+        group = _get_department_group(db, update_data["department_group_id"])
+        update_data["department_group_id"] = group.id if group else None
+        if group and group.paths:
+            update_data["dept"] = group.paths[0].path
     for key, value in update_data.items():
         setattr(db_user, key, value)
     db.commit()
@@ -264,7 +300,6 @@ def get_user_roles(
 ):
     if not check_permission(current_user, "users.view"):
         raise HTTPException(status_code=403, detail="权限不足")
-    from app.models.role import Role
     roles = db.query(Role).all()
     return [{"id": r.id, "name": r.name, "description": r.description, "is_system": r.is_system} for r in roles]
 
@@ -300,6 +335,12 @@ def import_users(
     for r in roles_list:
         role_cache[r.name] = r
 
+    group_by_name = {g.name: g for g in db.query(DepartmentGroup).all()}
+    group_by_path = {}
+    for group in group_by_name.values():
+        for item in group.paths:
+            group_by_path.setdefault(item.path, group)
+
     created = 0
     skipped = 0
     errors = []
@@ -309,6 +350,7 @@ def import_users(
         password = str(row.get('密码', '')).strip()
         display_name = str(row.get('显示名', '')).strip() if pd.notna(row.get('显示名')) else ''
         dept = str(row.get('部门', '')).strip() if pd.notna(row.get('部门')) else ''
+        department_group_name = str(row.get('部门组', '')).strip() if pd.notna(row.get('部门组')) else ''
         role_name = str(row.get('角色', '')).strip() if pd.notna(row.get('角色')) else ''
 
         if not username or not password or username == 'nan' or password == 'nan':
@@ -322,19 +364,52 @@ def import_users(
             continue
 
         role_id = None
+        resolved_role_name = 'user'
         if role_name:
+            if len(role_name) > 50:
+                errors.append(f"第{idx+2}行: 角色名称超过50个字符")
+                skipped += 1
+                continue
             role = role_cache.get(role_name)
             if role:
                 role_id = role.id
+                resolved_role_name = role.name
             else:
-                role_cache[role_name] = None
+                resolved_role_name = role_name
 
+        group = None
+        if department_group_name:
+            group = group_by_name.get(department_group_name)
+            if not group:
+                errors.append(f"第{idx+2}行: 部门组'{department_group_name}'不存在")
+                skipped += 1
+                continue
+        elif dept:
+            group = group_by_path.get(dept)
+            if not group:
+                base_name = dept.split('>>')[-1].strip() or dept[:100]
+                name = base_name[:100]
+                suffix = 1
+                while name in group_by_name:
+                    suffix += 1
+                    tail = f"({suffix})"
+                    name = f"{base_name[:100 - len(tail)]}{tail}"
+                group = DepartmentGroup(name=name, description="由用户导入自动创建")
+                db.add(group)
+                db.flush()
+                db.add(DepartmentGroupPath(group_id=group.id, path=dept))
+                db.flush()
+                group_by_name[group.name] = group
+                group_by_path[dept] = group
+
+        target_dept = dept or (group.paths[0].path if group and group.paths else None)
         db_user = User(
             username=username,
             password_hash=get_password_hash(password),
             display_name=display_name or None,
-            dept=dept or None,
-            role=role_name or 'user',
+            dept=target_dept,
+            department_group_id=group.id if group else None,
+            role=resolved_role_name,
             role_id=role_id,
         )
         db.add(db_user)
@@ -358,8 +433,8 @@ def download_import_template(
     require_permission(current_user, "users.manage")
 
     import pandas as pd
-    df = pd.DataFrame(columns=['用户名', '密码', '显示名', '部门', '角色'])
-    df.loc[0] = ['张三', 'password123', '张三', '广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表', 'user']
+    df = pd.DataFrame(columns=['用户名', '密码', '显示名', '部门组', '部门', '角色'])
+    df.loc[0] = ['张三', 'password123', '张三', '热线运营组', '广西分公司>>省中心>>客户服务营销中心>>热线运营组', 'user']
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
