@@ -168,8 +168,7 @@ def update_user(
     if "department_group_id" in update_data:
         group = _get_department_group(db, update_data["department_group_id"])
         update_data["department_group_id"] = group.id if group else None
-        if group and group.paths:
-            update_data["dept"] = group.paths[0].path
+        update_data["dept"] = group.paths[0].path if group and group.paths else None
     for key, value in update_data.items():
         setattr(db_user, key, value)
     db.commit()

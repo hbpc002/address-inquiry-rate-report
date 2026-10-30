@@ -38,3 +38,23 @@ class DepartmentGroupResponse(BaseModel):
 class DepartmentGroupListResponse(BaseModel):
     items: list[DepartmentGroupResponse]
     total: int
+
+
+class DepartmentGroupUserIdsRequest(BaseModel):
+    user_ids: list[int] = Field(min_length=1)
+
+
+class DepartmentGroupMemberResponse(BaseModel):
+    id: int
+    username: str
+    display_name: Optional[str] = ""
+    role: Optional[str] = ""
+    dept: Optional[str] = None
+    is_active: bool = True
+    department_group_id: Optional[int] = None
+    department_group_name: Optional[str] = None
+
+
+class DepartmentGroupMemberListResponse(BaseModel):
+    items: list[DepartmentGroupMemberResponse]
+    total: int

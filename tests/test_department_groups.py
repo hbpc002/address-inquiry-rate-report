@@ -356,3 +356,158 @@ def test_employee_write_all_role_can_edit_other_department():
         headers=auth_header(token),
     )
     assert res.status_code == 200
+
+
+def test_department_group_batch_assign_and_remove_users():
+    db = TestingSessionLocal()
+    try:
+        other_group = DepartmentGroup(name="B分配测试部门组", description="批量分配")
+        db.add(other_group)
+        db.flush()
+        db.add(DepartmentGroupPath(group_id=other_group.id, path=DEPT_B))
+        unassigned = User(
+            username="dg_batch_unassigned", password_hash=get_password_hash("pass"),
+            display_name="批量未分配", role="user",
+        )
+        other = User(
+            username="dg_batch_other", password_hash=get_password_hash("pass"),
+            display_name="批量其他部门", role="user", department_group_id=other_group.id, dept=DEPT_B,
+        )
+        db.add_all([unassigned, other])
+        db.commit()
+        unassigned_id, other_id = unassigned.id, other.id
+        other_group_name = other_group.name
+    finally:
+        db.close()
+
+    available = client.get(
+        f"/api/department-groups/{GROUP_ID}/available-users",
+        params={"keyword": "dg_batch"},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert available.status_code == 200
+    available_items = {item["username"]: item for item in available.json()}
+    assert set(available_items) == {"dg_batch_unassigned", "dg_batch_other"}
+    assert available_items["dg_batch_other"]["department_group_name"] == other_group_name
+
+    assigned = client.post(
+        f"/api/department-groups/{GROUP_ID}/members",
+        json={"user_ids": [unassigned_id, other_id, other_id]},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert assigned.status_code == 200
+    assert assigned.json()["assigned"] == 2
+    assert assigned.json()["skipped"] == 0
+
+    db = TestingSessionLocal()
+    try:
+        users = db.query(User).filter(User.id.in_([unassigned_id, other_id])).all()
+        assert {user.department_group_id for user in users} == {GROUP_ID}
+        assert {user.dept for user in users} == {DEPT_A}
+    finally:
+        db.close()
+
+    repeated = client.post(
+        f"/api/department-groups/{GROUP_ID}/members",
+        json={"user_ids": [unassigned_id, other_id]},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["assigned"] == 0
+    assert repeated.json()["skipped"] == 2
+
+    members = client.get(
+        f"/api/department-groups/{GROUP_ID}/members",
+        params={"keyword": "dg_batch", "page": 1, "limit": 10},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert members.status_code == 200
+    assert members.json()["total"] == 2
+    assert {item["username"] for item in members.json()["items"]} == {"dg_batch_unassigned", "dg_batch_other"}
+
+    removed = client.post(
+        f"/api/department-groups/{GROUP_ID}/members/remove",
+        json={"user_ids": [unassigned_id]},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert removed.status_code == 200
+    assert removed.json()["removed"] == 1
+    assert removed.json()["skipped"] == 0
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.id == unassigned_id).first()
+        assert user.department_group_id is None
+        assert user.dept is None
+    finally:
+        db.close()
+
+
+def test_department_group_member_endpoints_require_manage_permission():
+    denied_available = client.get(
+        f"/api/department-groups/{GROUP_ID}/available-users",
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert denied_available.status_code == 403
+
+    denied_members = client.get(
+        f"/api/department-groups/{GROUP_ID}/members",
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert denied_members.status_code == 403
+
+    denied_add = client.post(
+        f"/api/department-groups/{GROUP_ID}/members",
+        json={"user_ids": [1]},
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert denied_add.status_code == 403
+
+    denied_remove = client.post(
+        f"/api/department-groups/{GROUP_ID}/members/remove",
+        json={"user_ids": [1]},
+        headers=auth_header(SCOPED_TOKEN),
+    )
+    assert denied_remove.status_code == 403
+
+    missing_user = client.post(
+        f"/api/department-groups/{GROUP_ID}/members",
+        json={"user_ids": [999999]},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert missing_user.status_code == 404
+
+    missing_group = client.get(
+        "/api/department-groups/999999/members",
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert missing_group.status_code == 404
+
+
+def test_update_user_clears_department_scope_when_group_removed():
+    db = TestingSessionLocal()
+    try:
+        user = User(
+            username="dg_clear_group", password_hash=get_password_hash("pass"),
+            display_name="清空部门组", role="user", department_group_id=GROUP_ID, dept=DEPT_A,
+        )
+        db.add(user)
+        db.commit()
+        user_id = user.id
+    finally:
+        db.close()
+
+    res = client.put(
+        f"/api/users/{user_id}",
+        json={"department_group_id": None},
+        headers=auth_header(ADMIN_TOKEN),
+    )
+    assert res.status_code == 200
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        assert user.department_group_id is None
+        assert user.dept is None
+    finally:
+        db.close()

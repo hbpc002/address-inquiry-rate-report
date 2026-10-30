@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_permission
@@ -8,9 +9,13 @@ from app.models.user import User
 from app.schemas.department_group import (
     DepartmentGroupCreate,
     DepartmentGroupListResponse,
+    DepartmentGroupMemberListResponse,
+    DepartmentGroupMemberResponse,
     DepartmentGroupResponse,
     DepartmentGroupUpdate,
+    DepartmentGroupUserIdsRequest,
 )
+from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/department-groups", tags=["部门设置"])
 
@@ -77,6 +82,178 @@ def department_group_options(
         }
         for group in groups
     ]
+
+
+@router.get("/{group_id}/members", response_model=DepartmentGroupMemberListResponse)
+def list_department_group_members(
+    group_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    keyword: str = Query(default=""),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "department_groups.view")
+    group = db.query(DepartmentGroup).filter(DepartmentGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="部门组不存在")
+
+    query = db.query(User).filter(User.department_group_id == group_id)
+    if keyword:
+        query = query.filter(
+            or_(
+                User.username.like(f"%{keyword}%"),
+                User.display_name.like(f"%{keyword}%"),
+            )
+        )
+    total = query.count()
+    users = query.order_by(User.id).offset((page - 1) * limit).limit(limit).all()
+    return DepartmentGroupMemberListResponse(
+        items=[
+            DepartmentGroupMemberResponse(
+                id=user.id,
+                username=user.username,
+                display_name=user.display_name or "",
+                role=user.role or "",
+                dept=user.dept,
+                is_active=user.is_active,
+                department_group_id=group.id,
+                department_group_name=group.name,
+            )
+            for user in users
+        ],
+        total=total,
+    )
+
+
+@router.get("/{group_id}/available-users", response_model=list[DepartmentGroupMemberResponse])
+def list_department_group_available_users(
+    group_id: int,
+    keyword: str = Query(default=""),
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "department_groups.manage")
+    group = db.query(DepartmentGroup).filter(DepartmentGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="部门组不存在")
+
+    query = db.query(User).filter(
+        User.is_active.is_(True),
+        or_(User.department_group_id.is_(None), User.department_group_id != group_id),
+    )
+    if keyword:
+        query = query.filter(
+            or_(
+                User.username.like(f"%{keyword}%"),
+                User.display_name.like(f"%{keyword}%"),
+            )
+        )
+    users = query.order_by(User.username).limit(limit).all()
+    group_ids = {user.department_group_id for user in users if user.department_group_id}
+    group_names = {}
+    if group_ids:
+        group_names = {
+            item.id: item.name
+            for item in db.query(DepartmentGroup).filter(DepartmentGroup.id.in_(group_ids)).all()
+        }
+    return [
+        DepartmentGroupMemberResponse(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name or "",
+            role=user.role or "",
+            dept=user.dept,
+            is_active=user.is_active,
+            department_group_id=user.department_group_id,
+            department_group_name=group_names.get(user.department_group_id),
+        )
+        for user in users
+    ]
+
+
+def _load_users_for_batch(db: Session, user_ids: list[int]) -> list[User]:
+    ids = list(dict.fromkeys(user_ids))
+    if any(user_id <= 0 for user_id in ids):
+        raise HTTPException(status_code=400, detail="用户ID不合法")
+    users = db.query(User).filter(User.id.in_(ids)).all()
+    if len(users) != len(ids):
+        raise HTTPException(status_code=404, detail="部分用户不存在")
+    return users
+
+
+@router.post("/{group_id}/members", response_model=dict)
+def add_department_group_members(
+    group_id: int,
+    body: DepartmentGroupUserIdsRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "department_groups.manage")
+    group = db.query(DepartmentGroup).filter(DepartmentGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="部门组不存在")
+
+    users = _load_users_for_batch(db, body.user_ids)
+    assigned = 0
+    skipped = 0
+    dept_path = group.paths[0].path if group.paths else None
+    for user in users:
+        if user.department_group_id == group.id:
+            skipped += 1
+            continue
+        user.department_group_id = group.id
+        user.dept = dept_path
+        assigned += 1
+
+    db.commit()
+    user_count = db.query(User).filter(User.department_group_id == group.id).count()
+    log_operation(
+        db,
+        current_user["id"],
+        "assign_department_group_users",
+        "department_groups",
+        group.id,
+        {"user_ids": body.user_ids, "assigned": assigned, "skipped": skipped},
+    )
+    return {"assigned": assigned, "skipped": skipped, "user_count": user_count}
+
+
+@router.post("/{group_id}/members/remove", response_model=dict)
+def remove_department_group_members(
+    group_id: int,
+    body: DepartmentGroupUserIdsRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "department_groups.manage")
+    group = db.query(DepartmentGroup).filter(DepartmentGroup.id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="部门组不存在")
+
+    users = _load_users_for_batch(db, body.user_ids)
+    removed = 0
+    skipped = 0
+    for user in users:
+        if user.department_group_id != group.id:
+            skipped += 1
+            continue
+        user.department_group_id = None
+        user.dept = None
+        removed += 1
+
+    db.commit()
+    user_count = db.query(User).filter(User.department_group_id == group.id).count()
+    log_operation(
+        db,
+        current_user["id"],
+        "remove_department_group_users",
+        "department_groups",
+        group.id,
+        {"user_ids": body.user_ids, "removed": removed, "skipped": skipped},
+    )
+    return {"removed": removed, "skipped": skipped, "user_count": user_count}
 
 
 @router.get("/{group_id}", response_model=DepartmentGroupResponse)
