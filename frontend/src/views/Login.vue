@@ -24,6 +24,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
+import { getLandingPath } from '../router/access'
 import { User, Lock } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -47,7 +48,7 @@ async function handleLogin() {
   try {
     await userStore.login(form.value.username, form.value.password)
     ElMessage.success('登录成功')
-    router.push('/')
+    await router.push(getLandingPath(userStore))
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '登录失败')
   } finally {

@@ -8,7 +8,7 @@ import { useUserStore } from '@/stores/user'
 
 onMounted(() => {
   const userStore = useUserStore()
-  if (userStore.isLoggedIn) {
+  if (userStore.isLoggedIn && !userStore.user) {
     userStore.fetchCurrentUser()
   }
 })

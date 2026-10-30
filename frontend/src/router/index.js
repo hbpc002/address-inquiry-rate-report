@@ -1,11 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { resolveRouteAccess } from './access'
 
 const routes = [
   {
     path: '/login',
     name: 'Login',
     component: () => import('../views/Login.vue')
+  },
+  {
+    path: '/no-permission',
+    name: 'NoPermission',
+    component: () => import('../views/NoPermission.vue')
   },
   {
     path: '/',
@@ -165,16 +171,18 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
-  if (to.path !== '/login' && !userStore.isLoggedIn) {
-    next('/login')
-  } else if (to.path === '/login' && userStore.isLoggedIn) {
-    next('/')
-  } else if (to.meta.permission && !userStore.hasPermission(to.meta.permission)) {
-    next('/')
-  } else {
+
+  if (userStore.isLoggedIn && !userStore.user) {
+    await userStore.fetchCurrentUser()
+  }
+
+  const result = resolveRouteAccess(to, userStore)
+  if (result === true) {
     next()
+  } else {
+    next(result)
   }
 })
 
