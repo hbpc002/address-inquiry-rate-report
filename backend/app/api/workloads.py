@@ -299,6 +299,7 @@ def get_workload_report(
     end_date: Optional[str] = None,
     year_month: Optional[str] = None,
     province: Optional[str] = None,
+    dept: Optional[str] = None,
     team_desc: Optional[str] = None,
     team_prefix: Optional[str] = None,
     name: Optional[str] = None,
@@ -336,6 +337,11 @@ def get_workload_report(
 
     if province:
         records = [r for r in records if r.province == province]
+    if dept:
+        dept_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(
+            Employee.dept == dept, Employee.status == "在职"
+        ).all()}
+        records = [r for r in records if r.account in dept_emp_nos]
     if team_desc:
         team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(
             Employee.team == team_desc, Employee.status == "在职"
@@ -375,11 +381,13 @@ def get_workload_report(
         emp = db.query(Employee).filter(Employee.emp_no == r.account).first()
         real_name = emp.name if emp else (r.name or '')
         real_team = emp.team if emp else (r.team_desc or '')
+        real_dept = (emp.dept or '') if emp else ''
         if key not in emp_agg:
             emp_agg[key] = {
                 "account": r.account,
                 "name": real_name,
                 "emp_no": r.emp_no or '',
+                "dept": real_dept,
                 "team_desc": real_team,
                 "province": r.province or '',
                 "role": emp.role if emp else "",
@@ -452,6 +460,7 @@ def get_workload_report(
             account=data["account"],
             name=data["name"],
             emp_no=data["emp_no"],
+            dept=data.get("dept", ""),
             team_desc=data["team_desc"],
             province=data["province"],
             role=data["role"],
@@ -711,6 +720,7 @@ def export_workload_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     year_month: Optional[str] = None,
+    dept: Optional[str] = None,
     team_desc: Optional[str] = None,
     team_prefix: Optional[str] = None,
     name: Optional[str] = None,
@@ -742,6 +752,9 @@ def export_workload_report(
 
     emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
     records = [r for r in records if r.account in emp_accounts]
+    if dept:
+        dept_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(Employee.dept == dept, Employee.status == "在职").all()}
+        records = [r for r in records if r.account in dept_emp_nos]
     if team_desc:
         team_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(Employee.team == team_desc, Employee.status == "在职").all()}
         records = [r for r in records if r.account in team_emp_nos]
@@ -774,7 +787,7 @@ def export_workload_report(
     import io, csv
     output = io.StringIO()
     writer = csv.writer(output)
-    headers = ["账号", "姓名", "工号", "班组", "日期"]
+    headers = ["账号", "姓名", "工号", "部门", "班组", "日期"]
     for field in CORE_METRICS_FIELDS:
         label = field.split('-')[-1]
         headers.append(label)
@@ -784,7 +797,7 @@ def export_workload_report(
         emp = db.query(Employee).filter(Employee.emp_no == r.account).first()
         m = r.metrics or {}
         row = [r.account, emp.name if emp else (r.name or ''), r.emp_no or '',
-               emp.team if emp else (r.team_desc or ''), r.date.isoformat()]
+               (emp.dept or '') if emp else '', emp.team if emp else (r.team_desc or ''), r.date.isoformat()]
         for field in CORE_METRICS_FIELDS:
             val = m.get(field)
             row.append(val if val is not None else '')

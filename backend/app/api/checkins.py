@@ -317,6 +317,7 @@ def get_checkin_report(
     year_month: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    dept: Optional[str] = None,
     team: Optional[str] = None,
     name: Optional[str] = None,
     emp_no: Optional[str] = None,
@@ -358,6 +359,8 @@ def get_checkin_report(
 
     # 只取目标部门的数据
     checkins = [c for c in checkins if c.dept and c.dept.startswith(TARGET_DEPT)]
+    if dept:
+        checkins = [c for c in checkins if c.dept == dept]
 
     if team:
         emp_nos = db.query(Employee.emp_no).filter(Employee.team == team).all()
@@ -477,11 +480,12 @@ def get_checkin_report(
     team_hours = {}
     for item in emp_stats.values():
         team = item.get("team") or "未知班组"
+        key = (item.get("dept") or "", team)
         role = item.get("role", "")
         if role not in ["组长", "师傅"]:
-            if team not in team_hours:
-                team_hours[team] = []
-            team_hours[team].append(item["total_hours"])
+            if key not in team_hours:
+                team_hours[key] = []
+            team_hours[key].append(item["total_hours"])
 
     team_median = {}
     for team, hours in team_hours.items():
@@ -500,6 +504,7 @@ def get_checkin_report(
 
     for item in emp_stats.values():
         team = item.get("team") or "未知班组"
+        key = (item.get("dept") or "", team)
         role = item.get("role", "")
 
         if role in ["组长", "师傅"]:
@@ -510,7 +515,7 @@ def get_checkin_report(
             if scheduled > 0:
                 ratio = item["total_hours"] / scheduled
             else:
-                median = team_median.get(team, 0)
+                median = team_median.get(key, 0)
                 ratio = item["total_hours"] / median if median > 0 else 0
 
             overtime_ratio = threshold_map.get(team, {}).get("overtime", 1.2)
@@ -1189,6 +1194,7 @@ def export_checkin_report(
     year_month: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    dept: Optional[str] = None,
     team: Optional[str] = None,
     name: Optional[str] = None,
     emp_no: Optional[str] = None,
@@ -1225,6 +1231,8 @@ def export_checkin_report(
     )
     checkins = query.all()
     checkins = [c for c in checkins if c.dept and c.dept.startswith(TARGET_DEPT)]
+    if dept:
+        checkins = [c for c in checkins if c.dept == dept]
 
     if team:
         emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(Employee.team == team).all()]

@@ -146,6 +146,7 @@ import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import { downloadBlob } from '../utils/download'
+import { decorateTeamRows } from '../utils/teamIdentity'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
@@ -221,7 +222,7 @@ async function loadData() {
     rows.value = res.data.rows
     totalRow.value = res.data.total_row
     keyProductColumns.value = res.data.key_product_columns || []
-    keyProductRows.value = res.data.key_product_rows || []
+    keyProductRows.value = decorateTeamRows(res.data.key_product_rows || [])
     keyProductTotalRow.value = res.data.key_product_total_row || { counts: {}, total: 0 }
     dataRanges.value = res.data.data_ranges || { database: {}, query: {} }
     dataRangesLoaded.value = true
@@ -231,7 +232,8 @@ async function loadData() {
 }
 
 function formatTeamName(row) {
-  return row.leader ? `${row.team}（${row.leader}）` : row.team
+  const team = row.team_label || row.team
+  return row.leader ? `${team}（${row.leader}）` : team
 }
 
 function formatRatio(value) {

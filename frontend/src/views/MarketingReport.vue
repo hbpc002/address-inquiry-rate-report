@@ -39,8 +39,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team" placeholder="全部班组" clearable filterable style="width: 140px">
-            <el-option v-for="t in options.teams" :key="t" :label="t" :value="t" />
+          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px">
+            <el-option v-for="t in options.team_options" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级">
+          <el-select v-model="searchForm.class_key" placeholder="全部班级" clearable filterable style="width: 180px">
+            <el-option v-for="c in options.class_options" :key="c.class_key" :label="c.class_label" :value="c.class_key" />
           </el-select>
         </el-form-item>
         <el-form-item label="重点业务">
@@ -217,7 +222,7 @@
           <el-table-column prop="group_name" label="行分类" width="120" show-overflow-tooltip sortable />
         </template>
         <template v-else-if="dimension === 'team'">
-          <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip sortable />
+          <el-table-column prop="team_label" label="班组" width="180" show-overflow-tooltip sortable />
           <el-table-column prop="leader" label="组长" width="90" show-overflow-tooltip sortable />
           <el-table-column prop="people" label="人数" width="80" sortable />
         </template>
@@ -248,11 +253,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import { downloadBlob } from '../utils/download'
+import { decorateClassOptions, decorateTeamOptions, decorateTeamRows, findClassOption, findTeamOption } from '../utils/teamIdentity'
 import Echart from '../components/Echart.vue'
 import {
   RANKING_METRICS,
@@ -288,7 +294,8 @@ const searchForm = reactive({
   end_date: '',
   group_name: '',
   data_type: '',
-  team: '',
+  team_key: '',
+  class_key: '',
   business_type: '',
   lh_qh: '',
   name: '',
@@ -303,11 +310,12 @@ const stats = reactive({
   package_change: 0,
   people_count: 0
 })
-const options = reactive({ groups: [], teams: [], orgs: [], products: [], sources: [] })
+const options = reactive({ groups: [], teams: [], team_options: [], classes: [], class_options: [], orgs: [], products: [], sources: [] })
 const result = ref({ employees: [], teams: [], groups: [], products: [], days: [] })
+const decoratedTeams = computed(() => decorateTeamRows(result.value.teams || []))
 const dimension = ref('employee')
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', group: 'groups', product: 'products', day: 'days' }[dimension.value]))
-const tableData = computed(() => result.value[dimensionKey.value] || [])
+const tableData = computed(() => dimension.value === 'team' ? decoratedTeams.value : (result.value[dimensionKey.value] || []))
 const chartSection = ref('team')
 const teamMetric = ref('total')
 const teamStructureKind = ref('business')
@@ -316,7 +324,7 @@ const TEAM_RANKING_KEYS = ['total', 'avg_total', 'avg_order', 'order_rate']
 const teamRankingMetrics = RANKING_METRICS.filter(item => TEAM_RANKING_KEYS.includes(item.key))
 const topLimits = TOP_LIMITS
 
-const teamItems = computed(() => filterMatchedTeams(result.value.teams || []))
+const teamItems = computed(() => filterMatchedTeams(decoratedTeams.value))
 const groupItems = computed(() => enrichGroups(result.value.groups || []))
 const productItems = computed(() => enrichProducts(result.value.products || []))
 const dayItems = computed(() => result.value.days || [])
@@ -388,8 +396,17 @@ function buildParams() {
     params.start_date = searchForm.start_date
     params.end_date = searchForm.end_date
   }
-  for (const key of ['group_name', 'data_type', 'team', 'business_type', 'lh_qh', 'name', 'emp_no']) {
+  for (const key of ['group_name', 'data_type', 'business_type', 'lh_qh', 'name', 'emp_no']) {
     if (searchForm[key]) params[key] = searchForm[key]
+  }
+  const team = findTeamOption(options.team_options, searchForm.team_key)
+  const className = findClassOption(options.class_options, searchForm.class_key)
+  if (team) {
+    params.dept = team.dept
+    params.team = team.team
+  } else if (className) {
+    params.dept = className.dept
+    params.class_name = className.class_name
   }
   return params
 }
@@ -400,6 +417,14 @@ async function loadData() {
     Object.assign(stats, res.data.stats)
     result.value = res.data
     Object.assign(options, res.data.options || {})
+    const rawTeamOptions = res.data.options?.team_options?.length
+      ? res.data.options.team_options
+      : (res.data.options?.teams || []).map(team => ({ dept: '', team }))
+    const rawClassOptions = res.data.options?.class_options?.length
+      ? res.data.options.class_options
+      : (res.data.options?.classes || []).map(className => ({ dept: '', class_name: className }))
+    options.team_options = decorateTeamOptions(rawTeamOptions)
+    options.class_options = decorateClassOptions(rawClassOptions)
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
   }
@@ -414,7 +439,8 @@ function resetFilters() {
     end_date: '',
     group_name: '',
     data_type: '',
-    team: '',
+    team_key: '',
+    class_key: '',
     business_type: '',
     lh_qh: '',
     name: '',
@@ -424,15 +450,24 @@ function resetFilters() {
 }
 
 function handleTeamChartClick(params) {
-  const team = params?.data?.team || params?.name
-  if (!team) return
-  searchForm.team = team
+  const teamData = params?.data || {}
+  const key = teamData.team_key || decoratedTeams.value.find(item => item.team_label === params?.name)?.team_key
+  if (!key) return
+  searchForm.class_key = ''
+  searchForm.team_key = key
   loadData()
 }
 
 function handleExport() {
   downloadBlob('/marketing/report/export', { ...buildParams(), dimension: dimension.value }, 'marketing_report.csv')
 }
+
+watch(() => searchForm.team_key, (value) => {
+  if (value) searchForm.class_key = ''
+})
+watch(() => searchForm.class_key, (value) => {
+  if (value) searchForm.team_key = ''
+})
 
 onMounted(loadData)
 </script>

@@ -531,15 +531,21 @@ def _emp_map(db: Session) -> Dict[str, Employee]:
     return result
 
 
-def _team_leader_map(emps: Dict[str, Employee]) -> Dict[str, str]:
-    leader_names: Dict[str, set] = {}
+def _team_leader_map(emps: Dict[str, Employee]) -> Dict[tuple, str]:
+    leader_names: Dict[tuple, set] = {}
     for emp in emps.values():
         if emp.role == "组长" and emp.status == "在职" and emp.team and emp.name:
-            leader_names.setdefault(emp.team, set()).add(emp.name)
+            key = ((emp.dept or "").strip(), emp.team)
+            leader_names.setdefault(key, set()).add(emp.name)
     return {
-        team: "、".join(sorted(names))
-        for team, names in leader_names.items()
+        key: "、".join(sorted(names))
+        for key, names in leader_names.items()
     }
+
+
+def _extract_class(team: Optional[str]) -> str:
+    match = re.match(r"^(.+?)[\d]+组$", (team or "").strip())
+    return match.group(1) if match else (team or "").strip()
 
 
 def _new_bucket():
@@ -671,6 +677,9 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     prepared = []
     all_groups = set()
     all_teams = set()
+    all_team_options = set()
+    all_classes = set()
+    all_class_options = set()
     all_orgs = set()
     all_products = set()
     for detail in details:
@@ -682,15 +691,24 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             group = _classify_online_row(detail, config, group_cache) or UNCLASSIFIED_GROUP
             effective_org = _detail_value(detail, "org_name")
         prepared.append((detail, emp, group, effective_org))
+        emp_dept = (emp.dept or "").strip() if emp else ""
+        emp_team = emp.team if emp and emp.team else "未匹配班组"
+        emp_class = _extract_class(emp_team)
         all_groups.add(group)
-        all_teams.add(emp.team if emp and emp.team else "未匹配班组")
+        all_teams.add(emp_team)
+        all_team_options.add((emp_dept, emp_team))
+        if emp_class:
+            all_classes.add(emp_class)
+            all_class_options.add((emp_dept, emp_class))
         if effective_org:
             all_orgs.add(effective_org)
         if detail.product_id or detail.product_name:
             all_products.add(detail.product_id or detail.product_name)
 
     group_name = filters.get("group_name") or ""
+    dept = (filters.get("dept") or "").strip()
     team = filters.get("team") or ""
+    class_name = filters.get("class_name") or ""
     name = filters.get("name") or ""
     emp_no = filters.get("emp_no") or ""
     org_name = filters.get("org_name") or ""
@@ -703,9 +721,15 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     for detail, emp, group, effective_org in prepared:
         if group_name and group != group_name:
             continue
+        if dept and (emp.dept or "").strip() != dept:
+            continue
         if team:
             team_value = emp.team if emp and emp.team else "未匹配班组"
             if team_value != team:
+                continue
+        if class_name:
+            team_value = emp.team if emp and emp.team else "未匹配班组"
+            if _extract_class(team_value) != class_name:
                 continue
         if name and not (emp and name.lower() in (emp.name or "").lower()):
             continue
@@ -759,8 +783,10 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         _accumulate(bucket, detail)
         bucket["_trade_id"] = detail.trade_id
 
-        team_bucket = teams.setdefault(emp_team, {
+        team_key = (emp_dept, emp_team)
+        team_bucket = teams.setdefault(team_key, {
             **_new_bucket(),
+            "dept": emp_dept,
             "team": emp_team,
             "people": set(),
         })
@@ -799,9 +825,11 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         result.sort(key=lambda item: (item.get("total", 0), item.get("order_count", 0)), reverse=True)
         return result
 
-    def team_extra(item, bucket, _key):
+    def team_extra(item, bucket, key):
+        item["dept"] = key[0]
+        item["team"] = key[1]
         item["people"] = len(bucket.get("people") or set())
-        item["leader"] = team_leaders.get(_key, "")
+        item["leader"] = team_leaders.get(key, "")
 
     def group_extra(item, bucket, _key):
         item["people"] = len(bucket.get("people") or set())
@@ -831,6 +859,17 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         "options": {
             "groups": sorted(filter(None, all_groups)),
             "teams": sorted(filter(None, all_teams)),
+            "team_options": [
+                {"dept": dept_value, "team": team_value}
+                for dept_value, team_value in sorted(all_team_options)
+                if team_value
+            ],
+            "classes": sorted(filter(None, all_classes)),
+            "class_options": [
+                {"dept": dept_value, "class_name": class_value}
+                for dept_value, class_value in sorted(all_class_options)
+                if class_value
+            ],
             "orgs": sorted(filter(None, all_orgs)),
             "products": sorted(filter(None, all_products)),
             "sources": [
@@ -928,8 +967,9 @@ def _compute_key_product_table(
 
         emp = emps.get(_norm_emp_no(detail.kf_id))
         team = (emp.team or "").strip() if emp and emp.team else UNASSIGNED_TEAM
+        dept = (emp.dept or "").strip() if emp else ""
         bucket = buckets.setdefault(
-            (work_group, team),
+            (work_group, dept, team),
             {"counts": {col["key"]: 0 for col in columns}, "total": 0},
         )
         for key in matched_keys:
@@ -941,8 +981,9 @@ def _compute_key_product_table(
         buckets.items(),
         key=lambda pair: (
             group_order.get(pair[0][0], len(group_order)),
-            pair[0][1] == UNASSIGNED_TEAM,
+            pair[0][2] == UNASSIGNED_TEAM,
             -pair[1]["total"],
+            pair[0][2],
             pair[0][1],
         ),
     )
@@ -955,11 +996,12 @@ def _compute_key_product_table(
         has_subtotal = len(group_items) > 1
         group_counts = {col["key"]: 0 for col in columns}
         group_total = 0
-        for index, ((_, team), bucket) in enumerate(group_items):
+        for index, ((_, dept, team), bucket) in enumerate(group_items):
             rows.append({
                 "work_group": work_group,
+                "dept": dept,
                 "team": team,
-                "leader": team_leaders.get(team, ""),
+                "leader": team_leaders.get((dept, team), ""),
                 "rowspan": len(group_items) + (1 if has_subtotal else 0) if index == 0 else 0,
                 "counts": dict(bucket["counts"]),
                 "total": bucket["total"],
@@ -974,6 +1016,7 @@ def _compute_key_product_table(
         if has_subtotal:
             rows.append({
                 "work_group": work_group,
+                "dept": "",
                 "team": "小计",
                 "rowspan": 0,
                 "counts": group_counts,
@@ -1580,7 +1623,9 @@ def get_report(
     end_date: Optional[str] = None,
     year_month: Optional[str] = None,
     group_name: Optional[str] = None,
+    dept: Optional[str] = None,
     team: Optional[str] = None,
+    class_name: Optional[str] = None,
     name: Optional[str] = None,
     emp_no: Optional[str] = None,
     org_name: Optional[str] = None,
@@ -1596,7 +1641,9 @@ def get_report(
     start, end = _resolve_range(year_month, start_date, end_date)
     return _compute_report(db, start, end, {
         "group_name": group_name,
+        "dept": dept,
         "team": team,
+        "class_name": class_name,
         "name": name,
         "emp_no": emp_no,
         "org_name": org_name,
@@ -1615,7 +1662,9 @@ def export_report(
     year_month: Optional[str] = None,
     dimension: str = Query("employee"),
     group_name: Optional[str] = None,
+    dept: Optional[str] = None,
     team: Optional[str] = None,
+    class_name: Optional[str] = None,
     name: Optional[str] = None,
     emp_no: Optional[str] = None,
     org_name: Optional[str] = None,
@@ -1631,7 +1680,9 @@ def export_report(
     start, end = _resolve_range(year_month, start_date, end_date)
     data = _compute_report(db, start, end, {
         "group_name": group_name,
+        "dept": dept,
         "team": team,
+        "class_name": class_name,
         "name": name,
         "emp_no": emp_no,
         "org_name": org_name,
@@ -1647,9 +1698,9 @@ def export_report(
     writer = csv.writer(output)
     common = ["产品办理量", "订单数", "来话办理量", "去话办理量", "叠加包", "日包", "月包", "长期包", "未定义", "套餐变更"]
     if dimension == "team":
-        writer.writerow(["班组", "组长", "人数"] + common)
+        writer.writerow(["部门", "班组", "组长", "人数"] + common)
         for item in data["teams"]:
-            writer.writerow([item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("dept", ""), item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
     elif dimension == "group":
         writer.writerow(["行分类", "人数"] + common)
         for item in data["groups"]:

@@ -49,8 +49,8 @@
           <el-input v-model="searchForm.emp_no" placeholder="请输入工号" clearable style="width: 120px" />
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team" placeholder="全部班组" clearable filterable style="width: 140px">
-            <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
+          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px">
+            <el-option v-for="t in teams" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -162,7 +162,7 @@
             <div style="overflow-x: auto;">
               <el-table :data="teamMetricsRanking" size="small" border stripe max-height="280" @row-click="handleTeamTableRowClick">
                 <el-table-column label="排名" width="55" type="index" />
-                <el-table-column label="班组" prop="team" min-width="100" />
+                <el-table-column label="班组" prop="team_label" min-width="140" />
                 <el-table-column label="组长" prop="leader" min-width="70" />
                 <el-table-column label="人数" width="55" prop="count" sortable />
                 <el-table-column label="总工作时长" width="95" sortable prop="total_hours">
@@ -649,6 +649,7 @@ import { useUiConfigStore } from '../stores/uiConfig'
 const userStore = useUserStore()
 const ui = useUiConfigStore()
 import { downloadBlob } from '../utils/download'
+import { decorateTeamOptions, decorateTeamRows, findTeamOption, teamKey } from '../utils/teamIdentity'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import ColumnWithTip from '../components/ColumnWithTip.vue'
 import { useFieldAnnotations } from '../composables/useFieldAnnotations'
@@ -796,7 +797,7 @@ const filteredData = computed(() => {
   } else if (filterType.value === 'name') {
     data = data.filter(d => d.name === filterValue.value)
   } else if (filterType.value === 'team') {
-    data = data.filter(d => d.team === filterValue.value)
+    data = data.filter(d => teamKey(d.dept, d.team) === filterValue.value)
   } else if (filterType.value === 'late') {
     data = data.filter(d => (d.late_days || 0) > 0)
   } else if (filterType.value === 'early') {
@@ -804,9 +805,9 @@ const filteredData = computed(() => {
   } else if (filterType.value === 'checkin_range') {
     data = data.filter(d => d.checkin_count >= filterValue.value.min && d.checkin_count <= filterValue.value.max)
   } else if (filterType.value === 'late_team') {
-    data = data.filter(d => d.team === filterValue.value && (d.late_days || 0) > 0)
+    data = data.filter(d => teamKey(d.dept, d.team) === filterValue.value && (d.late_days || 0) > 0)
   } else if (filterType.value === 'early_team') {
-    data = data.filter(d => d.team === filterValue.value && (d.early_days || 0) > 0)
+    data = data.filter(d => teamKey(d.dept, d.team) === filterValue.value && (d.early_days || 0) > 0)
   }
   data = summaryFilter.filtered(data)
   if (sortBy.value && sortOrder.value) {
@@ -870,7 +871,7 @@ const { filters: searchForm, isRestored: searchFormRestored, resetFilters: reset
     end_date: '',
     name: '',
     emp_no: '',
-    team: ''
+    team_key: ''
   }
 )
 
@@ -950,8 +951,13 @@ const teamMetricsRanking = computed(() => {
   const teamMap = {}
   data.forEach(d => {
     const team = d.team || '未知班组'
-    if (!teamMap[team]) {
-      teamMap[team] = {
+    const dept = d.dept || ''
+    const key = teamKey(dept, team)
+    if (!teamMap[key]) {
+      teamMap[key] = {
+        dept,
+        team,
+        team_key: key,
         count: 0,
         total_hours: 0,
         scheduled_hours: 0,
@@ -972,7 +978,7 @@ const teamMetricsRanking = computed(() => {
         early_days: 0
       }
     }
-    const t = teamMap[team]
+    const t = teamMap[key]
     t.count++
     t.total_hours += d.total_hours || 0
     t.scheduled_hours += d.scheduled_hours != null ? d.scheduled_hours : 0
@@ -1004,10 +1010,12 @@ const teamMetricsRanking = computed(() => {
       t.early_days += d.early_days
     }
   })
-  return Object.entries(teamMap)
-    .map(([team, t]) => ({
-      team,
-      leader: teamLeaders.value[team] || '',
+  return decorateTeamRows(Object.values(teamMap)
+    .map(t => ({
+      dept: t.dept,
+      team: t.team,
+      team_key: t.team_key,
+      leader: teamLeaders.value[t.team_key] || '',
       count: t.count,
       total_hours: t.total_hours,
       scheduled_hours: t.scheduled_hours,
@@ -1025,7 +1033,21 @@ const teamMetricsRanking = computed(() => {
       early_days: t.early_days
     }))
     .sort((a, b) => b.total_hours - a.total_hours)
-    .slice(0, 8)
+    .slice(0, 8))
+})
+
+const teamLabelKeyMap = computed(() => {
+  const rows = []
+  const seen = new Set()
+  mergedData.value.forEach(d => {
+    const team = d.team || '未知班组'
+    const dept = d.dept || ''
+    const key = teamKey(dept, team)
+    if (seen.has(key)) return
+    seen.add(key)
+    rows.push({ dept, team })
+  })
+  return Object.fromEntries(decorateTeamRows(rows).map(row => [row.team_label, row.team_key]))
 })
 
 const teamTotalHours = computed(() => {
@@ -1036,8 +1058,11 @@ const deptHoursOptions = computed(() => {
   const ranking = teamMetricsRanking.value
   if (!ranking.length) return {}
   const data = ranking.map(t => ({
-    name: t.team,
+    name: t.team_label,
     value: Math.round(t.total_hours),
+    dept: t.dept,
+    team: t.team,
+    team_key: t.team_key,
     peopleCount: t.count,
     avgHours: t.avg_hours.toFixed(1)
   }))
@@ -1095,36 +1120,41 @@ const lateEarlyByTeamOptions = computed(() => {
   const latePeopleMap = {}
   const earlyPeopleMap = {}
   data.forEach(d => {
-    const t = d.team || '未知班组'
-    if (!teamMap[t]) teamMap[t] = { late: 0, early: 0 }
+    const team = d.team || '未知班组'
+    const dept = d.dept || ''
+    const key = teamKey(dept, team)
+    if (!teamMap[key]) teamMap[key] = { dept, team, team_key: key, late: 0, early: 0 }
     if ((d.late_days || 0) > 0) {
-      teamMap[t].late += 1
-      if (!latePeopleMap[t]) latePeopleMap[t] = []
-      latePeopleMap[t].push({ name: d.name, minutes: d.late_minutes || 0 })
+      teamMap[key].late += 1
+      if (!latePeopleMap[key]) latePeopleMap[key] = []
+      latePeopleMap[key].push({ name: d.name, minutes: d.late_minutes || 0 })
     }
     if ((d.early_days || 0) > 0) {
-      teamMap[t].early += 1
-      if (!earlyPeopleMap[t]) earlyPeopleMap[t] = []
-      earlyPeopleMap[t].push({ name: d.name, minutes: d.early_minutes || 0 })
+      teamMap[key].early += 1
+      if (!earlyPeopleMap[key]) earlyPeopleMap[key] = []
+      earlyPeopleMap[key].push({ name: d.name, minutes: d.early_minutes || 0 })
     }
   })
   Object.keys(latePeopleMap).forEach(k => latePeopleMap[k].sort((a, b) => b.minutes - a.minutes))
   Object.keys(earlyPeopleMap).forEach(k => earlyPeopleMap[k].sort((a, b) => b.minutes - a.minutes))
-  const teams = Object.keys(teamMap)
+  const teamRows = decorateTeamRows(Object.values(teamMap))
+  const rowsByLabel = Object.fromEntries(teamRows.map(row => [row.team_label, row]))
+  const labels = teamRows.map(row => row.team_label)
   return createMultiBarOptions(
-    teams,
+    labels,
     [
-      { name: '晚签人数', data: teams.map(t => teamMap[t].late) },
-      { name: '早退人数', data: teams.map(t => teamMap[t].early) }
+      { name: '晚签人数', data: teamRows.map(row => row.late) },
+      { name: '早退人数', data: teamRows.map(row => row.early) }
     ],
     '班组晚签/早退人数',
     (params) => {
-      const team = params[0].name
-      const lateList = latePeopleMap[team] || []
-      const earlyList = earlyPeopleMap[team] || []
+      const label = params[0].name
+      const row = rowsByLabel[label]
+      const lateList = latePeopleMap[row?.team_key] || []
+      const earlyList = earlyPeopleMap[row?.team_key] || []
       const lateLabel = '晚签'
       const earlyLabel = '早退'
-      let html = `<strong>${team} - ${lateLabel}: ${lateList.length}人 / ${earlyLabel}: ${earlyList.length}人</strong><br/>`
+      let html = `<strong>${label} - ${lateLabel}: ${lateList.length}人 / ${earlyLabel}: ${earlyList.length}人</strong><br/>`
       if (!lateList.length && !earlyList.length) {
         html += `<span style="color:#909399">无晚签/早退记录</span>`
         return html
@@ -1336,18 +1366,19 @@ function clearFilter() {
 }
 
 function handleTeamChartClick(params) {
-  const team = params.name
-  if (filterType.value === 'team' && filterValue.value === team) {
+  const key = params?.data?.team_key || teamLabelKeyMap.value[params?.name]
+  if (!key) return
+  if (filterType.value === 'team' && filterValue.value === key) {
     clearFilter()
   } else {
     filterType.value = 'team'
-    filterValue.value = team
+    filterValue.value = key
     currentPage.value = 1
   }
 }
 
 function handleTeamTableRowClick(row) {
-  handleTeamChartClick({ name: row.team })
+  handleTeamChartClick({ name: row.team_label, data: row })
 }
 
 function handleCheckinRangeClick(params) {
@@ -1364,14 +1395,15 @@ function handleCheckinRangeClick(params) {
 }
 
 function handleLateEarlyClick(params) {
-  const team = params.name
+  const key = teamLabelKeyMap.value[params.name]
+  if (!key) return
   const isLate = params.seriesName === '晚签人数'
   const type = isLate ? 'late_team' : 'early_team'
-  if (filterType.value === type && filterValue.value === team) {
+  if (filterType.value === type && filterValue.value === key) {
     clearFilter()
   } else {
     filterType.value = type
-    filterValue.value = team
+    filterValue.value = key
     currentPage.value = 1
   }
 }
@@ -1399,8 +1431,8 @@ function handleTypeChange() {
 
 async function loadTeams() {
   try {
-    const res = await api.get('/employees/teams')
-    teams.value = res.data || []
+    const res = await api.get('/employees/teams', { params: { include_dept: true } })
+    teams.value = decorateTeamOptions(res.data || [])
   } catch (e) {
     console.error(e)
   }
@@ -1410,8 +1442,8 @@ async function loadTeamLeaders() {
   try {
     const res = await api.get('/employees/leaders')
     const map = {}
-    ;(res.data || []).forEach(item => {
-      if (item.team) map[item.team] = item.leader
+    ;(Array.isArray(res.data) ? res.data : []).forEach(item => {
+      if (item.team) map[teamKey(item.dept, item.team)] = item.leader
     })
     teamLeaders.value = map
   } catch (e) {
@@ -1431,7 +1463,11 @@ function buildQueryParams() {
   }
   if (searchForm.name) params.name = searchForm.name
   if (searchForm.emp_no) params.emp_no = searchForm.emp_no
-  if (searchForm.team) params.team = searchForm.team
+  const team = findTeamOption(teams.value, searchForm.team_key)
+  if (team) {
+    params.dept = team.dept
+    params.team = team.team
+  }
   return params
 }
 

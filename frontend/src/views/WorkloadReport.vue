@@ -42,8 +42,8 @@
           <el-input v-model="searchForm.account" placeholder="请输入账号" clearable style="width: 120px" />
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team_desc" placeholder="全部班组" clearable filterable style="width: 140px">
-            <el-option v-for="t in teams" :key="t.team" :label="t.team" :value="t.team" />
+          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px">
+            <el-option v-for="t in teams" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
           </el-select>
         </el-form-item>
         <el-form-item label="班级">
@@ -344,6 +344,7 @@ import { useUiConfigStore } from '../stores/uiConfig'
 const userStore = useUserStore()
 const ui = useUiConfigStore()
 import { downloadBlob } from '../utils/download'
+import { decorateTeamOptions, decorateTeamRows, findTeamOption, teamKey } from '../utils/teamIdentity'
 import html2canvas from 'html2canvas'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 import ColumnWithTip from '../components/ColumnWithTip.vue'
@@ -390,7 +391,7 @@ const { filters: searchForm, isRestored: searchFormRestored } = usePersistedFilt
     end_date: '',
     name: '',
     account: '',
-    team_desc: '',
+    team_key: '',
     class_name: '',
     tenure_mode: '',
     tenure_months: 3
@@ -485,13 +486,13 @@ watch(detailSelectedColumns, (val) => {
   localStorage.setItem(DETAIL_COLUMNS_KEY, JSON.stringify(val))
 }, { deep: true })
 
-watch(() => searchForm.team_desc, () => {
-  if (searchForm.team_desc) searchForm.class_name = ''
+watch(() => searchForm.team_key, () => {
+  if (searchForm.team_key) searchForm.class_name = ''
   loadData()
 })
 
 watch(() => searchForm.class_name, () => {
-  if (searchForm.class_name) searchForm.team_desc = ''
+  if (searchForm.class_name) searchForm.team_key = ''
   loadData()
 })
 
@@ -578,9 +579,14 @@ const teamRanking = computed(() => {
   const teamMap = {}
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
+    const dept = d.dept || ''
+    const key = teamKey(dept, team)
     const isMember = d.role !== '组长' && d.role !== '师傅'
-    if (!teamMap[team]) {
-      teamMap[team] = {
+    if (!teamMap[key]) {
+      teamMap[key] = {
+        dept,
+        team,
+        team_key: key,
         count_all: 0, count_member: 0,
         total_calls_all: 0, total_calls_member: 0,
         total_duration: 0, total_work_duration_member: 0,
@@ -590,7 +596,7 @@ const teamRanking = computed(() => {
         leaders: []
       }
     }
-    const t = teamMap[team]
+    const t = teamMap[key]
     t.count_all++
     if (d.role === '组长' && d.name) {
       t.leaders.push(d.name)
@@ -614,21 +620,19 @@ const teamRanking = computed(() => {
     t.total_sat_numerator += verySat + sat
     t.total_sat_denominator += verySat + sat + general + disSat + veryDisSat
   })
-  return Object.entries(teamMap)
-    .map(([team, data]) => {
+  return decorateTeamRows(Object.values(teamMap)
+    .map(data => {
       const checkinHours = data.total_work_duration_member / 3600
       return {
-        team,
-        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || teamLeaders.value[team] || '',
+        dept: data.dept,
+        team: data.team,
+        team_key: data.team_key,
+        leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || teamLeaders.value[data.team_key] || '',
         count: data.count_all,
         count_member: data.count_member,
         total_calls: data.total_calls_all,
         total_ticket_count: data.total_ticket_count,
         total_duration: data.total_duration,
-        count: data.count_all,
-        count_member: data.count_member,
-        total_calls: data.total_calls_all,
-        total_ticket_count: data.total_ticket_count,
         avg_calls_per_person_all: data.count_all > 0 ? +(data.total_calls_all / data.count_all).toFixed(1) : 0,
         avg_calls_per_person_member: data.count_member > 0 ? +(data.total_calls_member / data.count_member).toFixed(1) : 0,
         member_call_hourly_rate: checkinHours > 0 ? +(data.total_calls_member / checkinHours).toFixed(1) : 0,
@@ -645,17 +649,19 @@ const teamRanking = computed(() => {
           : 0
       }
     })
-    .sort((a, b) => b.total_calls - a.total_calls)
+    .sort((a, b) => b.total_calls - a.total_calls))
 })
 
 const teamChartData = computed(() => {
   const teamMap = {}
   tableData.value.forEach(d => {
     const team = d.team_desc || '未知班组'
-    if (!teamMap[team]) {
-      teamMap[team] = { value: 0, count: 0, totalDuration: 0, totalCalls: 0, totalTicket: 0 }
+    const dept = d.dept || ''
+    const key = teamKey(dept, team)
+    if (!teamMap[key]) {
+      teamMap[key] = { dept, team, team_key: key, value: 0, count: 0, totalDuration: 0, totalCalls: 0, totalTicket: 0 }
     }
-    const t = teamMap[team]
+    const t = teamMap[key]
     const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
     t.value += calls
     t.count++
@@ -663,9 +669,13 @@ const teamChartData = computed(() => {
     t.totalTicket += getMetricValue(d, '呼入人工服务-工单-生成总量') || 0
     t.totalDuration += getMetricValue(d, '呼入人工服务-人工服务-通话总时长(秒)') || 0
   })
-  return Object.entries(teamMap)
-    .map(([name, data]) => ({
-      name,
+  const rows = decorateTeamRows(Object.values(teamMap))
+  return rows
+    .map(data => ({
+      name: data.team_label,
+      dept: data.dept,
+      team: data.team,
+      team_key: data.team_key,
       value: Math.round(data.value),
       peopleCount: data.count,
       avgDuration: data.totalCalls > 0 ? +(data.totalDuration / data.totalCalls).toFixed(1) : 0,
@@ -676,18 +686,20 @@ const teamChartData = computed(() => {
     .slice(0, 8)
 })
 
+const selectedTeamOption = computed(() => findTeamOption(teams.value, searchForm.team_key))
+
 const teamMemberChartData = computed(() => {
-  let team = ''
+  let key = ''
   if (filterType.value === 'team' && filterValue.value) {
-    team = filterValue.value
+    key = filterValue.value
   } else if (filterType.value === 'name' && filterValue.value) {
     const person = tableData.value.find(d => d.name === filterValue.value)
-    if (person) team = person.team_desc
-  } else if (searchForm.team_desc) {
-    team = searchForm.team_desc
+    if (person) key = teamKey(person.dept, person.team_desc)
+  } else if (searchForm.team_key) {
+    key = searchForm.team_key
   }
-  if (!team) return []
-  const members = tableData.value.filter(d => d.team_desc === team)
+  if (!key) return []
+  const members = tableData.value.filter(d => teamKey(d.dept, d.team_desc) === key)
   return members
     .map(d => ({
       name: d.name || '未知',
@@ -754,7 +766,7 @@ const classFilteredRanking = computed(() => {
 
 const classFilteredChartData = computed(() => {
   if (!classFilter.value) return teamChartData.value
-  return teamChartData.value.filter(t => extractClass(t.name) === classFilter.value)
+  return teamChartData.value.filter(t => extractClass(t.team) === classFilter.value)
 })
 
 const filteredCallSum = computed(() => {
@@ -871,7 +883,7 @@ const filteredData = computed(() => {
   if (filterType.value === 'name') {
     data = data.filter(d => d.name === filterValue.value)
   } else if (filterType.value === 'team') {
-    data = data.filter(d => d.team_desc === filterValue.value)
+    data = data.filter(d => teamKey(d.dept, d.team_desc) === filterValue.value)
   }
   return data
 })
@@ -1020,7 +1032,10 @@ const paginatedData = computed(() => {
 })
 
 const teamChartOptions = computed(() => {
-  const activeTeam = filterType.value === 'team' ? filterValue.value : searchForm.team_desc
+  const activeRow = filterType.value === 'team'
+    ? teamRanking.value.find(row => row.team_key === filterValue.value)
+    : selectedTeamOption.value
+  const activeTeam = activeRow?.team_label || activeRow?.team || ''
   if (activeTeam) {
     const data = teamMemberChartData.value
     if (!data.length) return {}
@@ -1072,7 +1087,10 @@ function handleExport() {
   }
   if (searchForm.name) params.name = searchForm.name
   if (searchForm.account) params.account = searchForm.account
-  if (searchForm.team_desc) params.team_desc = searchForm.team_desc
+  if (selectedTeamOption.value) {
+    params.dept = selectedTeamOption.value.dept
+    params.team_desc = selectedTeamOption.value.team
+  }
   if (searchForm.class_name) params.team_prefix = searchForm.class_name
   if (searchForm.tenure_mode) {
     params.tenure_mode = searchForm.tenure_mode
@@ -1105,8 +1123,8 @@ function handleExportFiltered() {
   const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
   let filename = 'workload_report_filtered.csv'
-  if (searchForm.team_desc) {
-    filename = `${searchForm.team_desc}_${ui.labels.workload_report}.csv`
+  if (selectedTeamOption.value) {
+    filename = `${selectedTeamOption.value.team_label}_${ui.labels.workload_report}.csv`
   } else if (searchForm.class_name) {
     filename = `${searchForm.class_name}_${ui.labels.workload_report}.csv`
   }
@@ -1268,10 +1286,11 @@ async function handleScreenshot() {
   }
 
   let title = ui.labels.workload_report
-  if (searchForm.team_desc) {
-    title = `${searchForm.team_desc} ${title}`
-  } else if (filterType.value === 'team' && filterValue.value) {
-    title = `${filterValue.value} ${title}`
+  const activeTeamRow = filterType.value === 'team'
+    ? teamRanking.value.find(row => row.team_key === filterValue.value)
+    : selectedTeamOption.value
+  if (activeTeamRow) {
+    title = `${activeTeamRow.team_label || activeTeamRow.team} ${title}`
   } else if (searchForm.class_name) {
     title = `${searchForm.class_name} ${title}`
   } else if (classFilter.value) {
@@ -1343,11 +1362,11 @@ function handlePersonRowClick(row) {
 }
 
 function handleTeamRowClick(row) {
-  if (filterType.value === 'team' && filterValue.value === row.team) {
+  if (filterType.value === 'team' && filterValue.value === row.team_key) {
     clearFilter()
   } else {
     filterType.value = 'team'
-    filterValue.value = row.team
+    filterValue.value = row.team_key
     currentPage.value = 1
   }
 }
@@ -1363,8 +1382,10 @@ function handlePieClick(params) {
     viewMode.value = 'team'
     return
   }
+  const key = params.data?.team_key
+  if (!key) return
   filterType.value = 'team'
-  filterValue.value = params.name
+  filterValue.value = key
   currentPage.value = 1
 }
 
@@ -1403,8 +1424,8 @@ async function loadMetricsFields() {
 
 async function loadTeams() {
   try {
-    const res = await api.get('/employees/teams')
-    teams.value = res.data || []
+    const res = await api.get('/employees/teams', { params: { include_dept: true } })
+    teams.value = decorateTeamOptions(res.data || [])
   } catch (e) {
     console.error(e)
   }
@@ -1414,8 +1435,8 @@ async function loadTeamLeaders() {
   try {
     const res = await api.get('/employees/leaders')
     const map = {}
-    ;(res.data || []).forEach(item => {
-      if (item.team) map[item.team] = item.leader
+    ;(Array.isArray(res.data) ? res.data : []).forEach(item => {
+      if (item.team) map[teamKey(item.dept, item.team)] = item.leader
     })
     teamLeaders.value = map
   } catch (e) {
@@ -1439,7 +1460,10 @@ async function loadData() {
     }
     if (searchForm.name) params.name = searchForm.name
     if (searchForm.account) params.account = searchForm.account
-    if (searchForm.team_desc) params.team_desc = searchForm.team_desc
+    if (selectedTeamOption.value) {
+      params.dept = selectedTeamOption.value.dept
+      params.team_desc = selectedTeamOption.value.team
+    }
     if (searchForm.class_name) params.team_prefix = searchForm.class_name
     if (searchForm.tenure_mode) {
       params.tenure_mode = searchForm.tenure_mode

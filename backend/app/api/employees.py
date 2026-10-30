@@ -247,10 +247,22 @@ def get_departments(
 @router.get("/teams", response_model=list)
 def get_teams(
     scope: Optional[str] = None,
+    include_dept: bool = False,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "employees.view")
+    if include_dept:
+        results = _apply_read_scope(
+            db.query(Employee.dept, Employee.team, func.count(Employee.id)).filter(Employee.status == "在职"),
+            current_user,
+            scope,
+        ).group_by(Employee.dept, Employee.team).all()
+        return [
+            {"dept": r[0] or "", "team": r[1], "count": r[2]}
+            for r in results
+            if r[1]
+        ]
     results = _apply_read_scope(
         db.query(Employee.team, func.count(Employee.id)).filter(Employee.status == "在职"),
         current_user,
@@ -267,18 +279,25 @@ def get_team_leaders(
 ):
     require_permission(current_user, "employees.view")
     results = _apply_read_scope(
-        db.query(Employee.team, Employee.name).filter(
+        db.query(Employee.dept, Employee.team, Employee.name).filter(
             Employee.role == "组长",
             Employee.status == "在职",
         ),
         current_user,
         scope,
     ).all()
-    seen = {}
-    for team, name in results:
-        if team and team not in seen:
-            seen[team] = name
-    return [{"team": k, "leader": v} for k, v in seen.items()]
+    seen: dict[tuple, set] = {}
+    for dept, team, name in results:
+        if team and name:
+            seen.setdefault((dept or "", team), set()).add(name)
+    return [
+        {
+            "dept": dept,
+            "team": team,
+            "leader": "、".join(sorted(names)),
+        }
+        for (dept, team), names in sorted(seen.items())
+    ]
 
 
 @router.get("/roles", response_model=list)
