@@ -14,7 +14,8 @@ export const PERMISSION_REGISTRY = {
     "permissions": {
       "view": "查看",
       "upload": "导入",
-      "delete": "删除"
+      "delete": "删除",
+      "export": "导出"
     }
   },
   "marketing_report": {

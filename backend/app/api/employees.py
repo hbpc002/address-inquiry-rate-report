@@ -20,6 +20,7 @@ from app.schemas.employee import (
 from app.core.security import get_current_user, require_permission
 from app.core.data_scope import (
     apply_employee_dept_scope, apply_employee_scope, apply_employee_write_scope,
+    build_department_group_context,
     employee_writable, ensure_dept_writable, ensure_employee_writable,
     get_user_scope_paths, is_all_employee_write_scope, is_all_scope,
 )
@@ -253,13 +254,14 @@ def get_teams(
 ):
     require_permission(current_user, "employees.view")
     if include_dept:
+        _, resolve_dept_group = build_department_group_context(db)
         results = _apply_read_scope(
             db.query(Employee.dept, Employee.team, func.count(Employee.id)).filter(Employee.status == "在职"),
             current_user,
             scope,
         ).group_by(Employee.dept, Employee.team).all()
         return [
-            {"dept": r[0] or "", "team": r[1], "count": r[2]}
+            {"dept": r[0] or "", "dept_group": resolve_dept_group(r[0]), "team": r[1], "count": r[2]}
             for r in results
             if r[1]
         ]

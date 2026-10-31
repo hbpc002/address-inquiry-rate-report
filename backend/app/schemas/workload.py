@@ -41,6 +41,7 @@ class WorkloadReportItem(BaseModel):
     name: str
     emp_no: str
     dept: str = ""
+    dept_group: str = ""
     team_desc: str
     province: str
     role: str = ""

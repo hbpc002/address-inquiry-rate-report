@@ -33,6 +33,18 @@ describe('班组/班级组合标识', () => {
     expect(findTeamOption(rows, teamKey(DEPT_B, '一班1组')).dept).toBe(DEPT_B)
   })
 
+  it('重名后缀优先使用部门组名称，缺失时回退部门末级', () => {
+    const rows = decorateTeamOptions([
+      { dept: DEPT_A, dept_group: '工单运营组', team: '一班1组' },
+      { dept: DEPT_B, dept_group: '客户投诉处理组', team: '一班1组' }
+    ])
+
+    expect(rows.map(row => row.team_label)).toEqual([
+      '一班1组（工单运营组）',
+      '一班1组（客户投诉处理组）'
+    ])
+  })
+
   it('班级选项按部门隔离，非法数据回退为空列表', () => {
     const rows = decorateClassOptions([
       { dept: DEPT_A, class_name: '一班' },

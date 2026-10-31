@@ -18,7 +18,11 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_permission
-from app.core.data_scope import apply_marketing_scope, require_all_scope
+from app.core.data_scope import (
+    apply_marketing_scope,
+    build_department_group_context,
+    require_all_scope,
+)
 from app.models.app_config import AppConfig
 from app.models.database import get_db
 from app.models.employee import Employee
@@ -673,6 +677,14 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     config = _overall_config(db)
     org_map = _xszb_org_map(db)
     group_cache: Dict[str, str] = {}
+    department_group_names, resolve_dept_group = build_department_group_context(db)
+    dept_group_cache: Dict[str, str] = {}
+
+    def dept_group_of(dept_value: Optional[str]) -> str:
+        key = (dept_value or "").strip()
+        if key not in dept_group_cache:
+            dept_group_cache[key] = resolve_dept_group(key)
+        return dept_group_cache[key]
 
     prepared = []
     all_groups = set()
@@ -692,14 +704,15 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             effective_org = _detail_value(detail, "org_name")
         prepared.append((detail, emp, group, effective_org))
         emp_dept = (emp.dept or "").strip() if emp else ""
+        emp_dept_group = dept_group_of(emp_dept)
         emp_team = emp.team if emp and emp.team else "未匹配班组"
         emp_class = _extract_class(emp_team)
         all_groups.add(group)
         all_teams.add(emp_team)
-        all_team_options.add((emp_dept, emp_team))
+        all_team_options.add((emp_dept, emp_dept_group, emp_team))
         if emp_class:
             all_classes.add(emp_class)
-            all_class_options.add((emp_dept, emp_class))
+            all_class_options.add((emp_dept, emp_dept_group, emp_class))
         if effective_org:
             all_orgs.add(effective_org)
         if detail.product_id or detail.product_name:
@@ -707,6 +720,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
 
     group_name = filters.get("group_name") or ""
     dept = (filters.get("dept") or "").strip()
+    department_group = (filters.get("department_group") or "").strip()
     team = filters.get("team") or ""
     class_name = filters.get("class_name") or ""
     name = filters.get("name") or ""
@@ -722,6 +736,8 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         if group_name and group != group_name:
             continue
         if dept and (emp.dept or "").strip() != dept:
+            continue
+        if department_group and dept_group_of(emp.dept if emp else "") != department_group:
             continue
         if team:
             team_value = emp.team if emp and emp.team else "未匹配班组"
@@ -763,6 +779,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         emp_name = emp.name if emp else ""
         emp_team = emp.team if emp and emp.team else "未匹配班组"
         emp_dept = emp.dept if emp else ""
+        emp_dept_group = dept_group_of(emp_dept)
         if kf_id:
             people.add(kf_id)
         if detail.product_id or detail.product_name:
@@ -775,6 +792,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             "name": emp_name,
             "team": emp_team,
             "dept": emp_dept,
+            "dept_group": emp_dept_group,
             "group_name": group,
             "org_name": effective_org,
         })
@@ -787,6 +805,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         team_bucket = teams.setdefault(team_key, {
             **_new_bucket(),
             "dept": emp_dept,
+            "dept_group": emp_dept_group,
             "team": emp_team,
             "people": set(),
         })
@@ -827,6 +846,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
 
     def team_extra(item, bucket, key):
         item["dept"] = key[0]
+        item["dept_group"] = bucket.get("dept_group", "")
         item["team"] = key[1]
         item["people"] = len(bucket.get("people") or set())
         item["leader"] = team_leaders.get(key, "")
@@ -859,15 +879,16 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         "options": {
             "groups": sorted(filter(None, all_groups)),
             "teams": sorted(filter(None, all_teams)),
+            "department_groups": department_group_names,
             "team_options": [
-                {"dept": dept_value, "team": team_value}
-                for dept_value, team_value in sorted(all_team_options)
+                {"dept": dept_value, "dept_group": group_value, "team": team_value}
+                for dept_value, group_value, team_value in sorted(all_team_options)
                 if team_value
             ],
             "classes": sorted(filter(None, all_classes)),
             "class_options": [
-                {"dept": dept_value, "class_name": class_value}
-                for dept_value, class_value in sorted(all_class_options)
+                {"dept": dept_value, "dept_group": group_value, "class_name": class_value}
+                for dept_value, group_value, class_value in sorted(all_class_options)
                 if class_value
             ],
             "orgs": sorted(filter(None, all_orgs)),
@@ -947,6 +968,7 @@ def _compute_key_product_table(
 
     emps = _emp_map(db)
     team_leaders = _team_leader_map(emps)
+    _, resolve_dept_group = build_department_group_context(db)
     buckets: Dict[tuple, Dict[str, Any]] = {}
     for detail in query.all():
         if _detail_source(detail) == SOURCE_FWGD:
@@ -968,10 +990,12 @@ def _compute_key_product_table(
         emp = emps.get(_norm_emp_no(detail.kf_id))
         team = (emp.team or "").strip() if emp and emp.team else UNASSIGNED_TEAM
         dept = (emp.dept or "").strip() if emp else ""
+        dept_group = resolve_dept_group(dept)
         bucket = buckets.setdefault(
             (work_group, dept, team),
             {"counts": {col["key"]: 0 for col in columns}, "total": 0},
         )
+        bucket["dept_group"] = dept_group
         for key in matched_keys:
             bucket["counts"][key] += 1
         bucket["total"] += len(matched_keys)
@@ -1000,6 +1024,7 @@ def _compute_key_product_table(
             rows.append({
                 "work_group": work_group,
                 "dept": dept,
+                "dept_group": bucket.get("dept_group", ""),
                 "team": team,
                 "leader": team_leaders.get((dept, team), ""),
                 "rowspan": len(group_items) + (1 if has_subtotal else 0) if index == 0 else 0,
@@ -1017,6 +1042,7 @@ def _compute_key_product_table(
             rows.append({
                 "work_group": work_group,
                 "dept": "",
+                "dept_group": "",
                 "team": "小计",
                 "rowspan": 0,
                 "counts": group_counts,
@@ -1297,10 +1323,9 @@ def import_details(
     }
 
 
-@router.get("/details", response_model=dict)
-def get_details(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=200),
+def _details_query(
+    db: Session,
+    current_user: dict,
     import_batch: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -1311,10 +1336,7 @@ def get_details(
     service_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
     data_type: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
 ):
-    require_permission(current_user, "marketing.view")
     query = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing")
     if import_batch:
         query = query.filter(MarketingDetail.import_batch == import_batch)
@@ -1331,7 +1353,7 @@ def get_details(
     if name:
         emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(Employee.name.ilike(f"%{name}%")).all()]
         if not emp_nos:
-            return {"items": [], "total": 0}
+            return query.filter(MarketingDetail.id == -1)
         query = query.filter(MarketingDetail.kf_id.in_(emp_nos))
     if org_name:
         org_map = _xszb_org_map(db)
@@ -1352,6 +1374,80 @@ def get_details(
         query = query.filter(MarketingDetail.service_type == service_type)
     if lh_qh:
         query = query.filter(MarketingDetail.lh_qh == lh_qh)
+    return query
+
+
+def _detail_serialize(
+    detail: MarketingDetail,
+    emps: Dict[str, Employee],
+    config: Dict[str, Any],
+    org_map: Dict[str, str],
+    cache: Dict[str, str],
+    resolve_dept_group,
+):
+    emp = emps.get(_norm_emp_no(detail.kf_id))
+    source = _detail_source(detail)
+    if source == SOURCE_FWGD:
+        group = _classify_work_order_row(detail, config, org_map, cache) or UNCLASSIFIED_GROUP
+        effective_org = org_map.get(_norm_emp_no(detail.kf_id), "")
+    else:
+        group = _classify_online_row(detail, config, cache) or UNCLASSIFIED_GROUP
+        effective_org = detail.org_name or detail.organization or ""
+    dept = emp.dept if emp else ""
+    return {
+        "id": detail.id,
+        "kf_id": detail.kf_id,
+        "name": emp.name if emp else "",
+        "team": emp.team if emp else "",
+        "dept": dept,
+        "dept_group": resolve_dept_group(dept),
+        "group_name": group,
+        "org_name": effective_org,
+        "organization": detail.organization,
+        "tenant": detail.tenant,
+        "work_order_id": detail.work_order_id,
+        "data_type": source,
+        "source": SOURCE_LABELS[source],
+        "pos_sequence": detail.pos_sequence,
+        "develop_depart_name": detail.develop_depart_name,
+        "channel": detail.channel,
+        "area_name": detail.area_name,
+        "net_type": detail.net_type,
+        "trade_id": detail.trade_id,
+        "finish_date": detail.finish_date.isoformat() if detail.finish_date else None,
+        "service_type": detail.service_type,
+        "package_type": detail.package_type,
+        "valid_type": detail.valid_type,
+        "product_id": detail.product_id,
+        "product_name": detail.product_name,
+        "lh_qh": detail.lh_qh,
+        "is_zero": detail.is_zero,
+        "import_batch": detail.import_batch,
+    }
+
+
+@router.get("/details", response_model=dict)
+def get_details(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
+    import_batch: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    kf_id: Optional[str] = None,
+    name: Optional[str] = None,
+    org_name: Optional[str] = None,
+    product: Optional[str] = None,
+    service_type: Optional[str] = None,
+    lh_qh: Optional[str] = None,
+    data_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing.view")
+    query = _details_query(
+        db, current_user, import_batch, start_date, end_date, kf_id, name, org_name,
+        product, service_type, lh_qh, data_type,
+    )
 
     total = query.count()
     items = query.order_by(
@@ -1362,46 +1458,90 @@ def get_details(
     config = _overall_config(db)
     org_map = _xszb_org_map(db)
     cache: Dict[str, str] = {}
-    result = []
-    for detail in items:
-        emp = emps.get(_norm_emp_no(detail.kf_id))
-        source = _detail_source(detail)
-        if source == SOURCE_FWGD:
-            group = _classify_work_order_row(detail, config, org_map, cache) or UNCLASSIFIED_GROUP
-            effective_org = org_map.get(_norm_emp_no(detail.kf_id), "")
-        else:
-            group = _classify_online_row(detail, config, cache) or UNCLASSIFIED_GROUP
-            effective_org = detail.org_name or detail.organization or ""
-        result.append({
-            "id": detail.id,
-            "kf_id": detail.kf_id,
-            "name": emp.name if emp else "",
-            "team": emp.team if emp else "",
-            "dept": emp.dept if emp else "",
-            "group_name": group,
-            "org_name": effective_org,
-            "organization": detail.organization,
-            "tenant": detail.tenant,
-            "work_order_id": detail.work_order_id,
-            "data_type": source,
-            "source": SOURCE_LABELS[source],
-            "pos_sequence": detail.pos_sequence,
-            "develop_depart_name": detail.develop_depart_name,
-            "channel": detail.channel,
-            "area_name": detail.area_name,
-            "net_type": detail.net_type,
-            "trade_id": detail.trade_id,
-            "finish_date": detail.finish_date.isoformat() if detail.finish_date else None,
-            "service_type": detail.service_type,
-            "package_type": detail.package_type,
-            "valid_type": detail.valid_type,
-            "product_id": detail.product_id,
-            "product_name": detail.product_name,
-            "lh_qh": detail.lh_qh,
-            "is_zero": detail.is_zero,
-            "import_batch": detail.import_batch,
-        })
+    _, resolve_dept_group = build_department_group_context(db)
+    result = [
+        _detail_serialize(detail, emps, config, org_map, cache, resolve_dept_group)
+        for detail in items
+    ]
     return {"items": result, "total": total}
+
+
+@router.get("/details/export")
+def export_details(
+    import_batch: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    kf_id: Optional[str] = None,
+    name: Optional[str] = None,
+    org_name: Optional[str] = None,
+    product: Optional[str] = None,
+    service_type: Optional[str] = None,
+    lh_qh: Optional[str] = None,
+    data_type: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing.export")
+    query = _details_query(
+        db, current_user, import_batch, start_date, end_date, kf_id, name, org_name,
+        product, service_type, lh_qh, data_type,
+    )
+    items = query.order_by(MarketingDetail.finish_date.desc(), MarketingDetail.id.desc()).all()
+
+    emps = _emp_map(db)
+    config = _overall_config(db)
+    org_map = _xszb_org_map(db)
+    cache: Dict[str, str] = {}
+    _, resolve_dept_group = build_department_group_context(db)
+    rows = [
+        _detail_serialize(detail, emps, config, org_map, cache, resolve_dept_group)
+        for detail in items
+    ]
+
+    output = io.StringIO()
+    import csv
+
+    writer = csv.writer(output)
+    writer.writerow([
+        "竣工日期", "数据来源", "客服工号", "姓名", "部门组", "部门", "班组", "行分类",
+        "组织机构", "建单租户", "工单流水号", "CBSS订单号", "重点业务", "叠加包分类",
+        "叠加包有效期", "产品ID", "产品名称", "来话/去话", "受理渠道", "地市", "网别", "批次",
+    ])
+    for item in rows:
+        writer.writerow([
+            item["finish_date"] or "", item["source"], item["kf_id"] or "", item["name"] or "",
+            item["dept_group"], item["dept"] or "", item["team"] or "", item["group_name"],
+            item["org_name"] or "", item["tenant"] or "", item["work_order_id"] or "",
+            item["trade_id"] or "", item["service_type"] or "", item["package_type"] or "",
+            item["valid_type"] or "", item["product_id"] or "", item["product_name"] or "",
+            item["lh_qh"] or "", item["channel"] or "", item["area_name"] or "",
+            item["net_type"] or "", item["import_batch"] or "",
+        ])
+
+    start = _date_param(start_date)
+    end = _date_param(end_date)
+    range_label = f"{start or '全部'}_{end or '全部'}"
+    filename = f"营销明细_{range_label}.csv"
+    encoded = quote(filename)
+    log_operation(
+        db,
+        current_user["id"],
+        "export_marketing_details",
+        "marketing",
+        None,
+        {
+            "count": len(rows),
+            "start_date": start.isoformat() if start else None,
+            "end_date": end.isoformat() if end else None,
+            "data_type": data_type,
+            "import_batch": import_batch,
+        },
+    )
+    return StreamingResponse(
+        iter(["﻿" + output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"},
+    )
 
 
 @router.delete("/details/by-date", response_model=dict)
@@ -1624,6 +1764,7 @@ def get_report(
     year_month: Optional[str] = None,
     group_name: Optional[str] = None,
     dept: Optional[str] = None,
+    department_group: Optional[str] = None,
     team: Optional[str] = None,
     class_name: Optional[str] = None,
     name: Optional[str] = None,
@@ -1642,6 +1783,7 @@ def get_report(
     return _compute_report(db, start, end, {
         "group_name": group_name,
         "dept": dept,
+        "department_group": department_group,
         "team": team,
         "class_name": class_name,
         "name": name,
@@ -1663,6 +1805,7 @@ def export_report(
     dimension: str = Query("employee"),
     group_name: Optional[str] = None,
     dept: Optional[str] = None,
+    department_group: Optional[str] = None,
     team: Optional[str] = None,
     class_name: Optional[str] = None,
     name: Optional[str] = None,
@@ -1681,6 +1824,7 @@ def export_report(
     data = _compute_report(db, start, end, {
         "group_name": group_name,
         "dept": dept,
+        "department_group": department_group,
         "team": team,
         "class_name": class_name,
         "name": name,
@@ -1698,9 +1842,9 @@ def export_report(
     writer = csv.writer(output)
     common = ["产品办理量", "订单数", "来话办理量", "去话办理量", "叠加包", "日包", "月包", "长期包", "未定义", "套餐变更"]
     if dimension == "team":
-        writer.writerow(["部门", "班组", "组长", "人数"] + common)
+        writer.writerow(["部门组", "部门", "班组", "组长", "人数"] + common)
         for item in data["teams"]:
-            writer.writerow([item.get("dept", ""), item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("dept_group", ""), item.get("dept", ""), item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
     elif dimension == "group":
         writer.writerow(["行分类", "人数"] + common)
         for item in data["groups"]:

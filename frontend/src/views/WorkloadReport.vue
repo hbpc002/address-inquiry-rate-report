@@ -585,6 +585,7 @@ const teamRanking = computed(() => {
     if (!teamMap[key]) {
       teamMap[key] = {
         dept,
+        dept_group: d.dept_group || '',
         team,
         team_key: key,
         count_all: 0, count_member: 0,
@@ -625,6 +626,7 @@ const teamRanking = computed(() => {
       const checkinHours = data.total_work_duration_member / 3600
       return {
         dept: data.dept,
+        dept_group: data.dept_group,
         team: data.team,
         team_key: data.team_key,
         leader: data.leaders.filter((v, i, a) => a.indexOf(v) === i).join('、') || teamLeaders.value[data.team_key] || '',
@@ -659,7 +661,7 @@ const teamChartData = computed(() => {
     const dept = d.dept || ''
     const key = teamKey(dept, team)
     if (!teamMap[key]) {
-      teamMap[key] = { dept, team, team_key: key, value: 0, count: 0, totalDuration: 0, totalCalls: 0, totalTicket: 0 }
+      teamMap[key] = { dept, dept_group: d.dept_group || '', team, team_key: key, value: 0, count: 0, totalDuration: 0, totalCalls: 0, totalTicket: 0 }
     }
     const t = teamMap[key]
     const calls = getMetricValue(d, '呼入人工服务-人工服务-通话次数') || 0
@@ -674,6 +676,7 @@ const teamChartData = computed(() => {
     .map(data => ({
       name: data.team_label,
       dept: data.dept,
+      dept_group: data.dept_group,
       team: data.team,
       team_key: data.team_key,
       value: Math.round(data.value),

@@ -27,11 +27,12 @@ function decorateScopedItems(items, nameKey, keyField, labelField, buildKey) {
   return rows.map(item => {
     const name = item?.[nameKey] || ''
     const dept = item?.dept || ''
+    const deptGroup = item?.dept_group || deptShort(dept)
     const duplicate = Boolean(name && dept && counts.get(name) > 1)
     return {
       ...item,
       [keyField]: buildKey(dept, name),
-      [labelField]: duplicate ? `${name}（${deptShort(dept)}）` : name
+      [labelField]: duplicate ? `${name}（${deptGroup}）` : name
     }
   })
 }

@@ -956,6 +956,7 @@ const teamMetricsRanking = computed(() => {
     if (!teamMap[key]) {
       teamMap[key] = {
         dept,
+        dept_group: d.dept_group || '',
         team,
         team_key: key,
         count: 0,
@@ -1013,6 +1014,7 @@ const teamMetricsRanking = computed(() => {
   return decorateTeamRows(Object.values(teamMap)
     .map(t => ({
       dept: t.dept,
+      dept_group: t.dept_group,
       team: t.team,
       team_key: t.team_key,
       leader: teamLeaders.value[t.team_key] || '',
@@ -1045,7 +1047,7 @@ const teamLabelKeyMap = computed(() => {
     const key = teamKey(dept, team)
     if (seen.has(key)) return
     seen.add(key)
-    rows.push({ dept, team })
+    rows.push({ dept, dept_group: d.dept_group || '', team })
   })
   return Object.fromEntries(decorateTeamRows(rows).map(row => [row.team_label, row.team_key]))
 })
@@ -1123,7 +1125,7 @@ const lateEarlyByTeamOptions = computed(() => {
     const team = d.team || '未知班组'
     const dept = d.dept || ''
     const key = teamKey(dept, team)
-    if (!teamMap[key]) teamMap[key] = { dept, team, team_key: key, late: 0, early: 0 }
+    if (!teamMap[key]) teamMap[key] = { dept, dept_group: d.dept_group || '', team, team_key: key, late: 0, early: 0 }
     if ((d.late_days || 0) > 0) {
       teamMap[key].late += 1
       if (!latePeopleMap[key]) latePeopleMap[key] = []

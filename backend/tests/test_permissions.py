@@ -165,6 +165,7 @@ def test_registry_contains_marketing():
     assert "view" in PERMISSION_REGISTRY["marketing"]["permissions"]
     assert "upload" in PERMISSION_REGISTRY["marketing"]["permissions"]
     assert "delete" in PERMISSION_REGISTRY["marketing"]["permissions"]
+    assert "export" in PERMISSION_REGISTRY["marketing"]["permissions"]
     assert PERMISSION_REGISTRY["marketing_report"]["label"] == "营销统计"
     assert "export" in PERMISSION_REGISTRY["marketing_report"]["permissions"]
     assert PERMISSION_REGISTRY["marketing_overall"]["label"] == "总体营销"
@@ -176,7 +177,7 @@ def test_registry_contains_marketing():
 def test_marketing_permission_defaults():
     admin = get_default_permissions("admin")
     user = get_default_permissions("user")
-    for key in ["marketing.view", "marketing.upload", "marketing.delete",
+    for key in ["marketing.view", "marketing.upload", "marketing.delete", "marketing.export",
                 "marketing_report.view", "marketing_report.export",
                 "marketing_overall.view", "marketing_overall.export",
                 "marketing_settings.view", "marketing_settings.edit"]:
@@ -187,6 +188,7 @@ def test_marketing_permission_defaults():
     assert user["marketing_settings.view"] is True
     assert user["marketing.upload"] is False
     assert user["marketing.delete"] is False
+    assert user["marketing.export"] is False
     assert user["marketing_report.export"] is False
     assert user["marketing_overall.export"] is False
     assert user["marketing_settings.edit"] is False

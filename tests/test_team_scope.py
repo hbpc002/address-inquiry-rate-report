@@ -1,4 +1,6 @@
 from datetime import date, datetime
+import csv
+import io
 import json
 
 import pytest
@@ -11,6 +13,7 @@ from app.core.security import create_access_token, get_password_hash
 from app.models.app_config import AppConfig
 from app.models.checkin import Checkin
 from app.models.database import Base, get_db
+from app.models.department_group import DepartmentGroup, DepartmentGroupPath
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
 from app.models.user import User
@@ -36,6 +39,8 @@ TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运�
 DEPT_A = f"{TARGET_DEPT}>>A部门"
 DEPT_B = f"{TARGET_DEPT}>>B部门"
 TEAM = "一班1组"
+GROUP_A = "工单运营组"
+GROUP_B = "客户投诉处理组"
 DAY = date(2026, 10, 20)
 
 
@@ -54,6 +59,19 @@ def setup_db():
         db.add(admin)
         db.commit()
         db.refresh(admin)
+
+        group_a = DepartmentGroup(name=GROUP_A, is_active=True)
+        group_b = DepartmentGroup(name=GROUP_B, is_active=True)
+        inactive_group = DepartmentGroup(name="停用部门组", is_active=False)
+        db.add_all([group_a, group_b, inactive_group])
+        db.flush()
+        db.add_all([
+            DepartmentGroupPath(group_id=group_a.id, path=DEPT_A),
+            DepartmentGroupPath(group_id=group_b.id, path=DEPT_B),
+            DepartmentGroupPath(group_id=group_b.id, path=TARGET_DEPT),
+            DepartmentGroupPath(group_id=inactive_group.id, path=DEPT_A),
+        ])
+        db.commit()
 
         db.add_all([
             AppConfig(
@@ -134,7 +152,9 @@ def auth_header():
 def test_team_options_and_leaders_are_scoped_by_dept():
     teams_res = client.get("/api/employees/teams", params={"include_dept": True}, headers=auth_header())
     assert teams_res.status_code == 200
-    assert {(item["dept"], item["team"]) for item in teams_res.json()} == {(DEPT_A, TEAM), (DEPT_B, TEAM)}
+    assert {(item["dept"], item["dept_group"], item["team"]) for item in teams_res.json()} == {
+        (DEPT_A, GROUP_A, TEAM), (DEPT_B, GROUP_B, TEAM)
+    }
 
     leaders_res = client.get("/api/employees/leaders", headers=auth_header())
     assert leaders_res.status_code == 200
@@ -151,9 +171,12 @@ def test_marketing_team_rows_and_leaders_do_not_cross_depts():
     assert len(teams) == 2
     leaders = {item["dept"]: item["leader"] for item in teams}
     assert leaders == {DEPT_A: "A组长", DEPT_B: "B组长"}
-    assert {(item["dept"], item["team"]) for item in data["options"]["team_options"]} == {
-        (DEPT_A, TEAM), (DEPT_B, TEAM)
+    assert {item["dept"]: item["dept_group"] for item in teams} == {DEPT_A: GROUP_A, DEPT_B: GROUP_B}
+    assert {(item["dept"], item["dept_group"], item["team"]) for item in data["options"]["team_options"]} == {
+        (DEPT_A, GROUP_A, TEAM), (DEPT_B, GROUP_B, TEAM)
     }
+    assert data["options"]["department_groups"] == [GROUP_B, GROUP_A]
+    assert "停用部门组" not in data["options"]["department_groups"]
 
 
 def test_marketing_overall_key_product_rows_are_scoped_by_dept():
@@ -167,6 +190,7 @@ def test_marketing_overall_key_product_rows_are_scoped_by_dept():
     assert len(rows) == 2
     leaders = {row["dept"]: row["leader"] for row in rows}
     assert leaders == {DEPT_A: "A组长", DEPT_B: "B组长"}
+    assert {row["dept"]: row["dept_group"] for row in rows} == {DEPT_A: GROUP_A, DEPT_B: GROUP_B}
 
 
 def test_marketing_dept_and_class_filters_are_scoped():
@@ -179,9 +203,37 @@ def test_marketing_dept_and_class_filters_are_scoped():
     data = dept_res.json()
     assert [item["dept"] for item in data["teams"]] == [DEPT_A]
     assert data["teams"][0]["leader"] == "A组长"
-    assert {(item["dept"], item["class_name"]) for item in data["options"]["class_options"]} == {
-        (DEPT_A, "一班"), (DEPT_B, "一班")
+    assert {(item["dept"], item["dept_group"], item["class_name"]) for item in data["options"]["class_options"]} == {
+        (DEPT_A, GROUP_A, "一班"), (DEPT_B, GROUP_B, "一班")
     }
+
+
+def test_marketing_department_group_filter():
+    res = client.get(
+        "/api/marketing/report",
+        params={"date": DAY.isoformat(), "department_group": GROUP_A},
+        headers=auth_header(),
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert [item["dept"] for item in data["teams"]] == [DEPT_A]
+    assert data["teams"][0]["dept_group"] == GROUP_A
+
+
+def test_marketing_details_export_csv():
+    res = client.get(
+        "/api/marketing/details/export",
+        params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat()},
+        headers=auth_header(),
+    )
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/csv")
+    assert "filename*=UTF-8''" in res.headers["content-disposition"]
+    rows = list(csv.reader(io.StringIO(res.content.decode("utf-8-sig"))))
+    assert rows[0][:8] == ["竣工日期", "数据来源", "客服工号", "姓名", "部门组", "部门", "班组", "行分类"]
+    exported = {row[2]: row for row in rows[1:]}
+    assert exported["A002"][4] == GROUP_A
+    assert exported["B002"][4] == GROUP_B
 
 
 def test_checkin_report_filters_by_dept():
@@ -193,6 +245,7 @@ def test_checkin_report_filters_by_dept():
     assert res.status_code == 200
     items = res.json()["items"]
     assert [item["emp_no"] for item in items] == ["A002"]
+    assert items[0]["dept_group"] == GROUP_A
 
 
 def test_workload_report_returns_dept_and_filters_by_dept():
@@ -206,3 +259,4 @@ def test_workload_report_returns_dept_and_filters_by_dept():
     assert len(items) == 1
     assert items[0]["account"] == "A002"
     assert items[0]["dept"] == DEPT_A
+    assert items[0]["dept_group"] == GROUP_A

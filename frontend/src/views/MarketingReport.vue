@@ -38,14 +38,19 @@
             <el-option v-for="g in options.groups" :key="g" :label="g" :value="g" />
           </el-select>
         </el-form-item>
+        <el-form-item label="部门组">
+          <el-select v-model="searchForm.department_group" placeholder="全部部门组" clearable filterable style="width: 170px">
+            <el-option v-for="group in options.department_groups" :key="group" :label="group" :value="group" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="班组">
           <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px">
-            <el-option v-for="t in options.team_options" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
+            <el-option v-for="t in filteredTeamOptions" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
           </el-select>
         </el-form-item>
         <el-form-item label="班级">
           <el-select v-model="searchForm.class_key" placeholder="全部班级" clearable filterable style="width: 180px">
-            <el-option v-for="c in options.class_options" :key="c.class_key" :label="c.class_label" :value="c.class_key" />
+            <el-option v-for="c in filteredClassOptions" :key="c.class_key" :label="c.class_label" :value="c.class_key" />
           </el-select>
         </el-form-item>
         <el-form-item label="重点业务">
@@ -294,6 +299,7 @@ const searchForm = reactive({
   end_date: '',
   group_name: '',
   data_type: '',
+  department_group: '',
   team_key: '',
   class_key: '',
   business_type: '',
@@ -310,8 +316,14 @@ const stats = reactive({
   package_change: 0,
   people_count: 0
 })
-const options = reactive({ groups: [], teams: [], team_options: [], classes: [], class_options: [], orgs: [], products: [], sources: [] })
+const options = reactive({ groups: [], teams: [], department_groups: [], team_options: [], classes: [], class_options: [], orgs: [], products: [], sources: [] })
 const result = ref({ employees: [], teams: [], groups: [], products: [], days: [] })
+const filteredTeamOptions = computed(() => searchForm.department_group
+  ? options.team_options.filter(item => item.dept_group === searchForm.department_group)
+  : options.team_options)
+const filteredClassOptions = computed(() => searchForm.department_group
+  ? options.class_options.filter(item => item.dept_group === searchForm.department_group)
+  : options.class_options)
 const decoratedTeams = computed(() => decorateTeamRows(result.value.teams || []))
 const dimension = ref('employee')
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', group: 'groups', product: 'products', day: 'days' }[dimension.value]))
@@ -396,7 +408,7 @@ function buildParams() {
     params.start_date = searchForm.start_date
     params.end_date = searchForm.end_date
   }
-  for (const key of ['group_name', 'data_type', 'business_type', 'lh_qh', 'name', 'emp_no']) {
+  for (const key of ['group_name', 'data_type', 'department_group', 'business_type', 'lh_qh', 'name', 'emp_no']) {
     if (searchForm[key]) params[key] = searchForm[key]
   }
   const team = findTeamOption(options.team_options, searchForm.team_key)
@@ -439,6 +451,7 @@ function resetFilters() {
     end_date: '',
     group_name: '',
     data_type: '',
+    department_group: '',
     team_key: '',
     class_key: '',
     business_type: '',
@@ -467,6 +480,13 @@ watch(() => searchForm.team_key, (value) => {
 })
 watch(() => searchForm.class_key, (value) => {
   if (value) searchForm.team_key = ''
+})
+watch(() => searchForm.department_group, (value) => {
+  if (!value) return
+  const team = findTeamOption(options.team_options, searchForm.team_key)
+  if (team && team.dept_group !== value) searchForm.team_key = ''
+  const className = findClassOption(options.class_options, searchForm.class_key)
+  if (className && className.dept_group !== value) searchForm.class_key = ''
 })
 
 onMounted(loadData)

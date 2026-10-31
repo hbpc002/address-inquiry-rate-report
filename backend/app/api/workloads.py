@@ -19,6 +19,7 @@ from app.schemas.workload import (
     WorkloadReportItem, WorkloadReportResponse
 )
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import build_department_group_context
 
 router = APIRouter(prefix="/api/workloads", tags=["工作量统计"])
 
@@ -375,6 +376,7 @@ def get_workload_report(
         elif tenure_mode == "gt":
             records = [r for r in records if not emp_tenure_map.get(r.account, False)]
 
+    _, resolve_dept_group = build_department_group_context(db)
     emp_agg = {}
     for r in records:
         key = r.account
@@ -382,12 +384,14 @@ def get_workload_report(
         real_name = emp.name if emp else (r.name or '')
         real_team = emp.team if emp else (r.team_desc or '')
         real_dept = (emp.dept or '') if emp else ''
+        real_dept_group = resolve_dept_group(real_dept)
         if key not in emp_agg:
             emp_agg[key] = {
                 "account": r.account,
                 "name": real_name,
                 "emp_no": r.emp_no or '',
                 "dept": real_dept,
+                "dept_group": real_dept_group,
                 "team_desc": real_team,
                 "province": r.province or '',
                 "role": emp.role if emp else "",
@@ -461,6 +465,7 @@ def get_workload_report(
             name=data["name"],
             emp_no=data["emp_no"],
             dept=data.get("dept", ""),
+            dept_group=data.get("dept_group", ""),
             team_desc=data["team_desc"],
             province=data["province"],
             role=data["role"],

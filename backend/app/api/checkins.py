@@ -16,6 +16,7 @@ from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
 from app.models.training_record import TrainingRecord
+from app.core.data_scope import build_department_group_context
 from app.utils.logger import log_operation
 
 
@@ -420,6 +421,7 @@ def get_checkin_report(
     ).group_by(TrainingRecord.emp_no).all()
     training_map = {emp_no: int(total) for emp_no, total in training_stats}
 
+    _, resolve_dept_group = build_department_group_context(db)
     emp_stats = {}
     attendance_days = {}
     for c in checkins:
@@ -435,6 +437,7 @@ def get_checkin_report(
                 "emp_no": c.emp_no,
                 "name": c.name,
                 "dept": c.dept,
+                "dept_group": resolve_dept_group(c.dept),
                 "team": emp.team if emp else '',
                 "checkin_count": 0,
                 "total_hours": 0.0,

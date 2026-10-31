@@ -30,13 +30,14 @@ const reportData = {
   employees: [], teams: [], groups: [], products: [], days: [],
   options: {
     groups: [], orgs: [], products: [], sources: [],
+    department_groups: ['工单运营组', '客户投诉处理组'],
     team_options: [
-      { dept: DEPT_A, team: '一班1组' },
-      { dept: DEPT_B, team: '一班1组' }
+      { dept: DEPT_A, dept_group: '工单运营组', team: '一班1组' },
+      { dept: DEPT_B, dept_group: '客户投诉处理组', team: '一班1组' }
     ],
     class_options: [
-      { dept: DEPT_A, class_name: '一班' },
-      { dept: DEPT_B, class_name: '一班' }
+      { dept: DEPT_A, dept_group: '工单运营组', class_name: '一班' },
+      { dept: DEPT_B, dept_group: '客户投诉处理组', class_name: '一班' }
     ]
   }
 }
@@ -89,6 +90,21 @@ describe('营销统计班组/班级部门隔离', () => {
     await nextTick()
     expect(state.searchForm.class_key).toBe('')
     expect(state.buildParams()).toMatchObject({ dept: DEPT_B, team: '一班1组' })
+  })
+
+  it('部门组筛选会过滤班组选项并清理不匹配选择', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    state.searchForm.team_key = teamKey(DEPT_B, '一班1组')
+    await nextTick()
+
+    state.searchForm.department_group = '工单运营组'
+    await nextTick()
+
+    expect(state.searchForm.team_key).toBe('')
+    expect(state.filteredTeamOptions.map(item => item.dept)).toEqual([DEPT_A])
+    expect(state.filteredClassOptions.map(item => item.dept)).toEqual([DEPT_A])
+    expect(state.buildParams()).toMatchObject({ department_group: '工单运营组' })
   })
 
   it('图表点击同名班组时使用组合 key 并清空班级', async () => {

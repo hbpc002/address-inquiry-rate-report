@@ -4,7 +4,10 @@
       <template #header>
         <div class="card-header">
           <span>{{ ui.labels.marketing_orders }}</span>
-          <el-button v-if="userStore.hasPermission('marketing.upload')" type="primary" @click="dialogVisible = true">导入营销明细</el-button>
+          <div>
+            <el-button v-if="userStore.hasPermission('marketing.export')" type="success" @click="handleExport">导出营销明细</el-button>
+            <el-button v-if="userStore.hasPermission('marketing.upload')" type="primary" @click="dialogVisible = true">导入营销明细</el-button>
+          </div>
         </div>
       </template>
 
@@ -122,6 +125,7 @@ import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
+import { downloadBlob } from '../utils/download'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
@@ -137,21 +141,28 @@ const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const fileList = ref([])
 const uploadResults = ref([])
 
+function buildSearchParams() {
+  const params = {
+    import_batch: searchForm.batch || undefined,
+    kf_id: searchForm.kf_id || undefined,
+    name: searchForm.name || undefined,
+    org_name: searchForm.org_name || undefined,
+    data_type: searchForm.data_type || undefined,
+    product: searchForm.product || undefined
+  }
+  if (range.value && range.value.length === 2) {
+    params.start_date = range.value[0]
+    params.end_date = range.value[1]
+  }
+  return params
+}
+
 async function loadData() {
   try {
     const params = {
+      ...buildSearchParams(),
       page: pagination.page,
-      limit: pagination.limit,
-      import_batch: searchForm.batch || undefined,
-      kf_id: searchForm.kf_id || undefined,
-      name: searchForm.name || undefined,
-      org_name: searchForm.org_name || undefined,
-      data_type: searchForm.data_type || undefined,
-      product: searchForm.product || undefined
-    }
-    if (range.value && range.value.length === 2) {
-      params.start_date = range.value[0]
-      params.end_date = range.value[1]
+      limit: pagination.limit
     }
     const res = await api.get('/marketing/details', { params })
     tableData.value = res.data.items
@@ -159,6 +170,10 @@ async function loadData() {
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
   }
+}
+
+function handleExport() {
+  downloadBlob('/marketing/details/export', buildSearchParams(), '营销明细.csv')
 }
 
 function handleSearch() {

@@ -714,8 +714,8 @@ class TestMarketingRulesAndExports:
         resp = client.get("/api/marketing/report/export", params={"year_month": "2026-10", "dimension": "team"})
         assert resp.status_code == 200
         text = resp.content.decode("utf-8-sig")
-        assert text.splitlines()[0].startswith("班组,组长,人数,")
-        assert "热线一组,王组长、赵组长," in text
+        assert text.splitlines()[0].startswith("部门组,部门,班组,组长,人数,")
+        assert ",热线一组,王组长、赵组长," in text
 
     def test_import_deduplicates_same_trade_product(self):
         rows = [

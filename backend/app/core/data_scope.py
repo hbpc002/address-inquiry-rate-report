@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.department_group import DepartmentGroup, DepartmentGroupPath
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
 
@@ -173,3 +174,35 @@ def ensure_employee_writable(employee: Employee | None, user: dict) -> Employee:
 def require_all_scope(user: dict, detail: str = "仅全部数据权限的账号可执行该操作", module: str | None = None):
     if not is_all_scope(user, module):
         raise HTTPException(status_code=403, detail=detail)
+
+def build_department_group_context(db: Session, active_only: bool = True):
+    """返回启用部门组名称及 dept -> 部门组名称解析器。
+
+    同一部门命中多个路径时，按最长路径优先；路径相同时按部门组 id 稳定排序。
+    """
+    query = db.query(
+        DepartmentGroupPath.path,
+        DepartmentGroup.name,
+        DepartmentGroup.id,
+    ).join(DepartmentGroup, DepartmentGroup.id == DepartmentGroupPath.group_id)
+    if active_only:
+        query = query.filter(DepartmentGroup.is_active.is_(True))
+    entries = query.all()
+    entries.sort(key=lambda item: (-len((item[0] or "").strip()), item[2]))
+    paths = [
+        ((path or "").strip(), name)
+        for path, name, _ in entries
+        if (path or "").strip() and name
+    ]
+    names = sorted({name for _, name in paths})
+
+    def resolve(dept: str | None) -> str:
+        target = (dept or "").strip()
+        if not target:
+            return ""
+        for path, name in paths:
+            if target.startswith(path):
+                return name
+        return ""
+
+    return names, resolve
