@@ -232,7 +232,7 @@ async function loadData() {
 }
 
 function formatTeamName(row) {
-  const team = row.team_label || row.team
+  const team = row.team || ''
   return row.leader ? `${team}（${row.leader}）` : team
 }
 

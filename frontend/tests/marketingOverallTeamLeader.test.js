@@ -42,15 +42,30 @@ const reportData = {
   key_product_rows: [
     {
       work_group: '热线',
+      dept: '广西分公司>>A部门',
+      dept_group: '第一部门组',
       team: '热线一组',
       leader: '王组长、赵组长',
-      rowspan: 3,
+      rowspan: 4,
       counts: { key_product_0: 2 },
       total: 2,
       is_subtotal: false
     },
     {
       work_group: '热线',
+      dept: '广西分公司>>B部门',
+      dept_group: '第二部门组',
+      team: '热线一组',
+      leader: '李组长',
+      rowspan: 0,
+      counts: { key_product_0: 1 },
+      total: 1,
+      is_subtotal: false
+    },
+    {
+      work_group: '热线',
+      dept: '',
+      dept_group: '',
       team: '未分班组',
       leader: '',
       rowspan: 0,
@@ -60,14 +75,16 @@ const reportData = {
     },
     {
       work_group: '热线',
+      dept: '',
+      dept_group: '',
       team: '小计',
       rowspan: 0,
-      counts: { key_product_0: 3 },
-      total: 3,
+      counts: { key_product_0: 4 },
+      total: 4,
       is_subtotal: true
     }
   ],
-  key_product_total_row: { counts: { key_product_0: 3 }, total: 3 },
+  key_product_total_row: { counts: { key_product_0: 4 }, total: 4 },
   data_ranges: { database: {}, query: {} }
 }
 
@@ -98,12 +115,13 @@ describe('总体营销重点业务产品班组组长显示', () => {
     api.get.mockResolvedValue({ data: reportData })
   })
 
-  it('班组名称后显示组长，多个组长用顿号拼接', async () => {
+  it('重名班组只显示班组和组长，不显示部门组后缀', async () => {
     const wrapper = await mountPage()
     const rows = wrapper.findAll('.key-product-table tbody tr')
 
     expect(rows[0].find('.team-col').text()).toBe('热线一组（王组长、赵组长）')
-    expect(rows[1].find('.team-col').text()).toBe('未分班组')
-    expect(rows[2].find('.team-col').text()).toBe('小计')
+    expect(rows[1].find('.team-col').text()).toBe('热线一组（李组长）')
+    expect(rows[2].find('.team-col').text()).toBe('未分班组')
+    expect(rows[3].find('.team-col').text()).toBe('小计')
   })
 })
