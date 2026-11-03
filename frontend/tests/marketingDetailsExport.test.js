@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 vi.mock('../src/stores/user', () => {
   const get = vi.fn()
@@ -44,11 +45,31 @@ const stubs = {
   'el-tag': { template: '<span><slot /></span>' }
 }
 
+const DEPT_A = '广西分公司>>省中心>>客户服务营销中心>>A部门'
+const DEPT_B = '广西分公司>>省中心>>客户服务营销中心>>B部门'
+
+function reportData() {
+  return {
+    items: [],
+    total: 0,
+    options: {
+      team_options: [
+        { dept: DEPT_A, dept_group: '一组', team: '一班1组' },
+        { dept: DEPT_B, dept_group: '二组', team: '一班1组' }
+      ],
+      class_options: [
+        { dept: DEPT_A, dept_group: '一组', class_name: '一班' },
+        { dept: DEPT_B, dept_group: '二组', class_name: '一班' }
+      ]
+    }
+  }
+}
+
 describe('营销明细导出', () => {
   beforeEach(() => {
     api.get.mockReset()
     api.post.mockReset()
-    api.get.mockResolvedValue({ data: { items: [], total: 0 } })
+    api.get.mockResolvedValue({ data: reportData() })
     downloadBlob.mockReset()
   })
 
@@ -70,6 +91,32 @@ describe('营销明细导出', () => {
         start_date: '2026-10-01',
         end_date: '2026-10-31'
       },
+      '营销明细.csv'
+    )
+  })
+
+  it('班组与班级筛选按部门组合参数导出', async () => {
+    const wrapper = mount(MarketingDetails, { global: { stubs } })
+    await flushPromises()
+    const state = wrapper.vm.$.setupState
+
+    state.searchForm.team_key = `${DEPT_A}\u0001一班1组`
+    await nextTick()
+    state.handleExport()
+    expect(downloadBlob).toHaveBeenLastCalledWith(
+      '/marketing/details/export',
+      { dept: DEPT_A, team: '一班1组' },
+      '营销明细.csv'
+    )
+
+    state.searchForm.class_key = `${DEPT_B}\u0001一班`
+    await flushPromises()
+    await nextTick()
+    expect(state.searchForm.team_key).toBe('')
+    state.handleExport()
+    expect(downloadBlob).toHaveBeenLastCalledWith(
+      '/marketing/details/export',
+      { dept: DEPT_B, class_name: '一班' },
       '营销明细.csv'
     )
   })

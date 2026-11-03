@@ -1336,6 +1336,9 @@ def _details_query(
     service_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
     data_type: Optional[str] = None,
+    dept: Optional[str] = None,
+    team: Optional[str] = None,
+    class_name: Optional[str] = None,
 ):
     query = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing")
     if import_batch:
@@ -1352,6 +1355,19 @@ def _details_query(
         query = query.filter(MarketingDetail.kf_id.ilike(f"%{kf_id}%"))
     if name:
         emp_nos = [e[0] for e in db.query(Employee.emp_no).filter(Employee.name.ilike(f"%{name}%")).all()]
+        if not emp_nos:
+            return query.filter(MarketingDetail.id == -1)
+        query = query.filter(MarketingDetail.kf_id.in_(emp_nos))
+    if dept or team or class_name:
+        emp_query = db.query(Employee)
+        if dept:
+            emp_query = emp_query.filter(Employee.dept == dept)
+        if team:
+            emp_query = emp_query.filter(Employee.team == team)
+        emps = emp_query.all()
+        if class_name:
+            emps = [e for e in emps if _extract_class(e.team) == class_name]
+        emp_nos = [e.emp_no for e in emps if e.emp_no]
         if not emp_nos:
             return query.filter(MarketingDetail.id == -1)
         query = query.filter(MarketingDetail.kf_id.in_(emp_nos))
@@ -1426,6 +1442,54 @@ def _detail_serialize(
     }
 
 
+def _details_options(
+    db: Session,
+    current_user: dict,
+    import_batch: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    data_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    query = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing")
+    if import_batch:
+        query = query.filter(MarketingDetail.import_batch == import_batch)
+    if data_type in (SOURCE_XSZB, SOURCE_FWGD):
+        query = query.filter(_source_condition(data_type))
+    start = _date_param(start_date)
+    end = _date_param(end_date)
+    if start:
+        query = query.filter(MarketingDetail.finish_date >= start)
+    if end:
+        query = query.filter(MarketingDetail.finish_date <= end)
+
+    kf_ids = [row[0] for row in query.with_entities(MarketingDetail.kf_id).distinct().all()]
+    emps = _emp_map(db)
+    _, resolve_dept_group = build_department_group_context(db)
+    team_options = set()
+    class_options = set()
+    for kf_id in kf_ids:
+        emp = emps.get(_norm_emp_no(kf_id))
+        team = (emp.team or "").strip() if emp else ""
+        if not team:
+            continue
+        dept = (emp.dept or "").strip()
+        dept_group = resolve_dept_group(dept)
+        team_options.add((dept, dept_group, team))
+        class_name = _extract_class(team)
+        if class_name:
+            class_options.add((dept, dept_group, class_name))
+    return {
+        "team_options": [
+            {"dept": dept_value, "dept_group": group_value, "team": team_value}
+            for dept_value, group_value, team_value in sorted(team_options)
+        ],
+        "class_options": [
+            {"dept": dept_value, "dept_group": group_value, "class_name": class_value}
+            for dept_value, group_value, class_value in sorted(class_options)
+        ],
+    }
+
+
 @router.get("/details", response_model=dict)
 def get_details(
     page: int = Query(1, ge=1),
@@ -1440,13 +1504,16 @@ def get_details(
     service_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
     data_type: Optional[str] = None,
+    dept: Optional[str] = None,
+    team: Optional[str] = None,
+    class_name: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.view")
     query = _details_query(
         db, current_user, import_batch, start_date, end_date, kf_id, name, org_name,
-        product, service_type, lh_qh, data_type,
+        product, service_type, lh_qh, data_type, dept, team, class_name,
     )
 
     total = query.count()
@@ -1463,7 +1530,11 @@ def get_details(
         _detail_serialize(detail, emps, config, org_map, cache, resolve_dept_group)
         for detail in items
     ]
-    return {"items": result, "total": total}
+    return {
+        "items": result,
+        "total": total,
+        "options": _details_options(db, current_user, import_batch, start_date, end_date, data_type),
+    }
 
 
 @router.get("/details/export")
@@ -1478,13 +1549,16 @@ def export_details(
     service_type: Optional[str] = None,
     lh_qh: Optional[str] = None,
     data_type: Optional[str] = None,
+    dept: Optional[str] = None,
+    team: Optional[str] = None,
+    class_name: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.export")
     query = _details_query(
         db, current_user, import_batch, start_date, end_date, kf_id, name, org_name,
-        product, service_type, lh_qh, data_type,
+        product, service_type, lh_qh, data_type, dept, team, class_name,
     )
     items = query.order_by(MarketingDetail.finish_date.desc(), MarketingDetail.id.desc()).all()
 

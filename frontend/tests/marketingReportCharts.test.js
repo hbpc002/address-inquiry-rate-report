@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 vi.mock('../src/stores/user', () => {
   const get = vi.fn()
@@ -55,12 +56,12 @@ const reportData = {
   ],
   teams: [
     {
-      team: '热线一组', leader: '王组长', people: 1, total: 40, order_count: 20,
+      team: '热线一组', dept: '客服部', leader: '王组长', people: 1, total: 40, order_count: 20,
       inbound: 30, outbound: 10, overlay: 28, package_change: 8,
       overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4
     },
     {
-      team: '热线二组', leader: '赵组长', people: 1, total: 60, order_count: 40,
+      team: '热线二组', dept: '客服部', leader: '赵组长', people: 1, total: 60, order_count: 40,
       inbound: 40, outbound: 10, overlay: 42, package_change: 12,
       overlay_day: 6, overlay_month: 18, overlay_long: 12, overlay_undefined: 6
     }
@@ -168,6 +169,31 @@ describe('营销统计图表区域', () => {
     await flushPromises()
     titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
     expect(titles).toContain('班组来话/去话结构')
+  })
+
+  it('点击班组后五张图表切换为组员口径，再点返回班组', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+
+    state.handleTeamChartClick({ data: { team_key: state.teamItems.find(item => item.team === '热线一组').team_key } })
+    await flushPromises()
+
+    expect(state.teamDrillActive).toBe(true)
+    expect(state.teamMemberItems.map(item => item.name)).toEqual(['张三'])
+    let titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
+    expect(titles).toEqual([
+      '热线一组 组员产品办理量排行',
+      '热线一组 组员业务结构',
+      '热线一组 组员叠加包有效期结构',
+      '热线一组 组员多指标雷达',
+      '热线一组 组员办理量与订单数分布'
+    ])
+
+    state.handleTeamChartClick({ name: '张三', data: { kf_id: 'KF001' } })
+    await nextTick()
+    expect(state.teamDrillActive).toBe(false)
+    titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
+    expect(titles[0]).toBe('班组产品办理量排行')
   })
 
   it('班组分析存在正常班组时过滤未匹配班组', async () => {

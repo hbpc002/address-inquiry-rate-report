@@ -44,12 +44,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px">
+          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px" @change="handleTeamFilterChange">
             <el-option v-for="t in filteredTeamOptions" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
           </el-select>
         </el-form-item>
         <el-form-item label="班级">
-          <el-select v-model="searchForm.class_key" placeholder="全部班级" clearable filterable style="width: 180px">
+          <el-select v-model="searchForm.class_key" placeholder="全部班级" clearable filterable style="width: 180px" @change="handleClassFilterChange">
             <el-option v-for="c in filteredClassOptions" :key="c.class_key" :label="c.class_label" :value="c.class_key" />
           </el-select>
         </el-form-item>
@@ -114,6 +114,7 @@
             <el-select v-model="teamLimit" size="small" style="width: 90px">
               <el-option v-for="limit in topLimits" :key="limit" :label="String(limit)" :value="limit" />
             </el-select>
+            <span v-if="teamDrillActive" class="drill-hint">当前：{{ drillTeamLabel }} 组员，点击图表返回班组</span>
           </div>
           <el-row :gutter="16">
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
@@ -123,22 +124,22 @@
             </el-col>
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
               <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamStructureOptions" height="300px" />
+                <Echart :options="teamStructureOptions" height="300px" @click="handleTeamChartClick" />
               </el-card>
             </el-col>
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
               <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamValidOptions" height="300px" />
+                <Echart :options="teamValidOptions" height="300px" @click="handleTeamChartClick" />
               </el-card>
             </el-col>
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
               <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamRadarOptions" height="320px" />
+                <Echart :options="teamRadarOptions" height="320px" @click="handleTeamChartClick" />
               </el-card>
             </el-col>
             <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
               <el-card shadow="hover" class="chart-card">
-                <Echart :options="teamScatterOptions" height="320px" />
+                <Echart :options="teamScatterOptions" height="320px" @click="handleTeamChartClick" />
               </el-card>
             </el-col>
           </el-row>
@@ -263,16 +264,19 @@ import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import { downloadBlob } from '../utils/download'
-import { decorateClassOptions, decorateTeamOptions, decorateTeamRows, findClassOption, findTeamOption } from '../utils/teamIdentity'
+import { decorateClassOptions, decorateTeamOptions, decorateTeamRows, findClassOption, findTeamOption, teamKey } from '../utils/teamIdentity'
 import Echart from '../components/Echart.vue'
 import {
   RANKING_METRICS,
   TOP_LIMITS,
+  enrichEmployees,
   enrichTeams,
   enrichGroups,
   enrichProducts,
   filterMatchedTeams,
+  metricLabel,
   buildTeamRankingOptions,
+  buildEmployeeRankingOptions,
   buildProductRankingOptions,
   buildGroupRankingOptions,
   buildBusinessCrossOptions,
@@ -284,7 +288,9 @@ import {
   buildDailyValidOptions,
   buildDailyOrderRateOptions,
   buildTeamScatterOptions,
-  buildTeamRadarOptions
+  buildEmployeeScatterOptions,
+  buildTeamRadarOptions,
+  buildMemberRadarOptions
 } from '../utils/marketingCharts'
 
 const userStore = useUserStore()
@@ -332,6 +338,7 @@ const chartSection = ref('team')
 const teamMetric = ref('total')
 const teamStructureKind = ref('business')
 const teamLimit = ref(10)
+const drillTeamKey = ref('')
 const TEAM_RANKING_KEYS = ['total', 'avg_total', 'avg_order', 'order_rate']
 const teamRankingMetrics = RANKING_METRICS.filter(item => TEAM_RANKING_KEYS.includes(item.key))
 const topLimits = TOP_LIMITS
@@ -341,28 +348,67 @@ const groupItems = computed(() => enrichGroups(result.value.groups || []))
 const productItems = computed(() => enrichProducts(result.value.products || []))
 const dayItems = computed(() => result.value.days || [])
 
-const teamRankingOptions = computed(() => buildTeamRankingOptions(teamItems.value, {
-  metric: teamMetric.value,
-  limit: teamLimit.value
-}))
-const teamStructureOptions = computed(() => {
-  if (teamStructureKind.value === 'lh') {
-    return buildLhCrossOptions(teamItems.value, {
-      title: '班组来话/去话结构',
-      limit: teamLimit.value
+const drillTeam = computed(() => decoratedTeams.value.find(item => item.team_key === drillTeamKey.value) || null)
+const drillTeamLabel = computed(() => drillTeam.value?.team_label || drillTeam.value?.team || '')
+const teamDrillActive = computed(() => Boolean(drillTeamKey.value))
+const teamMemberItems = computed(() => {
+  if (!drillTeamKey.value) return []
+  const members = (result.value.employees || []).filter(item => teamKey(item.dept, item.team) === drillTeamKey.value)
+  return enrichEmployees(members)
+})
+
+const teamRankingOptions = computed(() => {
+  if (teamDrillActive.value) {
+    return buildEmployeeRankingOptions(teamMemberItems.value, {
+      metric: teamMetric.value,
+      limit: teamLimit.value,
+      title: `${drillTeamLabel.value} 组员${metricLabel(teamMetric.value)}排行`
     })
   }
-  return buildBusinessCrossOptions(teamItems.value, {
-    title: '班组业务结构',
+  return buildTeamRankingOptions(teamItems.value, {
+    metric: teamMetric.value,
     limit: teamLimit.value
   })
 })
-const teamValidOptions = computed(() => buildValidCrossOptions(teamItems.value, {
-  title: '班组叠加包有效期结构',
-  limit: teamLimit.value
-}))
-const teamRadarOptions = computed(() => buildTeamRadarOptions(teamItems.value, { limit: 8 }))
-const teamScatterOptions = computed(() => buildTeamScatterOptions(teamItems.value))
+const teamStructureOptions = computed(() => {
+  const items = teamDrillActive.value ? teamMemberItems.value : teamItems.value
+  const prefix = teamDrillActive.value ? `${drillTeamLabel.value} 组员` : '班组'
+  if (teamStructureKind.value === 'lh') {
+    return buildLhCrossOptions(items, {
+      title: `${prefix}来话/去话结构`,
+      limit: teamLimit.value
+    })
+  }
+  return buildBusinessCrossOptions(items, {
+    title: `${prefix}业务结构`,
+    limit: teamLimit.value
+  })
+})
+const teamValidOptions = computed(() => {
+  const items = teamDrillActive.value ? teamMemberItems.value : teamItems.value
+  const prefix = teamDrillActive.value ? `${drillTeamLabel.value} 组员` : '班组'
+  return buildValidCrossOptions(items, {
+    title: `${prefix}叠加包有效期结构`,
+    limit: teamLimit.value
+  })
+})
+const teamRadarOptions = computed(() => {
+  if (teamDrillActive.value) {
+    return buildMemberRadarOptions(teamMemberItems.value, {
+      title: `${drillTeamLabel.value} 组员多指标雷达`,
+      limit: 8
+    })
+  }
+  return buildTeamRadarOptions(teamItems.value, { limit: 8 })
+})
+const teamScatterOptions = computed(() => {
+  if (teamDrillActive.value) {
+    return buildEmployeeScatterOptions(teamMemberItems.value, {
+      title: `${drillTeamLabel.value} 组员办理量与订单数分布`
+    })
+  }
+  return buildTeamScatterOptions(teamItems.value)
+})
 
 const dailyTrendOptions = computed(() => buildDailyTrendOptions(dayItems.value))
 const dailyBusinessOptions = computed(() => buildDailyBusinessOptions(dayItems.value))
@@ -463,11 +509,25 @@ function resetFilters() {
 }
 
 function handleTeamChartClick(params) {
+  if (drillTeamKey.value) {
+    if (params?.name || params?.data) drillTeamKey.value = ''
+    return
+  }
   const teamData = params?.data || {}
-  const key = teamData.team_key || decoratedTeams.value.find(item => item.team_label === params?.name)?.team_key
+  const key = teamData.team_key || decoratedTeams.value.find(item => item.team_label === params?.name || item.team === params?.name)?.team_key
   if (!key) return
-  searchForm.class_key = ''
-  searchForm.team_key = key
+  drillTeamKey.value = key
+}
+
+function handleTeamFilterChange(value) {
+  drillTeamKey.value = ''
+  if (value) searchForm.class_key = ''
+  loadData()
+}
+
+function handleClassFilterChange(value) {
+  drillTeamKey.value = ''
+  if (value) searchForm.team_key = ''
   loadData()
 }
 
@@ -487,6 +547,12 @@ watch(() => searchForm.department_group, (value) => {
   if (team && team.dept_group !== value) searchForm.team_key = ''
   const className = findClassOption(options.class_options, searchForm.class_key)
   if (className && className.dept_group !== value) searchForm.class_key = ''
+})
+
+watch(decoratedTeams, (teams) => {
+  if (drillTeamKey.value && !teams.some(item => item.team_key === drillTeamKey.value)) {
+    drillTeamKey.value = ''
+  }
 })
 
 onMounted(loadData)
@@ -532,6 +598,9 @@ onMounted(loadData)
   margin-bottom: 12px;
   color: #606266;
   font-size: 13px;
+}
+.drill-hint {
+  color: #409eff;
 }
 .chart-col {
   margin-bottom: 16px;

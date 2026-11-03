@@ -107,7 +107,26 @@ describe('营销统计班组/班级部门隔离', () => {
     expect(state.buildParams()).toMatchObject({ department_group: '工单运营组' })
   })
 
-  it('图表点击同名班组时使用组合 key 并清空班级', async () => {
+  it('清空班组或班级筛选后自动重新查询', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    const initialCalls = api.get.mock.calls.length
+
+    state.searchForm.team_key = teamKey(DEPT_A, '一班1组')
+    await nextTick()
+    state.handleTeamFilterChange('')
+    await flushPromises()
+    expect(api.get.mock.calls.length).toBeGreaterThan(initialCalls)
+
+    const callsAfterTeam = api.get.mock.calls.length
+    state.searchForm.class_key = classKey(DEPT_A, '一班')
+    await nextTick()
+    state.handleClassFilterChange('')
+    await flushPromises()
+    expect(api.get.mock.calls.length).toBeGreaterThan(callsAfterTeam)
+  })
+
+  it('图表点击同名班组时使用组合 key 下钻，再点返回班组且不改顶部筛选', async () => {
     const wrapper = await mountPage()
     const state = wrapper.vm.$.setupState
     state.searchForm.class_key = classKey(DEPT_A, '一班')
@@ -116,7 +135,12 @@ describe('营销统计班组/班级部门隔离', () => {
     state.handleTeamChartClick({ data: { team_key: teamKey(DEPT_B, '一班1组') } })
     await flushPromises()
 
-    expect(state.searchForm.team_key).toBe(teamKey(DEPT_B, '一班1组'))
-    expect(state.searchForm.class_key).toBe('')
+    expect(state.drillTeamKey).toBe(teamKey(DEPT_B, '一班1组'))
+    expect(state.searchForm.team_key).toBe('')
+    expect(state.searchForm.class_key).toBe(classKey(DEPT_A, '一班'))
+
+    state.handleTeamChartClick({ name: 'A组员', data: { kf_id: 'A002' } })
+    await nextTick()
+    expect(state.drillTeamKey).toBe('')
   })
 })

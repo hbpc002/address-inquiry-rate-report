@@ -629,27 +629,27 @@ export function buildEmployeeScatterOptions(employees = [], { title = '员工办
   }
 }
 
-export function buildTeamRadarOptions(teams = [], { limit = 8 } = {}) {
-  const items = enrichTeams(teams)
+function buildRadarOptions(items, { title, limit = 8, nameKey = 'team' } = {}) {
+  const sorted = [...items]
     .sort((a, b) => toNumber(b.total) - toNumber(a.total))
     .slice(0, limit)
   const indicators = [
-    { name: '办理量', max: Math.max(1, ...items.map(item => toNumber(item.total))) },
-    { name: '订单数', max: Math.max(1, ...items.map(item => toNumber(item.order_count))) },
-    { name: '来话', max: Math.max(1, ...items.map(item => toNumber(item.inbound))) },
-    { name: '去话', max: Math.max(1, ...items.map(item => toNumber(item.outbound))) },
-    { name: '叠加包', max: Math.max(1, ...items.map(item => toNumber(item.overlay))) },
-    { name: '套餐变更', max: Math.max(1, ...items.map(item => toNumber(item.package_change))) }
+    { name: '办理量', max: Math.max(1, ...sorted.map(item => toNumber(item.total))) },
+    { name: '订单数', max: Math.max(1, ...sorted.map(item => toNumber(item.order_count))) },
+    { name: '来话', max: Math.max(1, ...sorted.map(item => toNumber(item.inbound))) },
+    { name: '去话', max: Math.max(1, ...sorted.map(item => toNumber(item.outbound))) },
+    { name: '叠加包', max: Math.max(1, ...sorted.map(item => toNumber(item.overlay))) },
+    { name: '套餐变更', max: Math.max(1, ...sorted.map(item => toNumber(item.package_change))) }
   ]
   return {
-    title: { text: '班组多指标雷达', left: 'center', textStyle: { fontSize: 14 } },
+    title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'item' },
     legend: { bottom: 0, type: 'scroll' },
     radar: { indicator: indicators, radius: '58%' },
     series: [{
       type: 'radar',
-      data: items.map((item, index) => ({
-        name: item.team,
+      data: sorted.map((item, index) => ({
+        name: item[nameKey],
         value: [
           toNumber(item.total),
           toNumber(item.order_count),
@@ -662,4 +662,12 @@ export function buildTeamRadarOptions(teams = [], { limit = 8 } = {}) {
       }))
     }]
   }
+}
+
+export function buildTeamRadarOptions(teams = [], { limit = 8 } = {}) {
+  return buildRadarOptions(enrichTeams(teams), { title: '班组多指标雷达', limit, nameKey: 'team' })
+}
+
+export function buildMemberRadarOptions(members = [], { title = '组员多指标雷达', limit = 8 } = {}) {
+  return buildRadarOptions(enrichEmployees(members), { title, limit, nameKey: 'displayName' })
 }

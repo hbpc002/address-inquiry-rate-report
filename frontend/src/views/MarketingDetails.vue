@@ -24,6 +24,16 @@
         <el-form-item label="组织">
           <el-input v-model="searchForm.org_name" placeholder="组织关键词" clearable style="width: 150px" />
         </el-form-item>
+        <el-form-item label="班组">
+          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px">
+            <el-option v-for="t in teamOptions" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班级">
+          <el-select v-model="searchForm.class_key" placeholder="全部班级" clearable filterable style="width: 180px">
+            <el-option v-for="c in classOptions" :key="c.class_key" :label="c.class_label" :value="c.class_key" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="数据来源">
           <el-select v-model="searchForm.data_type" placeholder="全部来源" clearable style="width: 120px">
             <el-option label="线上直办" value="xszb" />
@@ -120,12 +130,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { downloadBlob } from '../utils/download'
+import { decorateClassOptions, decorateTeamOptions, findClassOption, findTeamOption } from '../utils/teamIdentity'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
@@ -135,7 +146,9 @@ const uploading = ref(false)
 const deleteByDateVisible = ref(false)
 const deleteDate = ref('')
 const deletingByDate = ref(false)
-const searchForm = reactive({ batch: '', kf_id: '', name: '', org_name: '', data_type: '', product: '' })
+const searchForm = reactive({ batch: '', kf_id: '', name: '', org_name: '', data_type: '', product: '', team_key: '', class_key: '' })
+const teamOptions = ref([])
+const classOptions = ref([])
 const range = ref('')
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const fileList = ref([])
@@ -149,6 +162,15 @@ function buildSearchParams() {
     org_name: searchForm.org_name || undefined,
     data_type: searchForm.data_type || undefined,
     product: searchForm.product || undefined
+  }
+  const team = findTeamOption(teamOptions.value, searchForm.team_key)
+  const className = findClassOption(classOptions.value, searchForm.class_key)
+  if (team) {
+    params.dept = team.dept || undefined
+    params.team = team.team
+  } else if (className) {
+    params.dept = className.dept || undefined
+    params.class_name = className.class_name
   }
   if (range.value && range.value.length === 2) {
     params.start_date = range.value[0]
@@ -167,6 +189,8 @@ async function loadData() {
     const res = await api.get('/marketing/details', { params })
     tableData.value = res.data.items
     pagination.total = res.data.total
+    teamOptions.value = decorateTeamOptions(res.data.options?.team_options || [])
+    classOptions.value = decorateClassOptions(res.data.options?.class_options || [])
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')
   }
@@ -188,10 +212,19 @@ function resetSearch() {
   searchForm.org_name = ''
   searchForm.data_type = ''
   searchForm.product = ''
+  searchForm.team_key = ''
+  searchForm.class_key = ''
   range.value = ''
   pagination.page = 1
   loadData()
 }
+
+watch(() => searchForm.team_key, (value) => {
+  if (value) searchForm.class_key = ''
+})
+watch(() => searchForm.class_key, (value) => {
+  if (value) searchForm.team_key = ''
+})
 
 function handleFileChange(file, files) {
   fileList.value = files.map(f => ({ name: f.name, raw: f.raw }))

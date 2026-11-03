@@ -13,6 +13,7 @@ import {
   buildDailyBusinessOptions,
   buildTeamScatterOptions,
   buildTeamRadarOptions,
+  buildMemberRadarOptions,
   buildValidCrossOptions,
   filterMatchedTeams
 } from '../src/utils/marketingCharts'
@@ -246,6 +247,12 @@ describe('营销统计图表数据构建', () => {
     expect(target.value).toEqual([10, 80, 3])
     expect(options.xAxis.name).toBe('人均办理量')
     expect(options.yAxis.name).toBe('订单覆盖率(%)')
+  })
+
+  it('组员雷达图应以员工姓名区分成员', () => {
+    const options = buildMemberRadarOptions(employees, { title: '热线一组 组员多指标雷达' })
+    expect(options.title.text).toBe('热线一组 组员多指标雷达')
+    expect(options.series[0].data.map(item => item.name)).toEqual(['赵六', '王五'])
   })
 
   it('班组雷达图应包含六个对比指标', () => {

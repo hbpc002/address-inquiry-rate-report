@@ -164,7 +164,7 @@ def test_team_options_and_leaders_are_scoped_by_dept():
 
 
 def test_marketing_team_rows_and_leaders_do_not_cross_depts():
-    res = client.get("/api/marketing/report", params={"date": DAY.isoformat()}, headers=auth_header())
+    res = client.get("/api/marketing/report", params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat()}, headers=auth_header())
     assert res.status_code == 200
     data = res.json()
     teams = [item for item in data["teams"] if item["team"] == TEAM]
@@ -196,7 +196,7 @@ def test_marketing_overall_key_product_rows_are_scoped_by_dept():
 def test_marketing_dept_and_class_filters_are_scoped():
     dept_res = client.get(
         "/api/marketing/report",
-        params={"date": DAY.isoformat(), "dept": DEPT_A, "class_name": "一班"},
+        params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat(), "dept": DEPT_A, "class_name": "一班"},
         headers=auth_header(),
     )
     assert dept_res.status_code == 200
@@ -211,7 +211,7 @@ def test_marketing_dept_and_class_filters_are_scoped():
 def test_marketing_department_group_filter():
     res = client.get(
         "/api/marketing/report",
-        params={"date": DAY.isoformat(), "department_group": GROUP_A},
+        params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat(), "department_group": GROUP_A},
         headers=auth_header(),
     )
     assert res.status_code == 200
@@ -234,6 +234,43 @@ def test_marketing_details_export_csv():
     exported = {row[2]: row for row in rows[1:]}
     assert exported["A002"][4] == GROUP_A
     assert exported["B002"][4] == GROUP_B
+
+
+def test_marketing_details_team_and_class_filters():
+    team_res = client.get(
+        "/api/marketing/details",
+        params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat(), "dept": DEPT_A, "team": TEAM},
+        headers=auth_header(),
+    )
+    assert team_res.status_code == 200
+    team_data = team_res.json()
+    assert team_data["total"] == 1
+    assert [item["kf_id"] for item in team_data["items"]] == ["A002"]
+    assert {(item["dept"], item["dept_group"], item["team"]) for item in team_data["options"]["team_options"]} == {
+        (DEPT_A, GROUP_A, TEAM), (DEPT_B, GROUP_B, TEAM)
+    }
+    assert {(item["dept"], item["dept_group"], item["class_name"]) for item in team_data["options"]["class_options"]} == {
+        (DEPT_A, GROUP_A, "一班"), (DEPT_B, GROUP_B, "一班")
+    }
+
+    class_res = client.get(
+        "/api/marketing/details",
+        params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat(), "dept": DEPT_B, "class_name": "一班"},
+        headers=auth_header(),
+    )
+    assert class_res.status_code == 200
+    class_data = class_res.json()
+    assert class_data["total"] == 1
+    assert [item["kf_id"] for item in class_data["items"]] == ["B002"]
+
+    export_res = client.get(
+        "/api/marketing/details/export",
+        params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat(), "dept": DEPT_A, "class_name": "一班"},
+        headers=auth_header(),
+    )
+    assert export_res.status_code == 200
+    rows = list(csv.reader(io.StringIO(export_res.content.decode("utf-8-sig"))))
+    assert [row[2] for row in rows[1:]] == ["A002"]
 
 
 def test_checkin_report_filters_by_dept():
