@@ -4,7 +4,8 @@ import {
   createPieOptions,
   createHorizontalBarOptions,
   createStackedBarOptions,
-  createMultiLineOptions
+  createMultiLineOptions,
+  layerTooltip
 } from './echarts'
 
 export const RANKING_METRICS = [
@@ -345,7 +346,7 @@ export function buildParetoOptions(items = [], {
       { type: 'slider', height: 16, bottom: 28 }
     ]
   }
-  return option
+  return layerTooltip(option)
 }
 
 function businessValues(item) {
@@ -641,7 +642,7 @@ function buildRadarOptions(items, { title, limit = 8, nameKey = 'team' } = {}) {
     { name: '叠加包', max: Math.max(1, ...sorted.map(item => toNumber(item.overlay))) },
     { name: '套餐变更', max: Math.max(1, ...sorted.map(item => toNumber(item.package_change))) }
   ]
-  return {
+  return layerTooltip({
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'item' },
     legend: { bottom: 0, type: 'scroll' },
@@ -661,7 +662,7 @@ function buildRadarOptions(items, { title, limit = 8, nameKey = 'team' } = {}) {
         itemStyle: { color: CHART_COLORS[index % CHART_COLORS.length] }
       }))
     }]
-  }
+  })
 }
 
 export function buildTeamRadarOptions(teams = [], { limit = 8 } = {}) {

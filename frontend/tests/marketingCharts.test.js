@@ -249,10 +249,12 @@ describe('营销统计图表数据构建', () => {
     expect(options.yAxis.name).toBe('订单覆盖率(%)')
   })
 
-  it('组员雷达图应以员工姓名区分成员', () => {
+  it('组员雷达图应以员工姓名区分成员并挂载顶层 tooltip', () => {
     const options = buildMemberRadarOptions(employees, { title: '热线一组 组员多指标雷达' })
     expect(options.title.text).toBe('热线一组 组员多指标雷达')
     expect(options.series[0].data.map(item => item.name)).toEqual(['赵六', '王五'])
+    expect(options.tooltip.appendToBody).toBe(true)
+    expect(options.tooltip.confine).toBe(false)
   })
 
   it('班组雷达图应包含六个对比指标', () => {

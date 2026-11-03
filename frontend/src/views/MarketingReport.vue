@@ -211,7 +211,7 @@
         </template>
       </div>
 
-      <el-tabs v-model="dimension" @tab-change="loadData">
+      <el-tabs v-model="dimension" @tab-change="handleDimensionChange">
         <el-tab-pane label="员工" name="employee" />
         <el-tab-pane label="班组" name="team" />
         <el-tab-pane label="行分类" name="group" />
@@ -219,7 +219,7 @@
         <el-tab-pane label="按日趋势" name="day" />
       </el-tabs>
 
-      <el-table :data="tableData" border stripe max-height="calc(100vh - 520px)">
+      <el-table v-loading="drillLoading" :data="tableData" border stripe max-height="calc(100vh - 520px)">
         <template v-if="dimension === 'employee'">
           <el-table-column prop="kf_id" label="客服工号" width="120" sortable />
           <el-table-column prop="name" label="姓名" width="90" sortable />
@@ -333,12 +333,14 @@ const filteredClassOptions = computed(() => searchForm.department_group
 const decoratedTeams = computed(() => decorateTeamRows(result.value.teams || []))
 const dimension = ref('employee')
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', group: 'groups', product: 'products', day: 'days' }[dimension.value]))
-const tableData = computed(() => dimension.value === 'team' ? decoratedTeams.value : (result.value[dimensionKey.value] || []))
 const chartSection = ref('team')
 const teamMetric = ref('total')
 const teamStructureKind = ref('business')
 const teamLimit = ref(10)
 const drillTeamKey = ref('')
+const drillResult = ref(null)
+const drillLoading = ref(false)
+let drillRequestId = 0
 const TEAM_RANKING_KEYS = ['total', 'avg_total', 'avg_order', 'order_rate']
 const teamRankingMetrics = RANKING_METRICS.filter(item => TEAM_RANKING_KEYS.includes(item.key))
 const topLimits = TOP_LIMITS
@@ -355,6 +357,20 @@ const teamMemberItems = computed(() => {
   if (!drillTeamKey.value) return []
   const members = (result.value.employees || []).filter(item => teamKey(item.dept, item.team) === drillTeamKey.value)
   return enrichEmployees(members)
+})
+
+const tableData = computed(() => {
+  if (teamDrillActive.value) {
+    if (drillResult.value) {
+      return dimension.value === 'team'
+        ? decorateTeamRows(drillResult.value.teams || [])
+        : (drillResult.value[dimensionKey.value] || [])
+    }
+    if (dimension.value === 'employee') return teamMemberItems.value
+    if (dimension.value === 'team') return decorateTeamRows(decoratedTeams.value.filter(item => item.team_key === drillTeamKey.value))
+    return []
+  }
+  return dimension.value === 'team' ? decoratedTeams.value : (result.value[dimensionKey.value] || [])
 })
 
 const teamRankingOptions = computed(() => {
@@ -469,7 +485,35 @@ function buildParams() {
   return params
 }
 
+function clearTeamDrill() {
+  drillRequestId += 1
+  drillTeamKey.value = ''
+  drillResult.value = null
+  drillLoading.value = false
+}
+
+async function loadDrillData(key) {
+  const team = decoratedTeams.value.find(item => item.team_key === key)
+  if (!team) return
+  const requestId = ++drillRequestId
+  drillLoading.value = true
+  try {
+    const res = await api.get('/marketing/report', {
+      params: { ...buildParams(), dept: team.dept, team: team.team }
+    })
+    if (requestId !== drillRequestId || drillTeamKey.value !== key) return
+    drillResult.value = res.data
+  } catch (e) {
+    if (requestId === drillRequestId) {
+      ElMessage.error(e.response?.data?.detail || '班组明细加载失败')
+    }
+  } finally {
+    if (requestId === drillRequestId) drillLoading.value = false
+  }
+}
+
 async function loadData() {
+  clearTeamDrill()
   try {
     const res = await api.get('/marketing/report', { params: buildParams() })
     Object.assign(stats, res.data.stats)
@@ -510,29 +554,38 @@ function resetFilters() {
 
 function handleTeamChartClick(params) {
   if (drillTeamKey.value) {
-    if (params?.name || params?.data) drillTeamKey.value = ''
+    if (params?.name || params?.data) clearTeamDrill()
     return
   }
   const teamData = params?.data || {}
   const key = teamData.team_key || decoratedTeams.value.find(item => item.team_label === params?.name || item.team === params?.name)?.team_key
   if (!key) return
   drillTeamKey.value = key
+  drillResult.value = null
+  loadDrillData(key)
+}
+
+function handleDimensionChange() {
+  if (!teamDrillActive.value) loadData()
 }
 
 function handleTeamFilterChange(value) {
-  drillTeamKey.value = ''
   if (value) searchForm.class_key = ''
   loadData()
 }
 
 function handleClassFilterChange(value) {
-  drillTeamKey.value = ''
   if (value) searchForm.team_key = ''
   loadData()
 }
 
 function handleExport() {
-  downloadBlob('/marketing/report/export', { ...buildParams(), dimension: dimension.value }, 'marketing_report.csv')
+  const params = { ...buildParams(), dimension: dimension.value }
+  if (drillTeam.value) {
+    params.dept = drillTeam.value.dept
+    params.team = drillTeam.value.team
+  }
+  downloadBlob('/marketing/report/export', params, 'marketing_report.csv')
 }
 
 watch(() => searchForm.team_key, (value) => {
@@ -551,7 +604,7 @@ watch(() => searchForm.department_group, (value) => {
 
 watch(decoratedTeams, (teams) => {
   if (drillTeamKey.value && !teams.some(item => item.team_key === drillTeamKey.value)) {
-    drillTeamKey.value = ''
+    clearTeamDrill()
   }
 })
 

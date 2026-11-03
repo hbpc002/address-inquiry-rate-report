@@ -65,6 +65,17 @@ describe('Echart 组件 - 容器尺寸自适应', () => {
     expect(MockResizeObserver.observed.length).toBe(1)
   })
 
+  it('初始化时强制将 tooltip 挂载到 body 顶层', async () => {
+    const inst = makeInstance()
+    mount(Echart, { props: { options: { tooltip: { trigger: 'item' }, series: [] } } })
+    await flush()
+
+    const applied = inst.setOption.mock.calls[0][0]
+    expect(applied.tooltip.appendToBody).toBe(true)
+    expect(applied.tooltip.confine).toBe(false)
+    expect(applied.tooltip.extraCssText).toContain('z-index: 99999')
+  })
+
   it('容器从隐藏变为可见触发 observer 时调用 resize（修复缩在一角）', async () => {
     const inst = makeInstance()
     const wrapper = mount(Echart, { props: { options: {} } })

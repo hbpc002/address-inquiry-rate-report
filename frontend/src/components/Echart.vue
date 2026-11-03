@@ -47,10 +47,26 @@ function onNativeClick(e) {
   }
 }
 
+function withTooltipLayer(options) {
+  if (!options?.tooltip) return options
+  const apply = tooltip => ({
+    ...tooltip,
+    confine: false,
+    appendToBody: true,
+    extraCssText: tooltip.extraCssText
+      ? `${tooltip.extraCssText.replace(/;?\s*$/, ';')} z-index: 99999;`
+      : 'z-index: 99999;'
+  })
+  return {
+    ...options,
+    tooltip: Array.isArray(options.tooltip) ? options.tooltip.map(apply) : apply(options.tooltip)
+  }
+}
+
 function initChart() {
   if (!chartRef.value) return
   chartInstance = echarts.init(chartRef.value)
-  chartInstance.setOption(props.options, true)
+  chartInstance.setOption(withTooltipLayer(props.options), true)
 
   if (props.clickable) {
     chartInstance.on('click', onZrClick)
@@ -103,7 +119,7 @@ onUnmounted(() => {
 })
 
 watch(() => props.options, (newOptions) => {
-  chartInstance?.setOption(newOptions, true)
+  chartInstance?.setOption(withTooltipLayer(newOptions), true)
 }, { deep: true })
 
 defineExpose({

@@ -9,6 +9,7 @@ import {
   createMultiBarOptions,
   createStackedBarOptions,
   createMultiLineOptions,
+  layerTooltip,
   CHART_COLORS
 } from '../src/utils/echarts'
 
@@ -123,11 +124,26 @@ describe('echarts 图表工具函数', () => {
     expect(options.series[0].data[0].value).toBe(5)
   })
 
-  it('不传 tooltipFormatter 时 createPieOptions 保持默认 item 触发（confine:true 兼容旧图）', () => {
+  it('不传 tooltipFormatter 时 createPieOptions 仍挂载 body 顶层避免遮挡', () => {
     const options = createPieOptions([{ name: '早班', value: 5 }], '班次占比')
     expect(options.tooltip.trigger).toBe('item')
-    expect(options.tooltip.confine).toBe(true)
+    expect(options.tooltip.confine).toBe(false)
+    expect(options.tooltip.appendToBody).toBe(true)
     expect(options.tooltip.formatter).toBeDefined()
+  })
+
+  it('默认折线图与 layerTooltip 均将 tooltip 挂载到 body 顶层', () => {
+    const line = createLineOptions(['A'], [1], '趋势')
+    expect(line.tooltip.appendToBody).toBe(true)
+    expect(line.tooltip.confine).toBe(false)
+
+    const layered = layerTooltip({
+      tooltip: { trigger: 'item', extraCssText: 'max-width: 320px;' }
+    })
+    expect(layered.tooltip.appendToBody).toBe(true)
+    expect(layered.tooltip.confine).toBe(false)
+    expect(layered.tooltip.extraCssText).toContain('max-width: 320px')
+    expect(layered.tooltip.extraCssText).toContain('z-index: 99999')
   })
 
   it('CheckinReport.vue 应导入所有用到的 echarts 工具函数（防止 create* 漏导导致图表空白）', () => {

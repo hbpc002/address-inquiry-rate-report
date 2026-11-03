@@ -192,8 +192,43 @@ describe('营销统计图表区域', () => {
     state.handleTeamChartClick({ name: '张三', data: { kf_id: 'KF001' } })
     await nextTick()
     expect(state.teamDrillActive).toBe(false)
+    expect(state.tableData.map(item => item.name)).toEqual(['张三', '李四'])
     titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
     expect(titles[0]).toBe('班组产品办理量排行')
+  })
+
+  it('班组下钻后明细表所有页签都按所选班组数据展示', async () => {
+    const filtered = {
+      ...reportData,
+      employees: [reportData.employees[0]],
+      teams: [reportData.teams[0]],
+      groups: [{ group_name: '线上直办-热线', people: 1, total: 40, order_count: 20, inbound: 30, outbound: 10, overlay: 28, package_change: 8, overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4 }],
+      products: [{ product_id: 'P1', product_name: '产品A', total: 40, order_count: 20, inbound: 30, outbound: 10, overlay: 28, package_change: 8, overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4 }],
+      days: [{ date: '2026-10-01', total: 40, order_count: 20, inbound: 30, outbound: 10, overlay: 28, package_change: 8, overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4 }]
+    }
+    api.get.mockImplementation((url, config) => Promise.resolve({
+      data: config?.params?.team === '热线一组' ? filtered : reportData
+    }))
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+
+    state.handleTeamChartClick({ data: { team_key: state.teamItems.find(item => item.team === '热线一组').team_key } })
+    await flushPromises()
+
+    expect(api.get).toHaveBeenLastCalledWith('/marketing/report', {
+      params: expect.objectContaining({ dept: '客服部', team: '热线一组' })
+    })
+
+    state.dimension = 'employee'
+    expect(state.tableData.map(item => item.name)).toEqual(['张三'])
+    state.dimension = 'team'
+    expect(state.tableData.map(item => item.team)).toEqual(['热线一组'])
+    state.dimension = 'group'
+    expect(state.tableData.map(item => item.group_name)).toEqual(['线上直办-热线'])
+    state.dimension = 'product'
+    expect(state.tableData.map(item => item.product_id)).toEqual(['P1'])
+    state.dimension = 'day'
+    expect(state.tableData.map(item => item.date)).toEqual(['2026-10-01'])
   })
 
   it('班组分析存在正常班组时过滤未匹配班组', async () => {

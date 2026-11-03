@@ -69,11 +69,26 @@ export function createPieOptions(data, title, colors = CHART_COLORS, unit = '工
 }
 
 function applyTooltipFormatter(tooltip, formatter) {
-  if (!formatter) return
   tooltip.confine = false
   tooltip.appendToBody = true
   tooltip.extraCssText = 'white-space: pre-line; max-width: 520px; z-index: 99999;'
-  tooltip.formatter = formatter
+  if (formatter) tooltip.formatter = formatter
+}
+
+export function layerTooltip(options) {
+  if (!options?.tooltip) return options
+  const apply = tooltip => ({
+    ...tooltip,
+    confine: false,
+    appendToBody: true,
+    extraCssText: tooltip.extraCssText
+      ? `${tooltip.extraCssText.replace(/;?\s*$/, ';')} z-index: 99999;`
+      : 'z-index: 99999;'
+  })
+  return {
+    ...options,
+    tooltip: Array.isArray(options.tooltip) ? options.tooltip.map(apply) : apply(options.tooltip)
+  }
 }
 
 export function createBarOptions(xData, yData, title, xName = '', yName = '', tooltipFormatter = null) {
@@ -91,7 +106,7 @@ export function createBarOptions(xData, yData, title, xName = '', yName = '', to
 }
 
 export function createLineOptions(xData, yData, title, xName = '', yName = '') {
-  return {
+  const options = {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: { trigger: 'axis' },
     legend: { data: [yName], bottom: 0 },
@@ -100,6 +115,8 @@ export function createLineOptions(xData, yData, title, xName = '', yName = '') {
     yAxis: { type: 'value', name: yName },
     series: [{ name: yName, type: 'line', data: yData, smooth: true, itemStyle: { color: CHART_COLORS[1] }, areaStyle: { opacity: 0.3 } }]
   }
+  applyTooltipFormatter(options.tooltip, null)
+  return options
 }
 
 export function createHorizontalBarOptions(yData, xData, title, yName = '', xName = '', tooltipFormatter = null) {
