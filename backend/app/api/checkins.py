@@ -16,7 +16,13 @@ from app.models.daily_report import DailyReport
 from app.models.work_hour_threshold import WorkHourThreshold
 from app.models.attendance_config import AttendanceConfig
 from app.models.training_record import TrainingRecord
-from app.core.data_scope import build_department_group_context
+from app.core.data_scope import (
+    apply_legacy_checkin_scope,
+    apply_legacy_employee_scope,
+    build_department_group_context,
+    ensure_legacy_employee,
+    is_legacy_dept_value,
+)
 from app.utils.logger import log_operation
 
 
@@ -68,10 +74,6 @@ from app.services.attendance import save_daily_report
 
 router = APIRouter(prefix="/api/checkins", tags=["签到记录"])
 
-# 只取这个部门的数据
-TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
-
-
 @router.get("", response_model=CheckinListResponse)
 def get_checkins(
     page: int = Query(1, ge=1),
@@ -86,7 +88,7 @@ def get_checkins(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "checkins.view")
-    query = db.query(Checkin)
+    query = apply_legacy_checkin_scope(db.query(Checkin), current_user)
     if import_batch:
         query = query.filter(Checkin.import_batch == import_batch)
     if checkin_date:
@@ -114,7 +116,9 @@ def get_checkin_departments(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "checkins.view")
-    results = db.query(Checkin.dept, func.count(Checkin.id)).group_by(Checkin.dept).all()
+    results = apply_legacy_checkin_scope(
+        db.query(Checkin.dept, func.count(Checkin.id)), current_user
+    ).group_by(Checkin.dept).all()
     return [{"dept": r[0], "count": r[1]} for r in results if r[0]]
 
 
@@ -157,7 +161,7 @@ def import_checkins(
             dept = row.get('所属部门全路径', '') or row.get('归属部门', '') or ''
             dept = str(dept).strip()
 
-            if not dept.startswith(TARGET_DEPT):
+            if not is_legacy_dept_value(dept, current_user):
                 continue
 
             emp_no = row.get('账号', '') or row.get('工号', '') or ''
@@ -208,10 +212,11 @@ def import_checkins(
     for emp_no, dept in dept_updates.items():
         db.query(Employee).filter(Employee.emp_no == emp_no).update({"dept": dept}, synchronize_session=False)
 
-    # 按日期删除旧数据，再批量插入新数据
+    # 按日期删除旧数据，再批量插入新数据（仅清理热线范围）
     if dates:
-        db.query(Checkin).filter(
-            func.date(Checkin.checkin_time).in_(dates)
+        apply_legacy_checkin_scope(
+            db.query(Checkin).filter(func.date(Checkin.checkin_time).in_(dates)),
+            current_user,
         ).delete(synchronize_session=False)
 
     if new_records:
@@ -273,7 +278,9 @@ def delete_checkins_by_date(
         target = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
-    records = db.query(Checkin).filter(func.date(Checkin.checkin_time) == target).all()
+    records = apply_legacy_checkin_scope(
+        db.query(Checkin).filter(func.date(Checkin.checkin_time) == target), current_user
+    ).all()
     count = len(records)
     for r in records:
         db.delete(r)
@@ -289,7 +296,9 @@ def delete_checkin(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "checkins.delete")
-    checkin = db.query(Checkin).filter(Checkin.id == checkin_id).first()
+    checkin = apply_legacy_checkin_scope(
+        db.query(Checkin).filter(Checkin.id == checkin_id), current_user
+    ).first()
     if not checkin:
         raise HTTPException(status_code=404, detail="记录不存在")
 
@@ -306,7 +315,9 @@ def delete_batch(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "checkins.delete")
-    count = db.query(Checkin).filter(Checkin.import_batch == batch).delete()
+    count = apply_legacy_checkin_scope(
+        db.query(Checkin).filter(Checkin.import_batch == batch), current_user
+    ).delete(synchronize_session=False)
     db.commit()
     log_operation(db, current_user["id"], "delete_batch", "checkins", None, {"batch": batch, "count": count})
     return {"count": count}
@@ -355,11 +366,10 @@ def get_checkin_report(
         func.date(Checkin.checkin_time) >= query_start,
         func.date(Checkin.checkin_time) <= query_end
     )
+    query = apply_legacy_checkin_scope(query, current_user)
 
     checkins = query.all()
 
-    # 只取目标部门的数据
-    checkins = [c for c in checkins if c.dept and c.dept.startswith(TARGET_DEPT)]
     if dept:
         checkins = [c for c in checkins if c.dept == dept]
 
@@ -624,10 +634,7 @@ def get_time_analysis(
         query_start = datetime.now().date()
         query_end = query_start
 
-    base_filters = [
-        Employee.team != '',
-        Employee.dept.like(TARGET_DEPT + '%'),
-    ]
+    base_filters = [Employee.team != '']
     if team:
         base_filters.append(Employee.team == team)
     if name:
@@ -636,25 +643,31 @@ def get_time_analysis(
         base_filters.append(Employee.emp_no.ilike(f'%{emp_no}%'))
 
     # ---- 1) 分时签入/签出分布 (0-23) ----
-    checkin_rows = db.query(
-        func.extract('hour', Checkin.checkin_time).label('h'),
-        Employee.team,
-        func.count(Checkin.id)
-    ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
-        *base_filters,
-        func.date(Checkin.checkin_time) >= query_start,
-        func.date(Checkin.checkin_time) <= query_end
+    checkin_rows = apply_legacy_employee_scope(
+        db.query(
+            func.extract('hour', Checkin.checkin_time).label('h'),
+            Employee.team,
+            func.count(Checkin.id)
+        ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+            *base_filters,
+            func.date(Checkin.checkin_time) >= query_start,
+            func.date(Checkin.checkin_time) <= query_end
+        ),
+        current_user,
     ).group_by('h', Employee.team).all()
 
-    checkout_rows = db.query(
-        func.extract('hour', Checkin.checkout_time).label('h'),
-        Employee.team,
-        func.count(Checkin.id)
-    ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
-        *base_filters,
-        Checkin.checkout_time.isnot(None),
-        func.date(Checkin.checkin_time) >= query_start,
-        func.date(Checkin.checkin_time) <= query_end
+    checkout_rows = apply_legacy_employee_scope(
+        db.query(
+            func.extract('hour', Checkin.checkout_time).label('h'),
+            Employee.team,
+            func.count(Checkin.id)
+        ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+            *base_filters,
+            Checkin.checkout_time.isnot(None),
+            func.date(Checkin.checkin_time) >= query_start,
+            func.date(Checkin.checkin_time) <= query_end
+        ),
+        current_user,
     ).group_by('h', Employee.team).all()
 
     checkin_hour_counts = {}
@@ -686,15 +699,18 @@ def get_time_analysis(
     } for h in range(24)]
 
     # ---- 2. 班次分布（整体 + 按班组）----
-    shift_rows = db.query(
-        Employee.team,
-        Schedule.shift_name,
-        func.count(Schedule.id)
-    ).join(Schedule, Schedule.emp_id == Employee.id).filter(
-        *base_filters,
-        Schedule.shift_name.isnot(None),
-        Schedule.schedule_date >= query_start,
-        Schedule.schedule_date <= query_end
+    shift_rows = apply_legacy_employee_scope(
+        db.query(
+            Employee.team,
+            Schedule.shift_name,
+            func.count(Schedule.id)
+        ).join(Schedule, Schedule.emp_id == Employee.id).filter(
+            *base_filters,
+            Schedule.shift_name.isnot(None),
+            Schedule.schedule_date >= query_start,
+            Schedule.schedule_date <= query_end
+        ),
+        current_user,
     ).group_by(Employee.team, Schedule.shift_name).all()
 
     overall_counter = {}
@@ -727,10 +743,13 @@ def get_time_analysis(
             for hb in (hour * 60, hour * 60 + 1440)
         )
 
-    reports = db.query(DailyReport).join(Employee, DailyReport.emp_id == Employee.id).filter(
-        *base_filters,
-        DailyReport.schedule_date >= query_start,
-        DailyReport.schedule_date <= query_end
+    reports = apply_legacy_employee_scope(
+        db.query(DailyReport).join(Employee, DailyReport.emp_id == Employee.id).filter(
+            *base_filters,
+            DailyReport.schedule_date >= query_start,
+            DailyReport.schedule_date <= query_end
+        ),
+        current_user,
     ).all()
 
     scheduled_count = [0] * 24
@@ -816,10 +835,7 @@ def get_time_analysis_persons(
         query_start = datetime.now().date()
         query_end = query_start
 
-    base_filters = [
-        Employee.team != '',
-        Employee.dept.like(TARGET_DEPT + '%'),
-    ]
+    base_filters = [Employee.team != '']
     if team:
         base_filters.append(Employee.team == team)
     if name:
@@ -829,11 +845,14 @@ def get_time_analysis_persons(
 
     if hour is not None and type in ("checkin", "checkout"):
         if type == "checkin":
-            rows = db.query(Checkin, Employee).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
-                *base_filters,
-                func.extract('hour', Checkin.checkin_time) == hour,
-                func.date(Checkin.checkin_time) >= query_start,
-                func.date(Checkin.checkin_time) <= query_end
+            rows = apply_legacy_employee_scope(
+                db.query(Checkin, Employee).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+                    *base_filters,
+                    func.extract('hour', Checkin.checkin_time) == hour,
+                    func.date(Checkin.checkin_time) >= query_start,
+                    func.date(Checkin.checkin_time) <= query_end
+                ),
+                current_user,
             ).all()
             items = [{
                 "emp_no": c.emp_no,
@@ -842,12 +861,15 @@ def get_time_analysis_persons(
                 "time": c.checkin_time.strftime('%H:%M')
             } for c, e in rows]
         else:
-            rows = db.query(Checkin, Employee).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
-                *base_filters,
-                Checkin.checkout_time.isnot(None),
-                func.extract('hour', Checkin.checkout_time) == hour,
-                func.date(Checkin.checkin_time) >= query_start,
-                func.date(Checkin.checkin_time) <= query_end
+            rows = apply_legacy_employee_scope(
+                db.query(Checkin, Employee).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+                    *base_filters,
+                    Checkin.checkout_time.isnot(None),
+                    func.extract('hour', Checkin.checkout_time) == hour,
+                    func.date(Checkin.checkin_time) >= query_start,
+                    func.date(Checkin.checkin_time) <= query_end
+                ),
+                current_user,
             ).all()
             items = [{
                 "emp_no": c.emp_no,
@@ -859,13 +881,16 @@ def get_time_analysis_persons(
         return {"items": items, "hour": hour, "type": type}
 
     if shift:
-        rows = db.query(Employee, Schedule.shift_name, func.count(Schedule.id)).join(
-            Schedule, Schedule.emp_id == Employee.id
-        ).filter(
-            *base_filters,
-            Schedule.shift_name.isnot(None),
-            Schedule.schedule_date >= query_start,
-            Schedule.schedule_date <= query_end
+        rows = apply_legacy_employee_scope(
+            db.query(Employee, Schedule.shift_name, func.count(Schedule.id)).join(
+                Schedule, Schedule.emp_id == Employee.id
+            ).filter(
+                *base_filters,
+                Schedule.shift_name.isnot(None),
+                Schedule.schedule_date >= query_start,
+                Schedule.schedule_date <= query_end
+            ),
+            current_user,
         ).group_by(Employee, Schedule.shift_name).all()
 
         counter = {}
@@ -924,10 +949,7 @@ def get_team_report(
         query_start = datetime.now().date()
         query_end = query_start
 
-    emp_filters = [
-        Employee.team != '',
-        Employee.dept.like(TARGET_DEPT + '%'),
-    ]
+    emp_filters = [Employee.team != '']
     if team:
         emp_filters.append(Employee.team == team)
     if name:
@@ -935,20 +957,23 @@ def get_team_report(
     if emp_no:
         emp_filters.append(Employee.emp_no.ilike(f'%{emp_no}%'))
 
-    emp_rows = db.query(
-        Employee.emp_no,
-        Employee.name,
-        Employee.team,
-        Employee.dept,
-        func.sum(func.coalesce(DailyReport.late_minutes, 0)),
-        func.sum(func.coalesce(DailyReport.early_minutes, 0)),
-        func.sum(case((DailyReport.late_minutes > 0, 1), else_=0)),
-        func.sum(case((DailyReport.early_minutes > 0, 1), else_=0)),
-        func.sum(case((DailyReport.actual_checkin.isnot(None), 1), else_=0)),
-    ).join(DailyReport, DailyReport.emp_id == Employee.id).filter(
-        *emp_filters,
-        DailyReport.schedule_date >= query_start,
-        DailyReport.schedule_date <= query_end
+    emp_rows = apply_legacy_employee_scope(
+        db.query(
+            Employee.emp_no,
+            Employee.name,
+            Employee.team,
+            Employee.dept,
+            func.sum(func.coalesce(DailyReport.late_minutes, 0)),
+            func.sum(func.coalesce(DailyReport.early_minutes, 0)),
+            func.sum(case((DailyReport.late_minutes > 0, 1), else_=0)),
+            func.sum(case((DailyReport.early_minutes > 0, 1), else_=0)),
+            func.sum(case((DailyReport.actual_checkin.isnot(None), 1), else_=0)),
+        ).join(DailyReport, DailyReport.emp_id == Employee.id).filter(
+            *emp_filters,
+            DailyReport.schedule_date >= query_start,
+            DailyReport.schedule_date <= query_end
+        ),
+        current_user,
     ).group_by(
         Employee.emp_no,
         Employee.name,
@@ -957,14 +982,16 @@ def get_team_report(
     ).all()
 
     # 签到次数来自签到表，与汇总报表口径一致
-    checkin_counts = db.query(
-        Employee.emp_no,
-        func.count(Checkin.id)
-    ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
-        Employee.team != '',
-        Employee.dept.like(TARGET_DEPT + '%'),
-        func.date(Checkin.checkin_time) >= query_start,
-        func.date(Checkin.checkin_time) <= query_end
+    checkin_counts = apply_legacy_employee_scope(
+        db.query(
+            Employee.emp_no,
+            func.count(Checkin.id)
+        ).join(Employee, Checkin.emp_no == Employee.emp_no).filter(
+            Employee.team != '',
+            func.date(Checkin.checkin_time) >= query_start,
+            func.date(Checkin.checkin_time) <= query_end
+        ),
+        current_user,
     ).group_by(Employee.emp_no).all()
     checkin_count_map = {emp_no: cnt for emp_no, cnt in checkin_counts}
 
@@ -1003,9 +1030,9 @@ def get_personal_report(
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
 
-    emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
-    if not emp:
-        raise HTTPException(status_code=404, detail="员工不存在")
+    emp = ensure_legacy_employee(
+        db.query(Employee).filter(Employee.emp_no == emp_no).first(), current_user
+    )
 
     config_row = db.query(AttendanceConfig).filter(AttendanceConfig.key == "long_hour_threshold").first()
     long_hour_threshold = float(config_row.value) if config_row else 9.5
@@ -1232,8 +1259,8 @@ def export_checkin_report(
         func.date(Checkin.checkin_time) >= query_start,
         func.date(Checkin.checkin_time) <= query_end
     )
+    query = apply_legacy_checkin_scope(query, current_user)
     checkins = query.all()
-    checkins = [c for c in checkins if c.dept and c.dept.startswith(TARGET_DEPT)]
     if dept:
         checkins = [c for c in checkins if c.dept == dept]
 

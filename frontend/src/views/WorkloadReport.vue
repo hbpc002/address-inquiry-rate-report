@@ -1427,7 +1427,7 @@ async function loadMetricsFields() {
 
 async function loadTeams() {
   try {
-    const res = await api.get('/employees/teams', { params: { include_dept: true } })
+    const res = await api.get('/employees/teams', { params: { include_dept: true, scope: 'legacy' } })
     teams.value = decorateTeamOptions(res.data || [])
   } catch (e) {
     console.error(e)
@@ -1436,7 +1436,7 @@ async function loadTeams() {
 
 async function loadTeamLeaders() {
   try {
-    const res = await api.get('/employees/leaders')
+    const res = await api.get('/employees/leaders', { params: { scope: 'legacy' } })
     const map = {}
     ;(Array.isArray(res.data) ? res.data : []).forEach(item => {
       if (item.team) map[teamKey(item.dept, item.team)] = item.leader

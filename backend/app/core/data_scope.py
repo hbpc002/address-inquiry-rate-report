@@ -4,9 +4,16 @@ from fastapi import HTTPException
 from sqlalchemy import false, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.models.checkin import Checkin
+from app.models.daily_report import DailyReport
 from app.models.department_group import DepartmentGroup, DepartmentGroupPath
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
+from app.models.schedule import Schedule
+from app.models.seamless_order import SeamlessOrder
+from app.models.training_record import TrainingRecord
+from app.models.workload import Workload
 
 
 ALL_SCOPE = "all"
@@ -61,6 +68,118 @@ def get_user_scope_paths(user: dict) -> list[str]:
 
 def _path_filters(paths: list[str], column):
     return [column.like(f"{path}%") for path in paths]
+
+
+# ── 旧页面固定范围：热线运营组 ──────────────────────────────────────────────
+
+def get_legacy_dept_path() -> str:
+    return (settings.LEGACY_SCOPE_DEPT_PATH or "").strip()
+
+
+def has_legacy_all_scope(user: dict) -> bool:
+    return bool(user.get("is_system") or user.get("role") == "admin")
+
+
+def is_legacy_dept_value(value: str | None, user: dict) -> bool:
+    """判断导入行里的部门值是否属于旧页面热线范围。
+
+    兼容完整组织路径和只写末级名称（如“热线运营组”）的历史文件。
+    """
+    if has_legacy_all_scope(user):
+        return True
+    text = str(value or "").strip()
+    path = get_legacy_dept_path()
+    if not text or not path:
+        return False
+    label = path.split(">>")[-1]
+    return text.startswith(path) or text == label or text.startswith(f"{label}>>")
+
+
+def _legacy_employee_id_select():
+    path = get_legacy_dept_path()
+    if not path:
+        return select(Employee.id).where(false())
+    return select(Employee.id).where(Employee.dept.like(f"{path}%"))
+
+
+def _legacy_employee_no_select():
+    path = get_legacy_dept_path()
+    if not path:
+        return select(Employee.emp_no).where(false())
+    return select(Employee.emp_no).where(Employee.dept.like(f"{path}%"))
+
+
+def apply_legacy_employee_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    return query.filter(Employee.id.in_(_legacy_employee_id_select()))
+
+
+def apply_legacy_daily_report_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    return query.filter(DailyReport.emp_id.in_(_legacy_employee_id_select()))
+
+
+def apply_legacy_schedule_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    return query.filter(Schedule.emp_id.in_(_legacy_employee_id_select()))
+
+
+def apply_legacy_workload_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    return query.filter(Workload.account.in_(_legacy_employee_no_select()))
+
+
+def apply_legacy_checkin_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    path = get_legacy_dept_path()
+    if not path:
+        return query.filter(false())
+    return query.filter(or_(
+        Checkin.dept.like(f"{path}%"),
+        Checkin.emp_no.in_(_legacy_employee_no_select()),
+    ))
+
+
+def apply_legacy_broadband_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    return query.filter(SeamlessOrder.emp_no.in_(_legacy_employee_no_select()))
+
+
+def apply_legacy_training_scope(query, user: dict):
+    if has_legacy_all_scope(user):
+        return query
+    return query.filter(TrainingRecord.emp_no.in_(_legacy_employee_no_select()))
+
+
+def employee_in_legacy_scope(employee: Employee | None, user: dict) -> bool:
+    if has_legacy_all_scope(user):
+        return True
+    if not employee:
+        return False
+    path = get_legacy_dept_path()
+    return bool(path and employee.dept and employee.dept.startswith(path))
+
+
+def ensure_legacy_employee(employee: Employee | None, user: dict) -> Employee:
+    if not employee or not employee_in_legacy_scope(employee, user):
+        raise HTTPException(status_code=404, detail="员工不存在")
+    return employee
+
+
+def ensure_legacy_emp_no(db: Session, emp_no: str | None, user: dict) -> Employee:
+    if has_legacy_all_scope(user):
+        employee = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="员工不存在")
+        return employee
+    employee = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+    return ensure_legacy_employee(employee, user)
 
 
 def employee_in_scope(employee: Employee, user: dict, module: str = "employees") -> bool:

@@ -21,6 +21,13 @@ from app.schemas.schedule import (
     BatchScheduleRequest, SwapScheduleRequest
 )
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import (
+    apply_legacy_employee_scope,
+    apply_legacy_schedule_scope,
+    ensure_legacy_employee,
+    has_legacy_all_scope,
+    is_legacy_dept_value,
+)
 from app.utils.logger import log_operation
 from app.services.attendance import save_daily_report
 
@@ -251,6 +258,7 @@ def get_schedules(
     current_user: dict = Depends(get_current_user)
 ):
     query = db.query(Schedule).join(Employee)
+    query = apply_legacy_employee_scope(query, current_user)
     if schedule_date:
         query = query.filter(Schedule.schedule_date == schedule_date)
     if emp_id:
@@ -306,6 +314,9 @@ def create_schedule(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "schedules.create")
+    ensure_legacy_employee(
+        db.query(Employee).filter(Employee.id == schedule.emp_id).first(), current_user
+    )
     existing = db.query(Schedule).filter(
         and_(
             Schedule.emp_id == schedule.emp_id,
@@ -337,6 +348,9 @@ def update_schedule(
     db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="排班记录不存在")
+    ensure_legacy_employee(
+        db.query(Employee).filter(Employee.id == db_schedule.emp_id).first(), current_user
+    )
     for key, value in schedule.model_dump(exclude_unset=True).items():
         setattr(db_schedule, key, value)
     db.commit()
@@ -352,7 +366,9 @@ def batch_delete_schedules(
     require_permission(current_user, "schedules.delete")
     if not ids:
         raise HTTPException(status_code=400, detail="请选择要删除的排班记录")
-    schedules = db.query(Schedule).filter(Schedule.id.in_(ids)).all()
+    schedules = apply_legacy_schedule_scope(
+        db.query(Schedule).filter(Schedule.id.in_(ids)), current_user
+    ).all()
     if not schedules:
         raise HTTPException(status_code=404, detail="未找到排班记录")
     affected = set()
@@ -378,7 +394,9 @@ def delete_schedules_by_date(
         target = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
-    schedules = db.query(Schedule).filter(Schedule.schedule_date == target).all()
+    schedules = apply_legacy_schedule_scope(
+        db.query(Schedule).filter(Schedule.schedule_date == target), current_user
+    ).all()
     if not schedules:
         return {"message": "该日期没有排班记录", "count": 0}
     affected = set()
@@ -402,6 +420,9 @@ def delete_schedule(
     db_schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="排班记录不存在")
+    ensure_legacy_employee(
+        db.query(Employee).filter(Employee.id == db_schedule.emp_id).first(), current_user
+    )
     emp_id = db_schedule.emp_id
     schedule_date = db_schedule.schedule_date
     db.delete(db_schedule)
@@ -435,6 +456,11 @@ def import_attendance_report(
     if not rows:
         raise HTTPException(status_code=400, detail="未解析到有效数据")
 
+    if not has_legacy_all_scope(current_user):
+        rows = [r for r in rows if is_legacy_dept_value(r.get('dept'), current_user)]
+        if not rows:
+            raise HTTPException(status_code=400, detail="未解析到热线运营组范围内的有效数据")
+
     groups = defaultdict(list)
     for r in rows:
         key = (r['emp_no'], r['date'])
@@ -448,8 +474,10 @@ def import_attendance_report(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"无效日期格式: {d}")
 
-    # Delete existing schedules for covered dates
-    deleted = db.query(Schedule).filter(Schedule.schedule_date.in_(date_objs)).delete(synchronize_session=False)
+    # Delete existing schedules for covered dates (only within legacy scope)
+    deleted = apply_legacy_schedule_scope(
+        db.query(Schedule).filter(Schedule.schedule_date.in_(date_objs)), current_user
+    ).delete(synchronize_session=False)
     db.commit()
     if deleted:
         logger.info(f"已清理 {deleted} 条旧排班记录")

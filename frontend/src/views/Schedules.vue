@@ -307,9 +307,9 @@ function resetSearch() {
 async function loadOptions() {
   try {
     const [eRes, sRes, tRes] = await Promise.all([
-      api.get('/employees', { params: { limit: 1000 } }),
+      api.get('/employees', { params: { limit: 1000, scope: 'legacy' } }),
       api.get('/shift-types'),
-      api.get('/employees/teams')
+      api.get('/employees/teams', { params: { scope: 'legacy' } })
     ])
     employees.value = eRes.data.items
     shiftTypes.value = sRes.data

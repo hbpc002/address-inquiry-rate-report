@@ -172,7 +172,7 @@ const canSubmit = computed(() => {
 
 async function loadEmployees() {
   try {
-    const res = await api.get('/employees', { params: { limit: 1000, status: '在职' } })
+    const res = await api.get('/employees', { params: { limit: 1000, status: '在职', scope: 'legacy' } })
     empOptions.value = res.data.items || []
   } catch (e) {
     console.error(e)

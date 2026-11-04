@@ -23,6 +23,11 @@ except Exception:
     _DB_CONFIG = False
     _AUTO_CONFIG = {'enabled': True, 'retention_days': 90}
 from app.core.security import get_current_user, require_permission, require_any_permission
+from app.core.data_scope import (
+    apply_legacy_daily_report_scope,
+    apply_legacy_employee_scope,
+    apply_legacy_schedule_scope,
+)
 
 router = APIRouter(prefix="/api", tags=["系统管理"])
 
@@ -49,9 +54,13 @@ def get_stats(
     current_user: dict = Depends(get_current_user),
 ):
     require_any_permission(current_user, ["dashboard.view", "system.view"])
-    employee_count = db.query(Employee).filter(Employee.status == "在职").count()
+    employee_count = apply_legacy_employee_scope(
+        db.query(Employee).filter(Employee.status == "在职"), current_user
+    ).count()
 
-    latest_date = db.query(func.max(DailyReport.schedule_date)).scalar()
+    latest_date = apply_legacy_daily_report_scope(
+        db.query(func.max(DailyReport.schedule_date)), current_user
+    ).scalar()
 
     if year_month:
         parts = year_month.split("-")
@@ -59,9 +68,12 @@ def get_stats(
     else:
         year, month = _get_ym()
 
-    month_reports = db.query(DailyReport).filter(
-        extract("year", DailyReport.schedule_date) == year,
-        extract("month", DailyReport.schedule_date) == month,
+    month_reports = apply_legacy_daily_report_scope(
+        db.query(DailyReport).filter(
+            extract("year", DailyReport.schedule_date) == year,
+            extract("month", DailyReport.schedule_date) == month,
+        ),
+        current_user,
     ).all()
 
     monthly_total = len(month_reports)
@@ -76,7 +88,10 @@ def get_stats(
 
     latest_reports = []
     if latest_date:
-        latest_reports = db.query(DailyReport).filter(DailyReport.schedule_date == latest_date).all()
+        latest_reports = apply_legacy_daily_report_scope(
+            db.query(DailyReport).filter(DailyReport.schedule_date == latest_date),
+            current_user,
+        ).all()
     latest_attendance = len([r for r in latest_reports if r.status in ("正常", "迟到", "早退", "加班")])
     latest_late = len([r for r in latest_reports if r.status == "迟到"])
     latest_absent = len([r for r in latest_reports if r.status == "缺勤"])
@@ -125,14 +140,17 @@ def get_daily_trend(
     else:
         year, month = _get_ym()
 
-    rows = db.query(
-        DailyReport.schedule_date,
-        DailyReport.status,
-        DailyReport.actual_hours,
-        DailyReport.scheduled_hours,
-    ).filter(
-        extract("year", DailyReport.schedule_date) == year,
-        extract("month", DailyReport.schedule_date) == month,
+    rows = apply_legacy_daily_report_scope(
+        db.query(
+            DailyReport.schedule_date,
+            DailyReport.status,
+            DailyReport.actual_hours,
+            DailyReport.scheduled_hours,
+        ).filter(
+            extract("year", DailyReport.schedule_date) == year,
+            extract("month", DailyReport.schedule_date) == month,
+        ),
+        current_user,
     ).order_by(DailyReport.schedule_date).all()
 
     threshold = _get_long_hour_threshold(db)
@@ -203,6 +221,7 @@ def get_daily_detail(
     query = db.query(DailyReport).join(
         Employee, DailyReport.emp_id == Employee.id
     ).filter(DailyReport.schedule_date == schedule_date)
+    query = apply_legacy_employee_scope(query, current_user)
     if team:
         query = query.filter(Employee.team == team)
 
@@ -237,9 +256,12 @@ def get_hour_bucket_detail(
     schedule_date = datetime.strptime(date, "%Y-%m-%d").date()
     threshold = _get_long_hour_threshold(db)
 
-    items = db.query(DailyReport).join(
-        Employee, DailyReport.emp_id == Employee.id
-    ).filter(DailyReport.schedule_date == schedule_date).all()
+    items = apply_legacy_employee_scope(
+        db.query(DailyReport).join(
+            Employee, DailyReport.emp_id == Employee.id
+        ).filter(DailyReport.schedule_date == schedule_date),
+        current_user,
+    ).all()
 
     def _in_bucket(r):
         ah = float(r.actual_hours or 0)
@@ -284,7 +306,11 @@ def get_consecutive_overtime(
 
     threshold = _get_long_hour_threshold(db)
 
-    emp_ids = [e.id for e in db.query(Employee.id).filter(Employee.status == "在职").all()]
+    emp_ids = [
+        e.id for e in apply_legacy_employee_scope(
+            db.query(Employee.id).filter(Employee.status == "在职"), current_user
+        ).all()
+    ]
 
     all_reports = db.query(DailyReport).filter(
         DailyReport.emp_id.in_(emp_ids),
@@ -338,14 +364,17 @@ def get_shift_distribution(
     else:
         year, month = _get_ym()
 
-    results = db.query(
-        Schedule.shift_name,
-        func.count(Schedule.id).label("cnt"),
-    ).filter(
-        extract("year", Schedule.schedule_date) == year,
-        extract("month", Schedule.schedule_date) == month,
-        Schedule.shift_name.isnot(None),
-        Schedule.shift_name != "",
+    results = apply_legacy_schedule_scope(
+        db.query(
+            Schedule.shift_name,
+            func.count(Schedule.id).label("cnt"),
+        ).filter(
+            extract("year", Schedule.schedule_date) == year,
+            extract("month", Schedule.schedule_date) == month,
+            Schedule.shift_name.isnot(None),
+            Schedule.shift_name != "",
+        ),
+        current_user,
     ).group_by(Schedule.shift_name).order_by(func.count(Schedule.id).desc()).all()
 
     return [{"shift_name": r[0], "count": r[1]} for r in results]
@@ -364,9 +393,12 @@ def get_team_hours(
     else:
         year, month = _get_ym()
 
-    teams_data = db.query(Employee.team).filter(
-        Employee.status == "在职",
-        Employee.team.isnot(None),
+    teams_data = apply_legacy_employee_scope(
+        db.query(Employee.team).filter(
+            Employee.status == "在职",
+            Employee.team.isnot(None),
+        ),
+        current_user,
     ).distinct().all()
 
     month_start = date(year, month, 1)
@@ -374,10 +406,13 @@ def get_team_hours(
 
     result = []
     for (team_name,) in teams_data:
-        emp_ids = [e.id for e in db.query(Employee.id).filter(
-            Employee.team == team_name,
-            or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
-            or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+        emp_ids = [e.id for e in apply_legacy_employee_scope(
+            db.query(Employee.id).filter(
+                Employee.team == team_name,
+                or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
+                or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+            ),
+            current_user,
         ).all()]
         if not emp_ids:
             continue
@@ -502,8 +537,11 @@ def get_departments(
     current_user: dict = Depends(get_current_user)
 ):
     require_any_permission(current_user, ["dashboard.view", "system.view"])
-    results = db.query(Employee.dept, func.count(Employee.id)).filter(
-        Employee.status == "在职"
+    results = apply_legacy_employee_scope(
+        db.query(Employee.dept, func.count(Employee.id)).filter(
+            Employee.status == "在职"
+        ),
+        current_user,
     ).group_by(Employee.dept).all()
     return [{"dept": r[0] or "未设置", "count": r[1]} for r in results if r[0]]
 
@@ -514,8 +552,11 @@ def get_teams(
     current_user: dict = Depends(get_current_user)
 ):
     require_any_permission(current_user, ["dashboard.view", "system.view"])
-    results = db.query(Employee.team, func.count(Employee.id)).filter(
-        Employee.status == "在职"
+    results = apply_legacy_employee_scope(
+        db.query(Employee.team, func.count(Employee.id)).filter(
+            Employee.status == "在职"
+        ),
+        current_user,
     ).group_by(Employee.team).all()
     return [{"team": r[0], "count": r[1]} for r in results if r[0]]
 

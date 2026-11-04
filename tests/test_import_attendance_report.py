@@ -199,7 +199,7 @@ class TestImportAttendanceReport:
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
 
         # Mock current_user
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["employees"] == 1  # new employee created
         assert result["schedules"] == 1
@@ -236,7 +236,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 1
         assert result["employees"] == 1
@@ -277,7 +277,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 1
         schedule = db.query(Schedule).first()
@@ -297,7 +297,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 0
 
@@ -328,7 +328,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         # Old schedule should be replaced (new ID)
         all_schedules = db.query(Schedule).all()
@@ -352,7 +352,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["employees"] == 0  # no new employee
         assert result["schedules"] == 1
@@ -376,7 +376,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["employees"] == 0
         # Emp no should not be overwritten
@@ -402,7 +402,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 1
         schedule = db.query(Schedule).first()
@@ -428,7 +428,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 1
         schedule = db.query(Schedule).first()
@@ -464,7 +464,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 1
         schedule = db.query(Schedule).first()
@@ -502,7 +502,7 @@ class TestImportAttendanceReport:
         ]
         xlsx = _build_test_xlsx(rows_data)
         file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-        result = import_attendance_report(file=file, db=db, current_user={"id": 1})
+        result = import_attendance_report(file=file, db=db, current_user={"id": 1, "is_system": True})
 
         assert result["schedules"] == 1
         schedule = db.query(Schedule).first()

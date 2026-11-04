@@ -17,6 +17,11 @@ from app.models.employee import Employee
 from app.models.salary_config import SalaryConfig
 from app.utils.logger import log_operation
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import (
+    apply_legacy_broadband_scope,
+    apply_legacy_employee_scope,
+    has_legacy_all_scope,
+)
 
 router = APIRouter(prefix="/api/broadband", tags=["宽带营销"])
 
@@ -138,11 +143,21 @@ def import_orders(
         except Exception:
             continue
 
+    if not has_legacy_all_scope(current_user):
+        legacy_emp_nos = {
+            e[0] for e in apply_legacy_employee_scope(
+                db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
+            ).all()
+        }
+        new_records = [r for r in new_records if r.get("emp_no") in legacy_emp_nos]
+
     if not new_records:
-        raise HTTPException(status_code=400, detail="未解析到有效数据")
+        raise HTTPException(status_code=400, detail="未解析到热线运营组范围内的有效数据")
 
     for d in dates_set:
-        db.query(SeamlessOrder).filter(SeamlessOrder.order_date == d).delete(synchronize_session=False)
+        apply_legacy_broadband_scope(
+            db.query(SeamlessOrder).filter(SeamlessOrder.order_date == d), current_user
+        ).delete(synchronize_session=False)
 
     if new_records:
         payload = []
@@ -171,7 +186,7 @@ def get_orders(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    query = db.query(SeamlessOrder)
+    query = apply_legacy_broadband_scope(db.query(SeamlessOrder), current_user)
     if import_batch:
         query = query.filter(SeamlessOrder.import_batch == import_batch)
     if start_date:
@@ -230,7 +245,9 @@ def delete_orders_by_date(
         target = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
-    records = db.query(SeamlessOrder).filter(SeamlessOrder.order_date == target).all()
+    records = apply_legacy_broadband_scope(
+        db.query(SeamlessOrder).filter(SeamlessOrder.order_date == target), current_user
+    ).all()
     count = len(records)
     for r in records:
         db.delete(r)
@@ -246,7 +263,9 @@ def delete_order(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "broadband.delete")
-    record = db.query(SeamlessOrder).filter(SeamlessOrder.id == order_id).first()
+    record = apply_legacy_broadband_scope(
+        db.query(SeamlessOrder).filter(SeamlessOrder.id == order_id), current_user
+    ).first()
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
     db.delete(record)
@@ -262,7 +281,9 @@ def delete_batch(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "broadband.delete")
-    count = db.query(SeamlessOrder).filter(SeamlessOrder.import_batch == batch).delete(synchronize_session=False)
+    count = apply_legacy_broadband_scope(
+        db.query(SeamlessOrder).filter(SeamlessOrder.import_batch == batch), current_user
+    ).delete(synchronize_session=False)
     db.commit()
     log_operation(db, current_user["id"], "delete_broadband_import_batch", "broadband", None, {"batch": batch, "count": count})
     return {"count": count}
@@ -308,11 +329,14 @@ def get_report(
 ):
     start, end = _resolve_range(year_month, start_date, end_date)
 
-    records = db.query(SeamlessOrder).filter(
-        SeamlessOrder.order_date >= start,
-        SeamlessOrder.order_date <= end,
-        SeamlessOrder.is_excluded == "否",
-        SeamlessOrder.is_duplicate == "否",
+    records = apply_legacy_broadband_scope(
+        db.query(SeamlessOrder).filter(
+            SeamlessOrder.order_date >= start,
+            SeamlessOrder.order_date <= end,
+            SeamlessOrder.is_excluded == "否",
+            SeamlessOrder.is_duplicate == "否",
+        ),
+        current_user,
     ).all()
 
     # 按订单号去重
@@ -322,7 +346,11 @@ def get_report(
             by_order[r.order_no] = r
     records = list(by_order.values())
 
-    emp_map = {e.emp_no: e for e in db.query(Employee).filter(Employee.status == "在职").all()}
+    emp_map = {
+        e.emp_no: e for e in apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
 
     if city:
         records = [r for r in records if r.city == city]
@@ -437,11 +465,14 @@ def export_report(
 
     start, end = _resolve_range(year_month, start_date, end_date)
 
-    records = db.query(SeamlessOrder).filter(
-        SeamlessOrder.order_date >= start,
-        SeamlessOrder.order_date <= end,
-        SeamlessOrder.is_excluded == "否",
-        SeamlessOrder.is_duplicate == "否",
+    records = apply_legacy_broadband_scope(
+        db.query(SeamlessOrder).filter(
+            SeamlessOrder.order_date >= start,
+            SeamlessOrder.order_date <= end,
+            SeamlessOrder.is_excluded == "否",
+            SeamlessOrder.is_duplicate == "否",
+        ),
+        current_user,
     ).all()
 
     by_order = {}
@@ -450,7 +481,11 @@ def export_report(
             by_order[r.order_no] = r
     records = list(by_order.values())
 
-    emp_map = {e.emp_no: e for e in db.query(Employee).filter(Employee.status == "在职").all()}
+    emp_map = {
+        e.emp_no: e for e in apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
 
     if city:
         records = [r for r in records if r.city == city]

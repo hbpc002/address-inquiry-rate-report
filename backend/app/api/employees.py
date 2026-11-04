@@ -20,6 +20,7 @@ from app.schemas.employee import (
 from app.core.security import get_current_user, require_permission
 from app.core.data_scope import (
     apply_employee_dept_scope, apply_employee_scope, apply_employee_write_scope,
+    apply_legacy_employee_scope,
     build_department_group_context,
     employee_writable, ensure_dept_writable, ensure_employee_writable,
     get_user_scope_paths, is_all_employee_write_scope, is_all_scope,
@@ -35,6 +36,8 @@ def _apply_read_scope(query, current_user: dict, scope: Optional[str]):
         if not is_all_scope(current_user, "employees"):
             raise HTTPException(status_code=403, detail="无权查看全部部门员工")
         return query
+    if requested == "legacy":
+        return apply_legacy_employee_scope(query, current_user)
     if requested == "dept":
         return apply_employee_dept_scope(query, current_user)
     return apply_employee_scope(query, current_user, "employees")

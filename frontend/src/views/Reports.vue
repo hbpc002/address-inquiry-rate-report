@@ -940,7 +940,7 @@ async function loadRanking() {
 
 async function loadTeams() {
   try {
-    const res = await api.get('/employees/teams')
+    const res = await api.get('/employees/teams', { params: { scope: 'legacy' } })
     teams.value = res.data || []
   } catch (e) {
     console.error(e)

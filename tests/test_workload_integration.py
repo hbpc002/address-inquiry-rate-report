@@ -101,7 +101,7 @@ def test_import_single_employee(db):
     ]
     xlsx = _build_xlsx(rows)
     file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-    result = import_workloads(file=file, db=db, current_user={"id": 1})
+    result = import_workloads(file=file, db=db, current_user={"id": 1, "is_system": True})
 
     assert result.count == 1
     assert len(result.batch) == 8
@@ -130,7 +130,7 @@ def test_import_multiple_employees(db):
     ]
     xlsx = _build_xlsx(rows)
     file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-    result = import_workloads(file=file, db=db, current_user={"id": 1})
+    result = import_workloads(file=file, db=db, current_user={"id": 1, "is_system": True})
 
     assert result.count == 3
     assert db.query(Workload).count() == 3
@@ -152,7 +152,7 @@ def test_import_replaces_old_records(db):
     ]
     xlsx = _build_xlsx(rows)
     file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-    result = import_workloads(file=file, db=db, current_user={"id": 1})
+    result = import_workloads(file=file, db=db, current_user={"id": 1, "is_system": True})
 
     assert result.count == 1
     records = db.query(Workload).all()
@@ -172,7 +172,7 @@ def test_import_skips_heji_row(db):
     ]
     xlsx = _build_xlsx(rows)
     file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-    result = import_workloads(file=file, db=db, current_user={"id": 1})
+    result = import_workloads(file=file, db=db, current_user={"id": 1, "is_system": True})
     assert result.count == 1
 
 
@@ -192,7 +192,7 @@ def test_import_multiple_dates_preserves_other_dates(db):
     ]
     xlsx = _build_xlsx(rows)
     file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-    result = import_workloads(file=file, db=db, current_user={"id": 1})
+    result = import_workloads(file=file, db=db, current_user={"id": 1, "is_system": True})
 
     assert result.count == 1
     assert db.query(Workload).count() == 2
@@ -209,7 +209,7 @@ def test_import_overrides_name_from_employee(db):
     ]
     xlsx = _build_xlsx(rows)
     file = UploadFile(filename="test.xlsx", file=io.BytesIO(xlsx))
-    result = import_workloads(file=file, db=db, current_user={"id": 1})
+    result = import_workloads(file=file, db=db, current_user={"id": 1, "is_system": True})
 
     assert result.count == 1
     record = db.query(Workload).first()

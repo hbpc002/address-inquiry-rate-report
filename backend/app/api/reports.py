@@ -16,6 +16,12 @@ from app.models.workload import Workload
 from app.models.attendance_config import AttendanceConfig
 from app.schemas.daily_report import DailyReportResponse, DailyReportListResponse
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import (
+    apply_legacy_checkin_scope,
+    apply_legacy_daily_report_scope,
+    apply_legacy_employee_scope,
+    apply_legacy_schedule_scope,
+)
 from app.utils.logger import log_operation
 from app.services.attendance import save_daily_report
 
@@ -37,6 +43,7 @@ def get_daily_reports(
 ):
     require_permission(current_user, "reports.view")
     query = db.query(DailyReport).join(Employee)
+    query = apply_legacy_employee_scope(query, current_user)
 
     schedule_date_obj = datetime.strptime(schedule_date, '%Y-%m-%d').date()
     query = query.filter(DailyReport.schedule_date == schedule_date_obj)
@@ -106,6 +113,7 @@ def get_reports_by_date_range(
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
     
     report_query = db.query(DailyReport).join(Employee)
+    report_query = apply_legacy_employee_scope(report_query, current_user)
     report_query = report_query.filter(and_(
         DailyReport.schedule_date >= start,
         DailyReport.schedule_date <= end
@@ -209,6 +217,7 @@ def get_month_reports(
             extract('month', DailyReport.schedule_date) == month
         )
     ).join(Employee)
+    query = apply_legacy_employee_scope(query, current_user)
 
     if team:
         query = query.filter(Employee.team == team)
@@ -238,7 +247,9 @@ def get_month_summary(
     require_permission(current_user, "reports.view")
     year, month = map(int, year_month.split('-'))
 
-    emp_query = db.query(Employee).filter(Employee.status == "在职")
+    emp_query = apply_legacy_employee_scope(
+        db.query(Employee).filter(Employee.status == "在职"), current_user
+    )
     if team:
         emp_query = emp_query.filter(Employee.team == team)
     if dept:
@@ -312,9 +323,12 @@ def get_team_ranking(
     require_permission(current_user, "reports.view")
     year, month = map(int, year_month.split('-'))
 
-    teams = db.query(Employee.team, func.count(Employee.id)).filter(
-        Employee.status == "在职",
-        Employee.team.isnot(None)
+    teams = apply_legacy_employee_scope(
+        db.query(Employee.team, func.count(Employee.id)).filter(
+            Employee.status == "在职",
+            Employee.team.isnot(None)
+        ),
+        current_user,
     ).group_by(Employee.team).all()
 
     month_start = date(year, month, 1)
@@ -322,10 +336,13 @@ def get_team_ranking(
 
     result = []
     for team_name, _ in teams:
-        team_employees = db.query(Employee).filter(
-            Employee.team == team_name,
-            or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
-            or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+        team_employees = apply_legacy_employee_scope(
+            db.query(Employee).filter(
+                Employee.team == team_name,
+                or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
+                or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+            ),
+            current_user,
         ).all()
         emp_ids = [e.id for e in team_employees]
         
@@ -398,6 +415,7 @@ def export_report(
     if type == "daily" and schedule_date:
         schedule_date_obj = datetime.strptime(schedule_date, '%Y-%m-%d').date()
         query = db.query(DailyReport).filter(DailyReport.schedule_date == schedule_date_obj).join(Employee)
+        query = apply_legacy_employee_scope(query, current_user)
 
         if team:
             query = query.filter(Employee.team == team)
@@ -437,7 +455,8 @@ def export_report(
             DailyReport.schedule_date >= start,
             DailyReport.schedule_date <= end
         )).join(Employee)
-        
+        query = apply_legacy_employee_scope(query, current_user)
+
         if team:
             query = query.filter(Employee.team == team)
         if dept:
@@ -469,7 +488,9 @@ def export_report(
             year_month = datetime.now().strftime("%Y-%m")
 
         year, month = map(int, year_month.split('-'))
-        employees = db.query(Employee).filter(Employee.status == "在职")
+        employees = apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        )
         if team:
             employees = employees.filter(Employee.team == team)
         if dept:
@@ -530,11 +551,14 @@ def recalculate_attendance(
     start = datetime.strptime(start_date, '%Y-%m-%d').date()
     end = datetime.strptime(end_date, '%Y-%m-%d').date()
 
-    schedules = db.query(Schedule).filter(
-        and_(
-            Schedule.schedule_date >= start,
-            Schedule.schedule_date <= end
-        )
+    schedules = apply_legacy_schedule_scope(
+        db.query(Schedule).filter(
+            and_(
+                Schedule.schedule_date >= start,
+                Schedule.schedule_date <= end
+            )
+        ),
+        current_user,
     ).all()
 
     processed = set()
@@ -548,14 +572,17 @@ def recalculate_attendance(
 
     # 也处理有签到但无排班的员工（标记为"未排班"）
     from app.models.checkin import Checkin
-    checkin_data = db.query(
-        func.date(Checkin.checkin_time).label('d'),
-        Checkin.emp_no
-    ).filter(
-        func.date(Checkin.checkin_time) >= start,
-        func.date(Checkin.checkin_time) <= end,
-        Checkin.emp_no.isnot(None),
-        Checkin.emp_no != ''
+    checkin_data = apply_legacy_checkin_scope(
+        db.query(
+            func.date(Checkin.checkin_time).label('d'),
+            Checkin.emp_no
+        ).filter(
+            func.date(Checkin.checkin_time) >= start,
+            func.date(Checkin.checkin_time) <= end,
+            Checkin.emp_no.isnot(None),
+            Checkin.emp_no != ''
+        ),
+        current_user,
     ).distinct().all()
 
     emp_no_cache = {e.emp_no: e.id for e in db.query(Employee).all()}
@@ -610,11 +637,18 @@ def export_dashboard(
 
     # === Section 1: Stats ===
     writer.writerow(["== 月度统计 =="])
-    employee_count = db.query(Employee).filter(Employee.status == "在职").count()
-    latest_date = db.query(func.max(DailyReport.schedule_date)).scalar()
-    month_reports = db.query(DailyReport).filter(
-        extract("year", DailyReport.schedule_date) == year,
-        extract("month", DailyReport.schedule_date) == month,
+    employee_count = apply_legacy_employee_scope(
+        db.query(Employee).filter(Employee.status == "在职"), current_user
+    ).count()
+    latest_date = apply_legacy_daily_report_scope(
+        db.query(func.max(DailyReport.schedule_date)), current_user
+    ).scalar()
+    month_reports = apply_legacy_daily_report_scope(
+        db.query(DailyReport).filter(
+            extract("year", DailyReport.schedule_date) == year,
+            extract("month", DailyReport.schedule_date) == month,
+        ),
+        current_user,
     ).all()
     monthly_total = len(month_reports)
     monthly_normal = len([r for r in month_reports if r.status == "正常"])
@@ -640,12 +674,15 @@ def export_dashboard(
     # === Section 2: Daily Trend ===
     writer.writerow(["== 每日工时趋势 =="])
     threshold = _get_long_hour_threshold()
-    rows = db.query(
-        DailyReport.schedule_date, DailyReport.status,
-        DailyReport.actual_hours, DailyReport.scheduled_hours,
-    ).filter(
-        extract("year", DailyReport.schedule_date) == year,
-        extract("month", DailyReport.schedule_date) == month,
+    rows = apply_legacy_daily_report_scope(
+        db.query(
+            DailyReport.schedule_date, DailyReport.status,
+            DailyReport.actual_hours, DailyReport.scheduled_hours,
+        ).filter(
+            extract("year", DailyReport.schedule_date) == year,
+            extract("month", DailyReport.schedule_date) == month,
+        ),
+        current_user,
     ).order_by(DailyReport.schedule_date).all()
     daily = {}
     for r in rows:
@@ -685,15 +722,21 @@ def export_dashboard(
 
     # === Section 3: Team Hours ===
     writer.writerow(["== 班组工时 =="])
-    teams_data = db.query(Employee.team).filter(
-        Employee.status == "在职", Employee.team.isnot(None),
+    teams_data = apply_legacy_employee_scope(
+        db.query(Employee.team).filter(
+            Employee.status == "在职", Employee.team.isnot(None),
+        ),
+        current_user,
     ).distinct().all()
     writer.writerow(["班组", "人数", "计划工时", "实际工时", "正常天数", "迟到天数", "缺勤天数"])
     for (team_name,) in teams_data:
-        emp_ids = [e.id for e in db.query(Employee.id).filter(
-            Employee.team == team_name,
-            or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
-            or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+        emp_ids = [e.id for e in apply_legacy_employee_scope(
+            db.query(Employee.id).filter(
+                Employee.team == team_name,
+                or_(Employee.hire_date.is_(None), Employee.hire_date <= month_end),
+                or_(Employee.deleted_at.is_(None), Employee.deleted_at >= month_start),
+            ),
+            current_user,
         ).all()]
         if not emp_ids:
             continue
@@ -712,7 +755,11 @@ def export_dashboard(
 
     # === Section 4: Daily Production ===
     writer.writerow(["== 每日产量趋势 =="])
-    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    emp_accounts = {
+        e[0] for e in apply_legacy_employee_scope(
+            db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
     if emp_accounts:
         start = date(year, month, 1)
         _, last_day = monthrange(year, month)
@@ -744,7 +791,9 @@ def export_dashboard(
         start = date(year, month, 1)
         _, last_day = monthrange(year, month)
         end = date(year, month, last_day)
-        employees = db.query(Employee).filter(Employee.status == "在职").all()
+        employees = apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        ).all()
         emp_map = {e.emp_no: e for e in employees}
         records = db.query(Workload).filter(
             Workload.date >= start, Workload.date <= end,
@@ -830,7 +879,9 @@ def export_efficiency(
         writer.writerow(["工号", "姓名", "班组", "部门", "出勤率(%)", "工时效率(%)", "计划工时", "实际工时", "加班", "迟到天数", "缺勤天数", "出勤天数"])
         parts = ym.split("-")
         y, m = int(parts[0]), int(parts[1])
-        employees = db.query(Employee).filter(Employee.status == "在职")
+        employees = apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        )
         if team:
             employees = employees.filter(Employee.team == team)
         if dept:
@@ -861,7 +912,9 @@ def export_efficiency(
         writer.writerow(["工号", "姓名", "班组", "部门", "预警类型", "次数", "详情"])
         parts = ym.split("-")
         y, m = int(parts[0]), int(parts[1])
-        employees = db.query(Employee).filter(Employee.status == "在职").all()
+        employees = apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        ).all()
         for emp in employees:
             reports = db.query(DailyReport).filter(
                 DailyReport.emp_id == emp.id,
@@ -890,7 +943,9 @@ def export_efficiency(
         writer.writerow(["排名", "工号", "姓名", "班组", "部门", "效能得分", "出勤率(%)", "迟到天数", "缺勤天数"])
         parts = ym.split("-")
         y, m = int(parts[0]), int(parts[1])
-        employees = db.query(Employee).filter(Employee.status == "在职")
+        employees = apply_legacy_employee_scope(
+            db.query(Employee).filter(Employee.status == "在职"), current_user
+        )
         if dept:
             employees = employees.filter(Employee.dept == dept)
         rankings = []
@@ -921,7 +976,9 @@ def export_efficiency(
         if not emp_no:
             writer.writerow(["请选择员工"])
         else:
-            emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+            emp = apply_legacy_employee_scope(
+                db.query(Employee).filter(Employee.emp_no == emp_no), current_user
+            ).first()
             if emp:
                 sm = start_month or ym
                 em = end_month or ym

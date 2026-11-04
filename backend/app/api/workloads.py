@@ -19,11 +19,14 @@ from app.schemas.workload import (
     WorkloadReportItem, WorkloadReportResponse
 )
 from app.core.security import get_current_user, require_permission
-from app.core.data_scope import build_department_group_context
+from app.core.data_scope import (
+    apply_legacy_employee_scope,
+    apply_legacy_workload_scope,
+    build_department_group_context,
+    is_legacy_dept_value,
+)
 
 router = APIRouter(prefix="/api/workloads", tags=["工作量统计"])
-
-TARGET_DEPT = "广西分公司>>省中心>>客户服务营销中心"
 
 CORE_METRICS_FIELDS = [
     "总体-签入次数",
@@ -85,7 +88,7 @@ def get_workloads(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "workload.view")
-    query = db.query(Workload)
+    query = apply_legacy_workload_scope(db.query(Workload), current_user)
     if import_batch:
         query = query.filter(Workload.import_batch == import_batch)
     if workload_date:
@@ -175,7 +178,7 @@ def import_workloads(
             emp_no_val = str(row[4]).strip() if pd.notna(row[4]) else ''
             team_desc_val = str(row[5]).strip() if pd.notna(row[5]) else ''
 
-            if TARGET_DEPT not in team_desc_val:
+            if not is_legacy_dept_value(team_desc_val, current_user):
                 continue
 
             metrics = {}
@@ -220,7 +223,9 @@ def import_workloads(
 
     if dates_set:
         for d in dates_set:
-            db.query(Workload).filter(Workload.date == d).delete(synchronize_session=False)
+            apply_legacy_workload_scope(
+                db.query(Workload).filter(Workload.date == d), current_user
+            ).delete(synchronize_session=False)
 
     if new_records:
         db.bulk_insert_mappings(Workload, new_records)
@@ -243,7 +248,9 @@ def delete_workloads_by_date(
         target = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
-    records = db.query(Workload).filter(Workload.date == target).all()
+    records = apply_legacy_workload_scope(
+        db.query(Workload).filter(Workload.date == target), current_user
+    ).all()
     count = len(records)
     for r in records:
         db.delete(r)
@@ -259,7 +266,9 @@ def delete_workload(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "workload.delete")
-    record = db.query(Workload).filter(Workload.id == workload_id).first()
+    record = apply_legacy_workload_scope(
+        db.query(Workload).filter(Workload.id == workload_id), current_user
+    ).first()
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
     db.delete(record)
@@ -275,7 +284,9 @@ def delete_batch(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "workload.delete")
-    count = db.query(Workload).filter(Workload.import_batch == batch).delete()
+    count = apply_legacy_workload_scope(
+        db.query(Workload).filter(Workload.import_batch == batch), current_user
+    ).delete(synchronize_session=False)
     db.commit()
     log_operation(db, current_user["id"], "delete_workload_batch", "workloads", None, {"batch": batch, "count": count})
     return {"count": count}
@@ -331,9 +342,13 @@ def get_workload_report(
         Workload.date <= end
     )
 
-    records = query.all()
+    records = apply_legacy_workload_scope(query, current_user).all()
 
-    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    emp_accounts = {
+        e[0] for e in apply_legacy_employee_scope(
+            db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
     records = [r for r in records if r.account in emp_accounts]
 
     if province:
@@ -537,7 +552,11 @@ def get_daily_production(
         _, last_day = monthrange(now.year, now.month)
         end = date(now.year, now.month, last_day)
 
-    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    emp_accounts = {
+        e[0] for e in apply_legacy_employee_scope(
+            db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
     if not emp_accounts:
         return _fill_daily_empty(start, end)
 
@@ -605,7 +624,9 @@ def get_team_production(
         _, last_day = monthrange(now.year, now.month)
         end = date(now.year, now.month, last_day)
 
-    employees = db.query(Employee).filter(Employee.status == "在职").all()
+    employees = apply_legacy_employee_scope(
+        db.query(Employee).filter(Employee.status == "在职"), current_user
+    ).all()
     emp_map = {e.emp_no: e for e in employees}
     emp_accounts = set(emp_map.keys())
     if not emp_accounts:
@@ -661,7 +682,11 @@ def get_daily_state_trend(
     _, last_day = monthrange(year, month)
     end = date(year, month, last_day)
 
-    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    emp_accounts = {
+        e[0] for e in apply_legacy_employee_scope(
+            db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
     if not emp_accounts:
         return _fill_state_daily_empty(year, month, last_day)
 
@@ -753,9 +778,13 @@ def export_workload_report(
         start = end
 
     query = db.query(Workload).filter(Workload.date >= start, Workload.date <= end)
-    records = query.all()
+    records = apply_legacy_workload_scope(query, current_user).all()
 
-    emp_accounts = {e[0] for e in db.query(Employee.emp_no).filter(Employee.status == "在职").all()}
+    emp_accounts = {
+        e[0] for e in apply_legacy_employee_scope(
+            db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
+        ).all()
+    }
     records = [r for r in records if r.account in emp_accounts]
     if dept:
         dept_emp_nos = {e[0] for e in db.query(Employee.emp_no).filter(Employee.dept == dept, Employee.status == "在职").all()}

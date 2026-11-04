@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     # 日志保留天数，默认3个月
     LOG_RETENTION_DAYS: int = 90
+    # 旧页面（非营销）固定数据范围：热线运营组，包含其下所有子部门
+    LEGACY_SCOPE_DEPT_PATH: str = "广西分公司>>省中心>>客户服务营销中心>>热线运营组"
 
     class Config:
         env_file = ".env"

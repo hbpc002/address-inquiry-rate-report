@@ -13,6 +13,12 @@ from app.models.database import get_db
 from app.models.training_record import TrainingRecord
 from app.models.employee import Employee
 from app.core.security import get_current_user, require_permission
+from app.core.data_scope import (
+    apply_legacy_training_scope,
+    employee_in_legacy_scope,
+    ensure_legacy_emp_no,
+    has_legacy_all_scope,
+)
 
 router = APIRouter(prefix="/api/training-records", tags=["培训记录"])
 
@@ -62,7 +68,7 @@ def list_training_records(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "training_records.view")
-    query = db.query(TrainingRecord)
+    query = apply_legacy_training_scope(db.query(TrainingRecord), current_user)
     if start_date:
         query = query.filter(TrainingRecord.record_date >= datetime.strptime(start_date, "%Y-%m-%d").date())
     if end_date:
@@ -103,6 +109,7 @@ def batch_create(
     require_permission(current_user, "training_records.create")
     created = []
     for item in data.records:
+        ensure_legacy_emp_no(db, item.emp_no, current_user)
         d = datetime.strptime(item.record_date, "%Y-%m-%d").date()
         minutes = _duration_minutes(item.start_time, item.end_time)
         record = TrainingRecord(
@@ -131,7 +138,9 @@ def delete_record(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "training_records.delete")
-    record = db.query(TrainingRecord).filter(TrainingRecord.id == record_id).first()
+    record = apply_legacy_training_scope(
+        db.query(TrainingRecord).filter(TrainingRecord.id == record_id), current_user
+    ).first()
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
     db.delete(record)
@@ -287,6 +296,12 @@ async def import_training_records(
                 emp_no = existing.emp_no
             else:
                 errors.append(f"第{row_count + 4}行: 找不到员工'{name}'")
+                continue
+
+        if not has_legacy_all_scope(current_user):
+            emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
+            if not employee_in_legacy_scope(emp, current_user):
+                errors.append(f"第{row_count + 4}行: 员工'{emp_no}'不在热线运营组范围内")
                 continue
 
         for dcol in date_col_letters:
