@@ -3,6 +3,7 @@ export const ACCESS_ROUTES = [
   { path: '/checkin-report', permission: 'checkin_report.view' },
   { path: '/workload-report', permission: 'workload_report.view' },
   { path: '/broadband-report', permission: 'broadband_report.view' },
+  { path: '/broadband-compare', permission: 'broadband_report.view' },
   { path: '/marketing-report', permission: 'marketing_report.view' },
   { path: '/marketing-overall', permission: 'marketing_overall.view' },
   { path: '/reports', permission: 'reports.view' },

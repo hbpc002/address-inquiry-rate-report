@@ -190,6 +190,19 @@ def _migrate_db():
                 except Exception as e:
                     print(f"Failed to add column segment_details: {e}")
 
+        if 'seamless_orders' in tables:
+            seamless_cols = {col['name'] for col in inspector.get_columns('seamless_orders')}
+            if 'finish_date' not in seamless_cols:
+                try:
+                    db.execute(text("ALTER TABLE seamless_orders ADD COLUMN finish_date DATE"))
+                    print("Added column finish_date to seamless_orders")
+                except Exception as e:
+                    print(f"Failed to add column finish_date: {e}")
+            try:
+                db.execute(text("CREATE INDEX IF NOT EXISTS ix_seamless_orders_finish_date ON seamless_orders (finish_date)"))
+            except Exception as e:
+                print(f"Failed to create seamless_orders finish_date index: {e}")
+
         if 'marketing_details' in tables:
             marketing_cols = {col['name'] for col in inspector.get_columns('marketing_details')}
             marketing_migrations = [

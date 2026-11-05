@@ -36,6 +36,7 @@
 
       <el-table :data="tableData" border stripe max-height="calc(100vh - 320px)">
         <el-table-column prop="order_date" label="下单日期" width="100" />
+        <el-table-column prop="finish_date" label="竣工日期" width="100" />
         <el-table-column prop="order_no" label="无缝订单号" min-width="150" />
         <el-table-column prop="emp_no" label="下单工号" width="120" />
         <el-table-column prop="name" label="姓名" width="80" />

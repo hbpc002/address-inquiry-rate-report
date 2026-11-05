@@ -73,6 +73,12 @@ const routes = [
         meta: { permission: 'broadband_report.view' }
       },
       {
+        path: 'broadband-compare',
+        name: 'BroadbandCompare',
+        component: () => import('../views/BroadbandCompare.vue'),
+        meta: { permission: 'broadband_report.view' }
+      },
+      {
         path: 'marketing-orders',
         name: 'MarketingDetails',
         component: () => import('../views/MarketingDetails.vue'),

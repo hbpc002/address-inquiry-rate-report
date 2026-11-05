@@ -156,7 +156,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const ui = useUiConfigStore()
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => route.path === '/broadband-compare' ? '/broadband-report' : route.path)
 const showChangePwd = ref(false)
 const changing = ref(false)
 const pwdForm = ref({ oldPassword: '', newPassword: '' })

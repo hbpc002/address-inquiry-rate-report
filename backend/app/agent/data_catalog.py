@@ -129,14 +129,14 @@ TABLE_CATALOG = [
         "name": "seamless_orders",
         "label": "宽带无缝订单",
         "fields": [
-            "id", "order_no", "emp_no", "order_date", "is_completed",
+            "id", "order_no", "emp_no", "order_date", "finish_date", "is_completed",
             "city", "is_hour_short", "is_excluded", "is_duplicate",
             "cb_order_no", "cb_business_no", "cb_order_status",
             "product_name", "bandwidth_speed", "order_status", "month",
             "intention_emp_no", "import_batch", "created_at",
         ],
         "purpose": "宽带无缝订单明细，含竣工、1小时短单、剔除、重复单、意向单受理人。",
-        "notes": "emp_no→employees.emp_no；is_completed/is_hour_short/is_excluded/is_duplicate 取值为 是/否；统计默认过滤 is_excluded='否' AND is_duplicate='否'。",
+        "notes": "emp_no→employees.emp_no；order_date 为下单日期，finish_date 为线下办理CB竣工时间（未竣工为空）；is_completed/is_hour_short/is_excluded/is_duplicate 取值为 是/否；统计默认过滤 is_excluded='否' AND is_duplicate='否'。",
         "scenarios": "宽带订单量、竣工量、短单、剔除/重复分析、地市/产品/速率、意向单转化。",
     },
     {

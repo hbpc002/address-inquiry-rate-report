@@ -10,6 +10,7 @@ class SeamlessOrder(Base):
     order_no = Column(String(50), nullable=False, index=True)
     emp_no = Column(String(50), index=True)
     order_date = Column(Date, nullable=False, index=True)
+    finish_date = Column(Date, nullable=True, index=True)
     is_completed = Column(String(10))
     city = Column(String(50))
     is_hour_short = Column(String(10))

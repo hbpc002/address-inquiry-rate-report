@@ -89,6 +89,8 @@ username=rpa_bot&password=******
 - Content-Type: `multipart/form-data`，字段名固定为 **`file`**
 - 即「新客服无缝订单-原始表.XLSX」（**Sheet_0，第 3 行为表头**），.XLSX/.xlsx 均可
 - 系统按下单日期（`下单日期`，格式 `YYYY-MM-DD`）逐日去重，文件内相同「新客服无缝订单号」只保留首次出现
+- 同时导入「线下办理CB竣工时间」为竣工日期；未竣工（`--`）时竣工日期为空
+- 历史数据升级后需重新导入原始表，才能用于「下单/竣工口径对比」页面
 - 权限：需要 `broadband.upload`（无缝订单-导入）。若 rpa_bot 用的自定义角色，请在角色管理里勾选该权限
 
 成功响应 200：
@@ -193,5 +195,6 @@ python3 rpa/upload_broadband_orders.py http://<服务器IP>:8000 rpa_bot <密码
 - [ ] 「考勤日报」状态/工时已自动计算
 - [ ] 「无缝订单」出现对应下单日期的订单数据
 - [ ] 「宽带营销画像」推荐量/成功推荐/积分/成功率已重算
+- [ ] 「下单/竣工口径对比」推荐量、两种成功推荐口径及差异已重算
 - [ ] 「操作日志」可见 rpa_bot 的 import_checkins / import_attendance_report / import_workloads / import_broadband_orders 记录
 - [ ] 同一文件重复执行一遍，页面数据无重复无报错

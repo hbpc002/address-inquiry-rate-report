@@ -62,6 +62,29 @@ def _cell(row, mapping, name, default=""):
     return s
 
 
+def _parse_finish_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    s = str(value).strip()
+    if not s or s in ("nan", "--", "None"):
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def _parse_row(row, mapping):
     order_no = _cell(row, mapping, "新客服无缝订单号")
     if not order_no:
@@ -71,6 +94,7 @@ def _parse_row(row, mapping):
         order_date = datetime.strptime(order_date_str, "%Y-%m-%d").date()
     except ValueError:
         return None
+    finish_raw = _cell(row, mapping, "线下办理CB竣工时间") or _cell(row, mapping, "竣工日期")
 
     def _bool_field(name):
         return _cell(row, mapping, name)
@@ -79,6 +103,7 @@ def _parse_row(row, mapping):
         "order_no": order_no,
         "emp_no": _cell(row, mapping, "下单新客服工号"),
         "order_date": order_date,
+        "finish_date": _parse_finish_date(finish_raw),
         "is_completed": _bool_field("是否竣工"),
         "city": _cell(row, mapping, "地市名称"),
         "is_hour_short": _bool_field("是否1小时短单"),
@@ -218,6 +243,7 @@ def get_orders(
             "name": emp.name if emp else "",
             "team": emp.team if emp else "",
             "order_date": o.order_date.isoformat() if o.order_date else None,
+            "finish_date": o.finish_date.isoformat() if o.finish_date else None,
             "is_completed": o.is_completed,
             "is_excluded": o.is_excluded,
             "is_duplicate": o.is_duplicate,
@@ -446,6 +472,212 @@ def get_report(
         },
         "items": items,
     }
+
+
+def _employee_report_map(db, current_user, team=None, team_prefix=None, name=None, emp_no=None):
+    query = apply_legacy_employee_scope(
+        db.query(Employee).filter(Employee.status == "在职"), current_user
+    )
+    if team:
+        query = query.filter(Employee.team == team)
+    if team_prefix:
+        query = query.filter(Employee.team.startswith(team_prefix))
+    if name:
+        query = query.filter(Employee.name.ilike(f"%{name}%"))
+    if emp_no:
+        query = query.filter(Employee.emp_no.ilike(f"%{emp_no}%"))
+    return {e.emp_no: e for e in query.all()}
+
+
+def _dedupe_by_order(records):
+    by_order = {}
+    for r in records:
+        if r.order_no not in by_order:
+            by_order[r.order_no] = r
+    return list(by_order.values())
+
+
+def _compare_records(db, current_user, date_field, start, end, emp_nos, city, completed_only=False):
+    if not emp_nos:
+        return []
+    query = apply_legacy_broadband_scope(
+        db.query(SeamlessOrder).filter(
+            date_field >= start,
+            date_field <= end,
+            SeamlessOrder.is_excluded == "否",
+            SeamlessOrder.is_duplicate == "否",
+            SeamlessOrder.emp_no.in_(emp_nos),
+        ),
+        current_user,
+    )
+    if completed_only:
+        query = query.filter(SeamlessOrder.is_completed == "是")
+    records = query.all()
+    if city:
+        records = [r for r in records if r.city == city]
+    return _dedupe_by_order(records)
+
+
+def _compare_report_data(db, current_user, start, end, city=None, team=None,
+                         team_prefix=None, name=None, emp_no=None):
+    emp_map = _employee_report_map(
+        db, current_user, team=team, team_prefix=team_prefix, name=name, emp_no=emp_no
+    )
+    emp_nos = list(emp_map.keys())
+
+    order_records = _compare_records(
+        db, current_user, SeamlessOrder.order_date, start, end, emp_nos, city
+    )
+    finish_records = _compare_records(
+        db, current_user, SeamlessOrder.finish_date, start, end, emp_nos, city,
+        completed_only=True,
+    )
+
+    agg = {}
+
+    def _ensure(emp):
+        if emp.emp_no not in agg:
+            agg[emp.emp_no] = {
+                "emp_no": emp.emp_no,
+                "name": emp.name,
+                "team": emp.team or "",
+                "dept": emp.dept or "",
+                "role": emp.role or "",
+                "class_name": _extract_class(emp.team) or "",
+                "recommend": 0,
+                "completed_by_order": 0,
+                "completed_by_finish": 0,
+            }
+        return agg[emp.emp_no]
+
+    for r in order_records:
+        emp = emp_map.get(r.emp_no)
+        if not emp:
+            continue
+        data = _ensure(emp)
+        data["recommend"] += 1
+        if r.is_completed == "是":
+            data["completed_by_order"] += 1
+
+    for r in finish_records:
+        emp = emp_map.get(r.emp_no)
+        if not emp:
+            continue
+        _ensure(emp)["completed_by_finish"] += 1
+
+    formula = _points_formula(db)
+    items = []
+    for data in agg.values():
+        recommend = data["recommend"]
+        completed_by_order = data["completed_by_order"]
+        completed_by_finish = data["completed_by_finish"]
+        items.append({
+            **data,
+            "diff": completed_by_finish - completed_by_order,
+            "success_rate_by_order": round(completed_by_order / recommend, 4) if recommend > 0 else 0,
+            "success_rate_by_finish": round(completed_by_finish / recommend, 4) if recommend > 0 else 0,
+            "points_by_order": _calc_points(recommend, completed_by_order, formula),
+            "points_by_finish": _calc_points(recommend, completed_by_finish, formula),
+        })
+
+    items.sort(key=lambda x: (x["recommend"], x["completed_by_finish"]), reverse=True)
+
+    total_recommend = sum(i["recommend"] for i in items)
+    total_completed_by_order = sum(i["completed_by_order"] for i in items)
+    total_completed_by_finish = sum(i["completed_by_finish"] for i in items)
+    cities = sorted({r.city for r in order_records + finish_records if r.city})
+    teams = sorted({i["team"] for i in items if i["team"]})
+    classes = sorted({_extract_class(i["team"]) for i in items if _extract_class(i["team"])})
+
+    return {
+        "stats": {
+            "total_people": len(items),
+            "total_recommend": total_recommend,
+            "total_completed_by_order": total_completed_by_order,
+            "total_completed_by_finish": total_completed_by_finish,
+            "total_diff": total_completed_by_finish - total_completed_by_order,
+            "total_points_by_order": sum(i["points_by_order"] for i in items),
+            "total_points_by_finish": sum(i["points_by_finish"] for i in items),
+            "avg_success_rate_by_order": round(total_completed_by_order / total_recommend, 4) if total_recommend > 0 else 0,
+            "avg_success_rate_by_finish": round(total_completed_by_finish / total_recommend, 4) if total_recommend > 0 else 0,
+            "teams": teams,
+            "classes": classes,
+            "cities": cities,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+        },
+        "items": items,
+    }
+
+
+@router.get("/report/compare", response_model=dict)
+def get_compare_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    city: Optional[str] = None,
+    team: Optional[str] = None,
+    team_prefix: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    start, end = _resolve_range(year_month, start_date, end_date)
+    return _compare_report_data(
+        db, current_user, start, end, city=city, team=team,
+        team_prefix=team_prefix, name=name, emp_no=emp_no,
+    )
+
+
+@router.get("/report/compare/export")
+def export_compare_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    year_month: Optional[str] = None,
+    city: Optional[str] = None,
+    team: Optional[str] = None,
+    team_prefix: Optional[str] = None,
+    name: Optional[str] = None,
+    emp_no: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "broadband_report.export")
+
+    start, end = _resolve_range(year_month, start_date, end_date)
+    data = _compare_report_data(
+        db, current_user, start, end, city=city, team=team,
+        team_prefix=team_prefix, name=name, emp_no=emp_no,
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "工号", "姓名", "班组", "部门", "推荐量(按下单日期)",
+        "成功推荐(按下单日期)", "成功推荐(按竣工日期)", "差异",
+        "下单口径成功率(%)", "竣工口径成功率(%)",
+        "下单口径积分", "竣工口径积分",
+    ])
+    for d in data["items"]:
+        writer.writerow([
+            d["emp_no"], d["name"], d["team"], d["dept"], d["recommend"],
+            d["completed_by_order"], d["completed_by_finish"], d["diff"],
+            round(d["success_rate_by_order"] * 100, 2),
+            round(d["success_rate_by_finish"] * 100, 2),
+            d["points_by_order"], d["points_by_finish"],
+        ])
+
+    filename = f"broadband_compare_{start}_{end}.csv"
+    output.seek(0)
+    log_operation(db, current_user["id"], "export_broadband_compare", "broadband", None, {
+        "start_date": start.isoformat(), "end_date": end.isoformat(),
+    })
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @router.get("/report/export")

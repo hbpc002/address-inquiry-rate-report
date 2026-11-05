@@ -5,6 +5,7 @@
         <div class="card-header">
           <span>{{ pageTitle }}</span>
           <span>
+            <el-button size="small" @click="router.push('/broadband-compare')">下单/竣工对比</el-button>
             <el-button v-if="userStore.hasPermission('broadband_report.export')" type="success" size="small" @click="handleExport">导出</el-button>
           </span>
         </div>
@@ -150,6 +151,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
@@ -159,6 +161,7 @@ import { buildScatterOptions, SCATTER_AXIS_FIELDS } from '../utils/broadbandScat
 import { downloadBlob } from '../utils/download'
 import { usePersistedFilters } from '../composables/usePersistedFilters'
 
+const router = useRouter()
 const userStore = useUserStore()
 const ui = useUiConfigStore()
 const pageTitle = computed(() => ui.labels.broadband_report)

@@ -85,7 +85,8 @@ def _make_xlsx(rows: list[list]) -> io.BytesIO:
         "新客服无缝订单号", "下单新客服工号", "下单日期", "是否竣工", "地市名称",
         "是否1小时短单", "是否剔除", "是否重复单", "线下办理CB订单号",
         "线下办理CB业务号码", "线下办理CB订单状态", "最终办理产品名称",
-        "最终办理宽带速率", "订单状态", "月份", "中台意向单受理人工号",
+        "最终办理宽带速率", "线下办理CB竣工时间", "订单状态", "月份",
+        "中台意向单受理人工号",
     ]
     # 第3行(索引2)为表头
     ws.append(header)
@@ -107,10 +108,11 @@ def _upload_xlsx(xlsx_bytes: io.BytesIO, filename="broadband.xlsx"):
 
 def _base_row(order_no="OD0001", emp_no="KF770001", order_date="2026-06-28",
               completed="是", city="南宁", hour_short="否", excluded="否",
-              duplicate="否", product="300M", intention="KF880001", extra=""):
+              duplicate="否", product="300M", intention="KF880001",
+              finish_time="2026-06-28 10:00:00", extra=""):
     row = [order_no, emp_no, order_date, completed, city, hour_short, excluded,
            duplicate, "CB001", "18800000000", "已竣工", product, "300M",
-           "竣工", "2026-06", intention]
+           finish_time, "竣工", "2026-06", intention]
     if extra:
         row.append(extra)
     return row
@@ -164,9 +166,25 @@ class TestBroadbandImport:
         assert resp.status_code == 400
 
     def test_import_skips_missing_order_no(self):
-        rows = [["", "KF770001", "2026-06-28", "是", "南宁", "否", "否", "否", "", "", "", "", "", "", "2026-06", ""]]
+        rows = [_base_row(order_no="")]
         resp = _upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 400
+
+    def test_import_parses_finish_date(self):
+        rows = [
+            _base_row("OD0001", finish_time="2026-06-28 10:00:00"),
+            _base_row("OD0002", finish_time="--"),
+        ]
+        resp = _upload_xlsx(_make_xlsx(rows))
+        assert resp.status_code == 200
+
+        db = SessionLocal()
+        try:
+            records = {r.order_no: r for r in db.query(SeamlessOrder).all()}
+            assert records["OD0001"].finish_date == date(2026, 6, 28)
+            assert records["OD0002"].finish_date is None
+        finally:
+            db.close()
 
     def test_import_invalid_file(self):
         data = {"file": ("empty.xlsx", io.BytesIO(b"not an excel"),
@@ -184,6 +202,7 @@ class TestBroadbandList:
             _create_test_employees(db)
             records = [
                 SeamlessOrder(order_no="OD0001", emp_no="KF770001", order_date=date(2026, 6, 28),
+                              finish_date=date(2026, 6, 29),
                               is_completed="是", is_excluded="否", is_duplicate="否",
                               city="南宁", import_batch="b1"),
                 SeamlessOrder(order_no="OD0002", emp_no="KF770002", order_date=date(2026, 6, 28),
@@ -210,6 +229,13 @@ class TestBroadbandList:
         resp = client.get("/api/broadband/orders", params={"start_date": "2026-06-29", "end_date": "2026-06-29"})
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
+
+    def test_list_returns_finish_date(self):
+        resp = client.get("/api/broadband/orders", params={"emp_no": "KF770001"})
+        assert resp.status_code == 200
+        items = {i["order_no"]: i for i in resp.json()["items"]}
+        assert items["OD0001"]["finish_date"] == "2026-06-29"
+        assert items["OD0003"]["finish_date"] is None
 
     def test_list_filter_by_emp_no(self):
         resp = client.get("/api/broadband/orders", params={"emp_no": "KF770001"})
@@ -277,6 +303,158 @@ class TestBroadbandList:
             assert db.query(SeamlessOrder).count() == 1
         finally:
             db.close()
+
+
+class TestBroadbandCompare:
+
+    def setup_method(self):
+        db = SessionLocal()
+        try:
+            _clean_tables(db)
+            _create_test_employees(db)
+            records = [
+                # 张三：6月下单4单，按竣工日期3单（含1单5月下单、6月竣工）
+                SeamlessOrder(order_no="OD0001", emp_no="KF770001", order_date=date(2026, 6, 28),
+                              finish_date=date(2026, 6, 29), is_completed="是",
+                              is_excluded="否", is_duplicate="否", city="南宁"),
+                SeamlessOrder(order_no="OD0002", emp_no="KF770001", order_date=date(2026, 6, 28),
+                              finish_date=date(2026, 7, 1), is_completed="是",
+                              is_excluded="否", is_duplicate="否", city="南宁"),
+                SeamlessOrder(order_no="OD0003", emp_no="KF770001", order_date=date(2026, 6, 28),
+                              finish_date=None, is_completed="否",
+                              is_excluded="否", is_duplicate="否", city="南宁"),
+                SeamlessOrder(order_no="OD0004", emp_no="KF770001", order_date=date(2026, 6, 30),
+                              finish_date=date(2026, 6, 30), is_completed="是",
+                              is_excluded="否", is_duplicate="否", city="南宁"),
+                SeamlessOrder(order_no="OD0005", emp_no="KF770001", order_date=date(2026, 5, 30),
+                              finish_date=date(2026, 6, 25), is_completed="是",
+                              is_excluded="否", is_duplicate="否", city="南宁"),
+                # 李四：按竣工日期无成功单，按下单日期有1单竣工
+                SeamlessOrder(order_no="OD0007", emp_no="KF770002", order_date=date(2026, 6, 29),
+                              finish_date=None, is_completed="是",
+                              is_excluded="否", is_duplicate="否", city="柳州"),
+                SeamlessOrder(order_no="OD0008", emp_no="KF770002", order_date=date(2026, 6, 29),
+                              finish_date=date(2026, 6, 29), is_completed="否",
+                              is_excluded="否", is_duplicate="否", city="柳州"),
+                # 剔除/重复/离职不计入
+                SeamlessOrder(order_no="OD0009", emp_no="KF770002", order_date=date(2026, 6, 29),
+                              finish_date=date(2026, 6, 29), is_completed="是",
+                              is_excluded="是", is_duplicate="否", city="柳州"),
+                SeamlessOrder(order_no="OD0010", emp_no="KF770002", order_date=date(2026, 6, 29),
+                              finish_date=date(2026, 6, 29), is_completed="是",
+                              is_excluded="否", is_duplicate="是", city="柳州"),
+                SeamlessOrder(order_no="OD0011", emp_no="KF770005", order_date=date(2026, 6, 28),
+                              finish_date=date(2026, 6, 28), is_completed="是",
+                              is_excluded="否", is_duplicate="否", city="南宁"),
+            ]
+            for r in records:
+                db.add(r)
+            db.commit()
+        finally:
+            db.close()
+
+    def test_compare_aggregates_by_order_and_finish_date(self):
+        resp = client.get("/api/broadband/report/compare", params={
+            "start_date": "2026-06-01", "end_date": "2026-06-30"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        stats = data["stats"]
+        assert stats["total_people"] == 2
+        assert stats["total_recommend"] == 6
+        assert stats["total_completed_by_order"] == 4
+        assert stats["total_completed_by_finish"] == 3
+        assert stats["total_diff"] == -1
+        assert stats["avg_success_rate_by_order"] == round(4 / 6, 4)
+        assert stats["avg_success_rate_by_finish"] == round(3 / 6, 4)
+        assert stats["total_points_by_order"] == 4 * 2 + 3 * 10 + 2 * 2 + 1 * 10
+        assert stats["total_points_by_finish"] == 4 * 2 + 3 * 10 + 2 * 2
+
+        items = {i["emp_no"]: i for i in data["items"]}
+        zs = items["KF770001"]
+        assert zs["recommend"] == 4
+        assert zs["completed_by_order"] == 3
+        assert zs["completed_by_finish"] == 3
+        assert zs["diff"] == 0
+        assert zs["success_rate_by_order"] == round(3 / 4, 4)
+        assert zs["success_rate_by_finish"] == round(3 / 4, 4)
+
+        ls = items["KF770002"]
+        assert ls["recommend"] == 2
+        assert ls["completed_by_order"] == 1
+        assert ls["completed_by_finish"] == 0
+        assert ls["diff"] == -1
+        assert ls["points_by_order"] == 2 * 2 + 1 * 10
+        assert ls["points_by_finish"] == 2 * 2
+
+    def test_compare_cross_period_completion(self):
+        resp = client.get("/api/broadband/report/compare", params={
+            "start_date": "2026-07-01", "end_date": "2026-07-31"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        stats = data["stats"]
+        assert stats["total_people"] == 1
+        assert stats["total_recommend"] == 0
+        assert stats["total_completed_by_order"] == 0
+        assert stats["total_completed_by_finish"] == 1
+        assert stats["total_diff"] == 1
+
+        item = data["items"][0]
+        assert item["emp_no"] == "KF770001"
+        assert item["recommend"] == 0
+        assert item["completed_by_finish"] == 1
+        assert item["points_by_finish"] == 10
+
+    def test_compare_filters_by_team_city_and_emp_no(self):
+        resp = client.get("/api/broadband/report/compare", params={
+            "start_date": "2026-06-01", "end_date": "2026-06-30", "team": "云网二组"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [i["emp_no"] for i in data["items"]] == ["KF770002"]
+
+        resp = client.get("/api/broadband/report/compare", params={
+            "start_date": "2026-06-01", "end_date": "2026-06-30", "city": "南宁"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [i["emp_no"] for i in data["items"]] == ["KF770001"]
+
+        resp = client.get("/api/broadband/report/compare", params={
+            "start_date": "2026-06-01", "end_date": "2026-06-30", "emp_no": "KF770002"
+        })
+        assert resp.status_code == 200
+        assert resp.json()["stats"]["total_people"] == 1
+
+    def test_compare_dedupes_by_order_no(self):
+        db = SessionLocal()
+        try:
+            db.add(SeamlessOrder(
+                order_no="OD0001", emp_no="KF770001", order_date=date(2026, 6, 28),
+                finish_date=date(2026, 6, 29), is_completed="是",
+                is_excluded="否", is_duplicate="否", city="南宁",
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        resp = client.get("/api/broadband/report/compare", params={
+            "start_date": "2026-06-01", "end_date": "2026-06-30"
+        })
+        data = resp.json()
+        assert data["stats"]["total_recommend"] == 6
+        assert data["stats"]["total_completed_by_finish"] == 3
+
+    def test_compare_export_csv(self):
+        resp = client.get("/api/broadband/report/compare/export", params={
+            "start_date": "2026-06-01", "end_date": "2026-06-30"
+        })
+        assert resp.status_code == 200
+        lines = resp.content.decode("utf-8").strip().splitlines()
+        assert lines[0] == "工号,姓名,班组,部门,推荐量(按下单日期),成功推荐(按下单日期),成功推荐(按竣工日期),差异,下单口径成功率(%),竣工口径成功率(%),下单口径积分,竣工口径积分"
+        zs_line = next(line for line in lines if "KF770001" in line)
+        assert zs_line.split(",")[4:8] == ["4", "3", "3", "0"]
 
 
 class TestBroadbandReport:
