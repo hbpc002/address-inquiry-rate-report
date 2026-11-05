@@ -273,6 +273,32 @@ def test_marketing_details_team_and_class_filters():
     assert [row[2] for row in rows[1:]] == ["A002"]
 
 
+def test_marketing_report_dept_filter_ignores_unmatched_employee_details():
+    db = TestingSessionLocal()
+    ghost = MarketingDetail(
+        kf_id="GHOST001", org_name="未匹配员工组织", organization="未匹配员工组织",
+        data_type="xszb", finish_date=DAY, service_type="叠加包", valid_type="日包",
+        trade_id="TGHOST", product_id="PGHOST", product_name="未匹配员工产品",
+        lh_qh="来话", import_batch="ghost",
+    )
+    db.add(ghost)
+    db.commit()
+    try:
+        res = client.get(
+            "/api/marketing/report",
+            params={"start_date": DAY.isoformat(), "end_date": DAY.isoformat(), "dept": DEPT_A, "team": TEAM},
+            headers=auth_header(),
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert [(item["dept"], item["team"]) for item in data["teams"]] == [(DEPT_A, TEAM)]
+        assert [item["kf_id"] for item in data["employees"]] == ["A002"]
+    finally:
+        db.query(MarketingDetail).filter(MarketingDetail.kf_id == "GHOST001").delete(synchronize_session=False)
+        db.commit()
+        db.close()
+
+
 def test_checkin_report_filters_by_dept():
     res = client.get(
         "/api/checkins/report",

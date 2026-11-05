@@ -735,7 +735,7 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     for detail, emp, group, effective_org in prepared:
         if group_name and group != group_name:
             continue
-        if dept and (emp.dept or "").strip() != dept:
+        if dept and (not emp or (emp.dept or "").strip() != dept):
             continue
         if department_group and dept_group_of(emp.dept if emp else "") != department_group:
             continue
