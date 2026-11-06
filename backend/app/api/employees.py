@@ -17,7 +17,7 @@ from app.schemas.employee import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     EmployeeListResponse
 )
-from app.core.security import get_current_user, require_permission
+from app.core.security import get_current_user, require_any_permission, require_permission
 from app.core.data_scope import (
     apply_employee_dept_scope, apply_employee_scope, apply_employee_write_scope,
     apply_legacy_employee_scope,
@@ -28,6 +28,14 @@ from app.core.data_scope import (
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/employees", tags=["员工管理"])
+
+TEAM_LOOKUP_PERMISSIONS = [
+    "employees.view",
+    "workload_report.view",
+    "checkin_report.view",
+    "reports.view",
+    "schedules.view",
+]
 
 
 def _apply_read_scope(query, current_user: dict, scope: Optional[str]):
@@ -255,7 +263,7 @@ def get_teams(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_permission(current_user, "employees.view")
+    require_any_permission(current_user, TEAM_LOOKUP_PERMISSIONS)
     if include_dept:
         _, resolve_dept_group = build_department_group_context(db)
         results = _apply_read_scope(
@@ -282,7 +290,7 @@ def get_team_leaders(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
-    require_permission(current_user, "employees.view")
+    require_any_permission(current_user, TEAM_LOOKUP_PERMISSIONS)
     results = _apply_read_scope(
         db.query(Employee.dept, Employee.team, Employee.name).filter(
             Employee.role == "组长",
