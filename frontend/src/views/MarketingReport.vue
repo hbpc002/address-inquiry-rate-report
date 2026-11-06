@@ -142,6 +142,11 @@
                 <Echart :options="teamScatterOptions" height="320px" @click="handleTeamChartClick" />
               </el-card>
             </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card">
+                <Echart :options="teamOpeningRateOptions" height="320px" @click="handleTeamChartClick" />
+              </el-card>
+            </el-col>
           </el-row>
         </template>
 
@@ -294,6 +299,7 @@ import {
   buildDailyOrderRateOptions,
   buildTeamScatterOptions,
   buildEmployeeScatterOptions,
+  buildOpeningRateRankingOptions,
   buildTeamRadarOptions,
   buildMemberRadarOptions
 } from '../utils/marketingCharts'
@@ -429,6 +435,18 @@ const teamScatterOptions = computed(() => {
     })
   }
   return buildTeamScatterOptions(teamItems.value)
+})
+const teamOpeningRateOptions = computed(() => {
+  if (teamDrillActive.value) {
+    return buildOpeningRateRankingOptions(teamMemberItems.value, {
+      title: `${drillTeamLabel.value} 组员开口率排行`,
+      limit: teamLimit.value
+    })
+  }
+  return buildOpeningRateRankingOptions(teamItems.value, {
+    title: '班组开口率排行',
+    limit: teamLimit.value
+  })
 })
 
 const dailyTrendOptions = computed(() => buildDailyTrendOptions(dayItems.value))

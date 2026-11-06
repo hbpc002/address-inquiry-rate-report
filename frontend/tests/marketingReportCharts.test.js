@@ -46,24 +46,28 @@ const reportData = {
     {
       kf_id: 'KF001', name: '张三', team: '热线一组', dept: '客服部', group_name: '线上直办-热线',
       total: 40, order_count: 20, inbound: 30, outbound: 10, overlay: 28, package_change: 8,
-      overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4
+      overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4,
+      contact_count: 20, opened_count: 11, opening_rate: 0.55
     },
     {
       kf_id: 'KF002', name: '李四', team: '热线二组', dept: '客服部', group_name: '线上直办-热线',
       total: 60, order_count: 40, inbound: 40, outbound: 10, overlay: 42, package_change: 12,
-      overlay_day: 6, overlay_month: 18, overlay_long: 12, overlay_undefined: 6
+      overlay_day: 6, overlay_month: 18, overlay_long: 12, overlay_undefined: 6,
+      contact_count: 30, opened_count: 12, opening_rate: 0.4
     }
   ],
   teams: [
     {
       team: '热线一组', dept: '客服部', leader: '王组长', people: 1, total: 40, order_count: 20,
       inbound: 30, outbound: 10, overlay: 28, package_change: 8,
-      overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4
+      overlay_day: 4, overlay_month: 12, overlay_long: 8, overlay_undefined: 4,
+      contact_count: 20, opened_count: 11, opening_rate: 0.55
     },
     {
       team: '热线二组', dept: '客服部', leader: '赵组长', people: 1, total: 60, order_count: 40,
       inbound: 40, outbound: 10, overlay: 42, package_change: 12,
-      overlay_day: 6, overlay_month: 18, overlay_long: 12, overlay_undefined: 6
+      overlay_day: 6, overlay_month: 18, overlay_long: 12, overlay_undefined: 6,
+      contact_count: 30, opened_count: 12, opening_rate: 0.4
     }
   ],
   groups: [
@@ -145,7 +149,8 @@ describe('营销统计图表区域', () => {
       '班组业务结构',
       '班组叠加包有效期结构',
       '班组多指标雷达',
-      '班组人均效率分布'
+      '班组人均效率分布',
+      '班组开口率排行'
     ])
     expect(titles.join(' ')).not.toContain('帕累托')
     expect(titles.join(' ')).not.toContain('部门')
@@ -171,7 +176,7 @@ describe('营销统计图表区域', () => {
     expect(titles).toContain('班组来话/去话结构')
   })
 
-  it('点击班组后五张图表切换为组员口径，再点返回班组', async () => {
+  it('点击班组后六张图表切换为组员口径，再点返回班组', async () => {
     const wrapper = await mountPage()
     const state = wrapper.vm.$.setupState
 
@@ -186,7 +191,8 @@ describe('营销统计图表区域', () => {
       '热线一组 组员业务结构',
       '热线一组 组员叠加包有效期结构',
       '热线一组 组员多指标雷达',
-      '热线一组 组员办理量与订单数分布'
+      '热线一组 组员办理量与订单数分布',
+      '热线一组 组员开口率排行'
     ])
 
     state.handleTeamChartClick({ name: '张三', data: { kf_id: 'KF001' } })

@@ -13,6 +13,7 @@ import {
   buildDailyBusinessOptions,
   buildTeamScatterOptions,
   buildTeamRadarOptions,
+  buildOpeningRateRankingOptions,
   buildMemberRadarOptions,
   buildValidCrossOptions,
   filterMatchedTeams
@@ -180,6 +181,21 @@ describe('营销统计图表数据构建', () => {
     expect(metricValue(team, 'avg_total')).toBe(10)
     expect(metricValue(team, 'avg_order')).toBe(5)
     expect(metricValue(team, 'order_rate')).toBe(50)
+  })
+
+  it('开口率排行应过滤无接触量数据、按开口率倒序并显示百分比', () => {
+    const options = buildOpeningRateRankingOptions([
+      { team: '热线一组', people: 2, contact_count: 10, opened_count: 4, opening_rate: 0.4 },
+      { team: '无接触组', people: 2, contact_count: 0, opened_count: 0, opening_rate: null },
+      { team: '热线二组', people: 3, contact_count: 5, opened_count: 4, opening_rate: 0.8 },
+      { team: '热线三组', people: 1, contact_count: 8, opened_count: 3, opening_rate: 0.375 }
+    ], { title: '班组开口率排行', limit: 2 })
+
+    expect(options.title.text).toBe('班组开口率排行')
+    expect(options.yAxis.data).toEqual(['热线一组', '热线二组'])
+    expect(options.series[0].data.map(item => item.value)).toEqual([40, 80])
+    expect(options.series[0].label.formatter).toBe('{c}%')
+    expect(options.xAxis.name).toBe('开口率(%)')
   })
 
   it('排行数据应按指标倒序并截取 Top N，横向图表数据反转为从下到上递增', () => {

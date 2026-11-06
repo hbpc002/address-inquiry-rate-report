@@ -292,6 +292,45 @@ export function buildGroupRankingOptions(groups = [], options = {}) {
   })
 }
 
+export function buildOpeningRateRankingOptions(items = [], {
+  title = '开口率排行',
+  limit = 10,
+  labelKey = 'displayName'
+} = {}) {
+  const ranked = items
+    .filter(item => toNumber(item.contact_count) > 0 && item.opening_rate != null)
+    .map(item => ({
+      ...item,
+      _label: item[labelKey] || item.displayName || item.label || item.name || item.team || item.kf_id || '',
+      _rate: round(toNumber(item.opening_rate) * 100, 2)
+    }))
+    .sort((a, b) => b._rate - a._rate)
+    .slice(0, limit)
+  const display = [...ranked].reverse()
+  const options = createHorizontalBarOptions(
+    display.map(item => item._label),
+    display.map(item => ({ ...item, name: item._label, value: item._rate })),
+    title,
+    '',
+    '开口率(%)',
+    params => {
+      const data = Array.isArray(params) ? params[0]?.data : params?.data
+      if (!data) return ''
+      const lines = [data._label || data.name || '']
+      if (data.kf_id) lines.push(`工号：${data.kf_id}`)
+      if (data.team) lines.push(`班组：${data.team_label || data.team}`)
+      if (data.leader) lines.push(`组长：${data.leader}`)
+      if (data.people) lines.push(`人数：${toNumber(data.people)}`)
+      lines.push(`接触量：${toNumber(data.contact_count).toLocaleString('zh-CN')}`)
+      lines.push(`已开口量：${toNumber(data.opened_count).toLocaleString('zh-CN')}`)
+      lines.push(`开口率：${data._rate.toFixed(2)}%`)
+      return lines.join('\n')
+    }
+  )
+  options.series[0].label.formatter = '{c}%'
+  return options
+}
+
 export function buildParetoData(items = [], { metric = 'total', limit = 20, labelKey = 'displayName' } = {}) {
   const ranked = rankingItems(items, { metric, limit, labelKey })
   const labels = ranked.map(item => item._label)
