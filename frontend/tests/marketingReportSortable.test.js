@@ -118,6 +118,17 @@ describe('营销统计表格列排序', () => {
     }
   })
 
+  it('员工维度显示可排序的开口率列', async () => {
+    const wrapper = await mountPage()
+
+    const openingRate = wrapper.findAll('.el-table-column-stub').find(
+      (column) => column.attributes('data-prop') === 'opening_rate'
+    )
+    expect(openingRate).toBeTruthy()
+    expect(openingRate.attributes('data-label')).toBe('开口率')
+    expect(openingRate.attributes('data-sortable')).toBe('true')
+  })
+
   it('班组维度显示可排序的组长列', async () => {
     const wrapper = await mountPage()
 

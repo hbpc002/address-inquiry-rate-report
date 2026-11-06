@@ -85,10 +85,22 @@ const routes = [
         meta: { permission: 'marketing.view' }
       },
       {
+        path: 'marketing-openings',
+        name: 'MarketingOpenings',
+        component: () => import('../views/MarketingOpenings.vue'),
+        meta: { permission: 'marketing_opening.view' }
+      },
+      {
         path: 'marketing-report',
         name: 'MarketingReport',
         component: () => import('../views/MarketingReport.vue'),
         meta: { permission: 'marketing_report.view' }
+      },
+      {
+        path: 'marketing-opening-report',
+        name: 'MarketingOpeningReport',
+        component: () => import('../views/MarketingOpeningReport.vue'),
+        meta: { permission: 'marketing_opening_report.view' }
       },
       {
         path: 'marketing-overall',

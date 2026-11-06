@@ -10,6 +10,7 @@ from app.models.daily_report import DailyReport
 from app.models.department_group import DepartmentGroup, DepartmentGroupPath
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
+from app.models.marketing_opening import MarketingOpeningRecord
 from app.models.schedule import Schedule
 from app.models.seamless_order import SeamlessOrder
 from app.models.training_record import TrainingRecord
@@ -24,6 +25,8 @@ DATA_SCOPE_MODULES = {
     "marketing": "营销明细",
     "marketing_report": "营销统计",
     "marketing_overall": "总体营销",
+    "marketing_opening": "开口率明细",
+    "marketing_opening_report": "开口率报表",
 }
 
 
@@ -241,6 +244,19 @@ def apply_marketing_scope(query, db: Session, user: dict, module: str = "marketi
         or_(*_path_filters(paths, Employee.dept))
     )
     return query.filter(func.upper(MarketingDetail.kf_id).in_(emp_nos))
+
+
+def apply_marketing_opening_scope(query, db: Session, user: dict, module: str = "marketing_opening"):
+    if is_all_scope(user, module):
+        return query
+    paths = get_user_scope_paths(user)
+    if not paths:
+        return query.filter(false())
+
+    emp_nos = select(func.upper(Employee.emp_no)).where(
+        or_(*_path_filters(paths, Employee.dept))
+    )
+    return query.filter(func.upper(MarketingOpeningRecord.emp_no).in_(emp_nos))
 
 
 def is_all_employee_write_scope(user: dict) -> bool:

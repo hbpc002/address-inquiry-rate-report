@@ -172,6 +172,11 @@ def test_registry_contains_marketing():
     assert "export" in PERMISSION_REGISTRY["marketing_overall"]["permissions"]
     assert PERMISSION_REGISTRY["marketing_settings"]["label"] == "营销设置"
     assert "edit" in PERMISSION_REGISTRY["marketing_settings"]["permissions"]
+    assert PERMISSION_REGISTRY["marketing_opening"]["label"] == "开口率明细"
+    assert "upload" in PERMISSION_REGISTRY["marketing_opening"]["permissions"]
+    assert "delete" in PERMISSION_REGISTRY["marketing_opening"]["permissions"]
+    assert PERMISSION_REGISTRY["marketing_opening_report"]["label"] == "开口率报表"
+    assert "export" in PERMISSION_REGISTRY["marketing_opening_report"]["permissions"]
 
 
 def test_marketing_permission_defaults():
@@ -180,15 +185,24 @@ def test_marketing_permission_defaults():
     for key in ["marketing.view", "marketing.upload", "marketing.delete", "marketing.export",
                 "marketing_report.view", "marketing_report.export",
                 "marketing_overall.view", "marketing_overall.export",
-                "marketing_settings.view", "marketing_settings.edit"]:
+                "marketing_settings.view", "marketing_settings.edit",
+                "marketing_opening.view", "marketing_opening.upload",
+                "marketing_opening.delete", "marketing_opening.export",
+                "marketing_opening_report.view", "marketing_opening_report.export"]:
         assert admin[key] is True
     assert user["marketing.view"] is True
     assert user["marketing_report.view"] is True
     assert user["marketing_overall.view"] is True
     assert user["marketing_settings.view"] is True
+    assert user["marketing_opening.view"] is True
+    assert user["marketing_opening_report.view"] is True
     assert user["marketing.upload"] is False
     assert user["marketing.delete"] is False
     assert user["marketing.export"] is False
     assert user["marketing_report.export"] is False
     assert user["marketing_overall.export"] is False
     assert user["marketing_settings.edit"] is False
+    assert user["marketing_opening.upload"] is False
+    assert user["marketing_opening.delete"] is False
+    assert user["marketing_opening.export"] is False
+    assert user["marketing_opening_report.export"] is False

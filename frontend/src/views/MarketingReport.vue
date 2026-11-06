@@ -253,6 +253,11 @@
         <el-table-column prop="overlay_long" label="长期包" width="90" sortable />
         <el-table-column prop="overlay_undefined" label="未定义" width="90" sortable />
         <el-table-column prop="package_change" label="套餐变更" width="100" sortable />
+        <el-table-column v-if="dimension !== 'product'" prop="opening_rate" label="开口率" width="100" sortable>
+          <template #default="{ row }">
+            {{ formatOpeningRate(row.opening_rate) }}
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
   </div>
@@ -563,6 +568,11 @@ function handleTeamChartClick(params) {
   drillTeamKey.value = key
   drillResult.value = null
   loadDrillData(key)
+}
+
+function formatOpeningRate(value) {
+  if (value == null) return '-'
+  return `${(Number(value) * 100).toFixed(2)}%`
 }
 
 function handleDimensionChange() {

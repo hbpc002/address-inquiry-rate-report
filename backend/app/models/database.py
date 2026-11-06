@@ -40,6 +40,7 @@ def init_db():
     from app.models.training_record import TrainingRecord
     from app.models.seamless_order import SeamlessOrder
     from app.models.marketing_detail import MarketingDetail
+    from app.models.marketing_opening import MarketingOpeningRecord
     from app.models.app_config import AppConfig
     from app.models.llm_provider import LLMProvider
     from app.models.agent_conversation import AgentConversation

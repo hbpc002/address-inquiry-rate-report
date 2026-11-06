@@ -15,6 +15,7 @@ from app.models.field_annotation import FieldAnnotation
 from app.models.training_record import TrainingRecord
 from app.models.seamless_order import SeamlessOrder
 from app.models.marketing_detail import MarketingDetail
+from app.models.marketing_opening import MarketingOpeningRecord
 from app.models.llm_provider import LLMProvider, LLMProviderModel
 from app.models.agent_conversation import AgentConversation
 from app.models.agent_message import AgentMessage
@@ -40,6 +41,7 @@ __all__ = [
     "TrainingRecord",
     "SeamlessOrder",
     "MarketingDetail",
+    "MarketingOpeningRecord",
     "LLMProvider",
     "LLMProviderModel",
     "AgentConversation",

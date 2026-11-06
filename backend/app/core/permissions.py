@@ -45,6 +45,26 @@ PERMISSION_REGISTRY = {
             "edit": "编辑",
         },
     },
+    "marketing_opening": {
+        "label": "开口率明细",
+        "group": "营销管理",
+        "order": 24,
+        "permissions": {
+            "view": "查看",
+            "upload": "导入",
+            "delete": "删除",
+            "export": "导出",
+        },
+    },
+    "marketing_opening_report": {
+        "label": "开口率报表",
+        "group": "营销管理",
+        "order": 25,
+        "permissions": {
+            "view": "查看",
+            "export": "导出",
+        },
+    },
     "checkins": {
         "label": "签到记录",
         "group": "考勤管理",

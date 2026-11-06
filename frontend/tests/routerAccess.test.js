@@ -100,6 +100,8 @@ describe('router access - route registry', () => {
     expect(paths).toContain('/')
     expect(paths).toContain('/employees')
     expect(paths).toContain('/marketing-orders')
+    expect(paths).toContain('/marketing-openings')
+    expect(paths).toContain('/marketing-opening-report')
     expect(paths).toContain('/department-groups')
     expect(paths).toContain('/broadband-compare')
     expect(paths).toContain('/llm-settings')

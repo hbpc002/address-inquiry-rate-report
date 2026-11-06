@@ -45,8 +45,11 @@ describe('营销统计权限', () => {
     expect(PERMISSION_REGISTRY.marketing_report.permissions.export).toBe('导出')
     expect(PERMISSION_REGISTRY.marketing_overall.permissions.export).toBe('导出')
     expect(PERMISSION_REGISTRY.marketing_settings.permissions.edit).toBe('编辑')
+    expect(PERMISSION_REGISTRY.marketing_opening.permissions.upload).toBe('导入')
+    expect(PERMISSION_REGISTRY.marketing_opening.permissions.delete).toBe('删除')
+    expect(PERMISSION_REGISTRY.marketing_opening_report.permissions.export).toBe('导出')
     const keys = getAllPermissionKeys()
-    for (const key of ['marketing.view', 'marketing.upload', 'marketing.delete', 'marketing.export', 'marketing_report.view', 'marketing_report.export', 'marketing_overall.view', 'marketing_overall.export', 'marketing_settings.view', 'marketing_settings.edit']) {
+    for (const key of ['marketing.view', 'marketing.upload', 'marketing.delete', 'marketing.export', 'marketing_report.view', 'marketing_report.export', 'marketing_overall.view', 'marketing_overall.export', 'marketing_settings.view', 'marketing_settings.edit', 'marketing_opening.view', 'marketing_opening.upload', 'marketing_opening.delete', 'marketing_opening.export', 'marketing_opening_report.view', 'marketing_opening_report.export']) {
       expect(keys).toContain(key)
     }
   })
@@ -72,5 +75,7 @@ describe('部门设置与页面数据范围', () => {
     expect(DATA_SCOPE_MODULES.employees).toBe('员工管理')
     expect(DATA_SCOPE_MODULES.marketing_report).toBe('营销统计')
     expect(DATA_SCOPE_MODULES.marketing_overall).toBe('总体营销')
+    expect(DATA_SCOPE_MODULES.marketing_opening).toBe('开口率明细')
+    expect(DATA_SCOPE_MODULES.marketing_opening_report).toBe('开口率报表')
   })
 })

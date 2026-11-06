@@ -34,6 +34,10 @@
           <el-icon><DataLine /></el-icon>
           <span>{{ ui.labels.marketing_report }}</span>
         </el-menu-item>
+        <el-menu-item v-if="userStore.canView('marketing_opening_report')" index="/marketing-opening-report">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>{{ ui.labels.marketing_opening_report }}</span>
+        </el-menu-item>
         <el-menu-item v-if="userStore.canView('marketing_overall')" index="/marketing-overall">
           <el-icon><DataAnalysis /></el-icon>
           <span>{{ ui.labels.marketing_overall_report }}</span>
@@ -67,6 +71,9 @@
           </el-menu-item>
           <el-menu-item v-if="userStore.canView('marketing')" index="/marketing-orders">
             <span>{{ ui.labels.marketing_orders }}</span>
+          </el-menu-item>
+          <el-menu-item v-if="userStore.canView('marketing_opening')" index="/marketing-openings">
+            <span>{{ ui.labels.marketing_opening }}</span>
           </el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canViewSystem" index="system">
@@ -182,6 +189,7 @@ const DATA_ITEMS = [
   { path: '/workloads', key: 'workload' },
   { path: '/broadband-orders', key: 'broadband' },
   { path: '/marketing-orders', key: 'marketing' },
+  { path: '/marketing-openings', key: 'marketing_opening' },
 ]
 const DATA_PATHS = DATA_ITEMS.map(i => i.path)
 const canViewData = computed(() => DATA_ITEMS.some(i => userStore.canView(i.key)))

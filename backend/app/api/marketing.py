@@ -14,7 +14,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_permission
@@ -27,6 +27,7 @@ from app.models.app_config import AppConfig
 from app.models.database import get_db
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
+from app.models.marketing_opening import MarketingOpeningRecord
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/marketing", tags=["营销统计"])
@@ -765,6 +766,59 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             continue
         filtered.append((detail, emp, group, effective_org))
 
+    filtered_kf_ids = {
+        _norm_emp_no(detail.kf_id)
+        for detail, _emp, _group, _org in filtered
+        if detail.kf_id
+    }
+    opening_by_emp: Dict[str, Dict[str, int]] = {}
+    opening_by_emp_day: Dict[tuple, Dict[str, int]] = {}
+    if filtered_kf_ids:
+        opened_contact = func.count(
+            func.distinct(
+                case((MarketingOpeningRecord.five_products_opened.is_(True), MarketingOpeningRecord.contact_id))
+            )
+        )
+        contact_count = func.count(func.distinct(MarketingOpeningRecord.contact_id))
+        normalized_emp_no = func.upper(MarketingOpeningRecord.emp_no)
+        emp_rows = db.query(
+            normalized_emp_no,
+            contact_count,
+            opened_contact,
+        ).filter(
+            MarketingOpeningRecord.record_date >= start,
+            MarketingOpeningRecord.record_date <= end,
+            normalized_emp_no.in_(filtered_kf_ids),
+        ).group_by(normalized_emp_no).all()
+        for emp_no, contacts, opened in emp_rows:
+            opening_by_emp[_norm_emp_no(emp_no)] = {
+                "contact_count": int(contacts or 0),
+                "opened_count": int(opened or 0),
+            }
+        day_rows = db.query(
+            normalized_emp_no,
+            MarketingOpeningRecord.record_date,
+            contact_count,
+            opened_contact,
+        ).filter(
+            MarketingOpeningRecord.record_date >= start,
+            MarketingOpeningRecord.record_date <= end,
+            normalized_emp_no.in_(filtered_kf_ids),
+        ).group_by(
+            normalized_emp_no,
+            MarketingOpeningRecord.record_date,
+        ).all()
+        for emp_no, record_date, contacts, opened in day_rows:
+            opening_by_emp_day[(_norm_emp_no(emp_no), record_date.isoformat())] = {
+                "contact_count": int(contacts or 0),
+                "opened_count": int(opened or 0),
+            }
+
+    def _apply_opening(item: Dict[str, Any], contact_count: int, opened_count: int):
+        item["contact_count"] = contact_count
+        item["opened_count"] = opened_count
+        item["opening_rate"] = round(opened_count / contact_count, 4) if contact_count else None
+
     employees: Dict[str, Any] = {}
     teams: Dict[str, Any] = {}
     groups: Dict[str, Any] = {}
@@ -828,9 +882,10 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         product_bucket["_trade_id"] = detail.trade_id
 
         day_key = detail.finish_date.isoformat() if detail.finish_date else ""
-        day_bucket = days.setdefault(day_key, {**_new_bucket(), "date": day_key})
+        day_bucket = days.setdefault(day_key, {**_new_bucket(), "date": day_key, "people": set()})
         _accumulate(day_bucket, detail)
         day_bucket["_trade_id"] = detail.trade_id
+        day_bucket["people"].add(kf_id or emp_key)
 
         _accumulate(overall_bucket, detail)
 
@@ -844,27 +899,63 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
         result.sort(key=lambda item: (item.get("total", 0), item.get("order_count", 0)), reverse=True)
         return result
 
+    def _sum_opening(emp_keys, source_map):
+        contact_count = 0
+        opened_count = 0
+        for emp_key in emp_keys:
+            data = source_map.get(_norm_emp_no(emp_key))
+            if not data:
+                continue
+            contact_count += data["contact_count"]
+            opened_count += data["opened_count"]
+        return contact_count, opened_count
+
+    def employee_extra(item, _bucket, key):
+        data = opening_by_emp.get(_norm_emp_no(key))
+        if data:
+            _apply_opening(item, data["contact_count"], data["opened_count"])
+        else:
+            _apply_opening(item, 0, 0)
+
     def team_extra(item, bucket, key):
         item["dept"] = key[0]
         item["dept_group"] = bucket.get("dept_group", "")
         item["team"] = key[1]
         item["people"] = len(bucket.get("people") or set())
         item["leader"] = team_leaders.get(key, "")
+        _apply_opening(item, *_sum_opening(bucket.get("people") or set(), opening_by_emp))
 
     def group_extra(item, bucket, _key):
         item["people"] = len(bucket.get("people") or set())
+        _apply_opening(item, *_sum_opening(bucket.get("people") or set(), opening_by_emp))
 
-    employee_items = finalize_items(employees)
+    def day_extra(item, bucket, key):
+        item["people"] = len(bucket.get("people") or set())
+        contact_count = 0
+        opened_count = 0
+        for emp_key in bucket.get("people") or set():
+            data = opening_by_emp_day.get((_norm_emp_no(emp_key), key))
+            if not data:
+                continue
+            contact_count += data["contact_count"]
+            opened_count += data["opened_count"]
+        _apply_opening(item, contact_count, opened_count)
+
+    employee_items = finalize_items(employees, employee_extra)
     team_items = finalize_items(teams, team_extra)
     group_items = finalize_items(groups, group_extra)
     product_items = finalize_items(products)
-    day_items = finalize_items(days)
+    day_items = finalize_items(days, day_extra)
     day_items.sort(key=lambda item: item.get("date") or "")
 
     stats = _finalize(overall_bucket)
+    total_contact_count, total_opened_count = _sum_opening(filtered_kf_ids, opening_by_emp)
     stats.update({
         "people_count": len(people),
         "product_count": len(product_set),
+        "contact_count": total_contact_count,
+        "opened_count": total_opened_count,
+        "opening_rate": round(total_opened_count / total_contact_count, 4) if total_contact_count else None,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
     })
@@ -1915,26 +2006,37 @@ def export_report(
 
     writer = csv.writer(output)
     common = ["产品办理量", "订单数", "来话办理量", "去话办理量", "叠加包", "日包", "月包", "长期包", "未定义", "套餐变更"]
+    metric_keys = ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")
+    opening_labels = ["接触量", "已开口量", "开口率"]
+
+    def opening_cells(item):
+        rate = item.get("opening_rate")
+        return [
+            item.get("contact_count", 0),
+            item.get("opened_count", 0),
+            f"{float(rate) * 100:.2f}%" if rate is not None else "",
+        ]
+
     if dimension == "team":
-        writer.writerow(["部门组", "部门", "班组", "组长", "人数"] + common)
+        writer.writerow(["部门组", "部门", "班组", "组长", "人数"] + common + opening_labels)
         for item in data["teams"]:
-            writer.writerow([item.get("dept_group", ""), item.get("dept", ""), item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("dept_group", ""), item.get("dept", ""), item.get("team"), item.get("leader", ""), item.get("people", 0)] + [item.get(k, 0) for k in metric_keys] + opening_cells(item))
     elif dimension == "group":
-        writer.writerow(["行分类", "人数"] + common)
+        writer.writerow(["行分类", "人数"] + common + opening_labels)
         for item in data["groups"]:
-            writer.writerow([item.get("group_name"), item.get("people", 0)] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("group_name"), item.get("people", 0)] + [item.get(k, 0) for k in metric_keys] + opening_cells(item))
     elif dimension == "product":
         writer.writerow(["产品ID", "产品名称"] + common)
         for item in data["products"]:
-            writer.writerow([item.get("product_id"), item.get("product_name")] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("product_id"), item.get("product_name")] + [item.get(k, 0) for k in metric_keys])
     elif dimension == "day":
-        writer.writerow(["日期"] + common)
+        writer.writerow(["日期"] + common + opening_labels)
         for item in data["days"]:
-            writer.writerow([item.get("date")] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("date")] + [item.get(k, 0) for k in metric_keys] + opening_cells(item))
     else:
-        writer.writerow(["工号", "姓名", "班组", "部门", "行分类"] + common)
+        writer.writerow(["工号", "姓名", "班组", "部门", "行分类"] + common + opening_labels)
         for item in data["employees"]:
-            writer.writerow([item.get("kf_id"), item.get("name"), item.get("team"), item.get("dept"), item.get("group_name")] + [item.get(k, 0) for k in ("total", "order_count", "inbound", "outbound", "overlay", "overlay_day", "overlay_month", "overlay_long", "overlay_undefined", "package_change")])
+            writer.writerow([item.get("kf_id"), item.get("name"), item.get("team"), item.get("dept"), item.get("group_name")] + [item.get(k, 0) for k in metric_keys] + opening_cells(item))
 
     filename = f"marketing_report_{start}_{end}_{dimension}.csv"
     log_operation(db, current_user["id"], "export_marketing_report", "marketing", None, {"start_date": start.isoformat(), "end_date": end.isoformat(), "dimension": dimension})

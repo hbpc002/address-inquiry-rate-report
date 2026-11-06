@@ -8,6 +8,8 @@ export const UI_LABEL_ITEMS = [
   { key: 'marketing_overall_report', label: '总体营销', default: '总体营销' },
   { key: 'marketing_orders', label: '营销明细', default: '营销明细' },
   { key: 'marketing_settings', label: '营销设置', default: '营销设置' },
+  { key: 'marketing_opening', label: '开口率明细', default: '开口率明细' },
+  { key: 'marketing_opening_report', label: '开口率报表', default: '开口率报表' },
   { key: 'reports', label: '考勤报表', default: '考勤报表' },
   { key: 'menu_data', label: '菜单分组·数据管理', default: '数据管理' },
   { key: 'schedules', label: '排班管理', default: '排班管理' },

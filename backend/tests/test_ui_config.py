@@ -52,6 +52,8 @@ def test_ui_labels_defaults():
     assert data["marketing_overall_report"] == "总体营销"
     assert data["marketing_orders"] == "营销明细"
     assert data["marketing_settings"] == "营销设置"
+    assert data["marketing_opening"] == "开口率明细"
+    assert data["marketing_opening_report"] == "开口率报表"
     assert data["reports"] == "考勤报表"
     assert data["broadband_orders"] == "无缝订单"
     assert data["menu_data"] == "数据管理"
@@ -122,7 +124,7 @@ def test_default_labels_module_constant():
     assert set(DEFAULT_UI_LABELS.keys()) == {
         "project_name", "dashboard", "checkin_report", "workload_report",
         "broadband_report", "marketing_report", "marketing_overall_report",
-        "marketing_orders", "marketing_settings", "reports", "menu_data",
+        "marketing_orders", "marketing_settings", "marketing_opening", "marketing_opening_report", "reports", "menu_data",
         "schedules", "employees", "checkins", "training_records", "workload",
         "broadband_orders", "menu_system", "system", "users", "roles",
         "work_hour_settings", "salary_config", "field_annotations", "agent",

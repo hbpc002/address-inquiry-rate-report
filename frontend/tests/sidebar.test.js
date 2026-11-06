@@ -141,10 +141,10 @@ describe('Main.vue Menu Grouping', () => {
   let userStore
 
   const SYSTEM_LABELS = ['系统管理', '用户管理', '角色管理', '工时预警设置', '绩效配置', '字段批注', '营销设置']
-  const DATA_LABELS = ['排班管理', '员工管理', '签到记录', '培训记录', '工作量详单', '营销明细']
-  const TOP_LEVEL_LABELS = ['排班调度', '团队管理', '营销统计', '总体营销', '考勤报表', '哟你通通']
+  const DATA_LABELS = ['排班管理', '员工管理', '签到记录', '培训记录', '工作量详单', '营销明细', '开口率明细']
+  const TOP_LEVEL_LABELS = ['排班调度', '团队管理', '营销统计', '开口率报表', '总体营销', '考勤报表', '哟你通通']
   const SYSTEM_PATHS = ['/system', '/users', '/roles', '/work-hour-settings', '/salary-settings', '/field-annotations', '/marketing-settings']
-  const DATA_PATHS = ['/schedules', '/employees', '/checkins', '/training-records', '/workloads', '/marketing-orders']
+  const DATA_PATHS = ['/schedules', '/employees', '/checkins', '/training-records', '/workloads', '/marketing-orders', '/marketing-openings']
 
   function submenuByIndex(index) {
     return wrapper.findAll('.el-sub-menu-stub').find(s => s.attributes('data-index') === index)

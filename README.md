@@ -1259,6 +1259,7 @@ def get_default_permissions(role_name):
 | v1.10 | 2026-10-30 | 修复无首页权限角色登录后路由循环，登录后自动进入第一个可访问页面 |
 | v1.11 | 2026-10-30 | 部门设置支持批量分配和移出人员 |
 | v1.12 | 2026-11-04 | 旧页面固定热线运营组范围，营销页面继续按部门组隔离，修复仪表盘混入其他部门数据 |
+| v1.13 | 2026-11-06 | 新增开口率明细导入、开口率报表及营销统计总开口率；支持 O-X 十列分产品开口统计 |
 
 ---
 
@@ -1347,7 +1348,9 @@ def get_default_permissions(role_name):
 | 菜单 | 路由 | 权限 | 说明 |
 |------|------|------|------|
 | 营销明细 | `/marketing-orders` | `marketing.view` / `marketing.upload` / `marketing.delete` | 导入、筛选、删除营销明细 |
-| 营销统计 | `/marketing-report` | `marketing_report.view` / `marketing_report.export` | 员工、班组、行分类、产品、日期多维统计 |
+| 营销统计 | `/marketing-report` | `marketing_report.view` / `marketing_report.export` | 员工、班组、行分类、产品、日期多维统计，并展示总开口率 |
+| 开口率明细 | `/marketing-openings` | `marketing_opening.view` / `marketing_opening.upload` / `marketing_opening.delete` / `marketing_opening.export` | 导入“大模型质检台导出”原始表，查看/删除/导出开口明细 |
+| 开口率报表 | `/marketing-opening-report` | `marketing_opening_report.view` / `marketing_opening_report.export` | 按员工、班组、班级、日期汇总总开口率及 O-X 十列分产品开口量 |
 | 总体营销 | `/marketing-overall` | `marketing_overall.view` / `marketing_overall.export` | 固定 9 列总体营销表、重点业务产品统计表及带样式 Excel 导出 |
 | 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 总体营销行分类规则、重点业务产品配置（同时用于营销统计行分类） |
 
@@ -1402,7 +1405,20 @@ def get_default_permissions(role_name):
 - 总体营销表格上方显示当前查询范围，并分别标注线上直办、营销工单在该查询范围内的实际数据时间段；未覆盖完整查询范围时高亮提示。
 - 导出的 `.xlsx` 会在原总体营销表下方追加“重点业务产品统计”表。
 
-### 16.7 主要 API
+### 16.7 开口率数据与报表
+
+- 开口率数据独立存储于 `marketing_opening_records`，不混入营销明细表。
+- 数据来源为每日“大模型质检台导出”原始表：
+  - F 列“员工工号”匹配员工表 `emp_no`
+  - B 列“录音时间”作为日期
+  - AA 列“五大产品已开口”用于总开口率
+  - O-X 十列为 5 个产品（叠加包、宽带、移网新装、终端、套餐）的主动开口/已开口
+- 导入支持 XLSX/CSV，按文件内录音日期覆盖旧数据，按“接触记录号”去重；重复记录同一开口字段取“任一为是”。
+- 总开口率 = 已开口的去重接触记录数 / 去重接触记录数；多天查询按区间内接触记录去重汇总。
+- 开口率报表支持员工、班组、班级、按日四个维度，并展示 O-X 十列分产品开口量。
+- 现有营销统计仅增加“开口率”列，统计行为仍以营销明细为主，不因开口数据新增员工行；产品维度不展示开口率。
+
+### 16.8 主要 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -1418,5 +1434,13 @@ def get_default_permissions(role_name):
 | GET | `/api/marketing/row-rule-preview` | 未分类取值预览 |
 | GET | `/api/marketing/report` | 营销多维统计，支持 `data_type` 来源筛选 |
 | GET | `/api/marketing/report/export` | CSV 导出，支持 `data_type` 来源筛选 |
+| POST | `/api/marketing-openings/import` | 导入大模型质检台开口数据 |
+| GET | `/api/marketing-openings` | 开口原始明细分页查询 |
+| GET | `/api/marketing-openings/export` | 导出开口原始明细 |
+| DELETE | `/api/marketing-openings/by-date` | 按录音日期删除开口数据 |
+| DELETE | `/api/marketing-openings/import/{batch}` | 按批次删除开口数据 |
+| DELETE | `/api/marketing-openings/{id}` | 删除单条开口数据 |
+| GET | `/api/marketing-openings/report` | 开口率多维报表 |
+| GET | `/api/marketing-openings/report/export` | 导出开口率多维报表 |
 | GET | `/api/marketing/overall-report` | 总体营销数据，支持 `product_source=xszb/fwgd/all` |
 | GET | `/api/marketing/overall-report/export` | 总体营销 Excel 导出，支持 `product_source` |
