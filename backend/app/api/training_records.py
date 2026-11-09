@@ -60,6 +60,8 @@ def _duration_minutes(start: str, end: str) -> int:
 
 @router.get("")
 def list_training_records(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     emp_no: Optional[str] = Query(None),
@@ -77,10 +79,15 @@ def list_training_records(
         query = query.filter(TrainingRecord.emp_no == emp_no)
     if type:
         query = query.filter(TrainingRecord.type == type)
-    records = query.order_by(TrainingRecord.record_date.desc(), TrainingRecord.emp_no).all()
-    total_minutes = sum(r.duration_minutes for r in records)
+    total = query.count()
+    total_minutes = query.with_entities(
+        func.coalesce(func.sum(TrainingRecord.duration_minutes), 0)
+    ).scalar() or 0
+    records = query.order_by(
+        TrainingRecord.record_date.desc(), TrainingRecord.emp_no
+    ).offset((page - 1) * limit).limit(limit).all()
     return {
-        "total": len(records),
+        "total": total,
         "total_minutes": total_minutes,
         "items": [
             {

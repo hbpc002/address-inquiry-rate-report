@@ -500,3 +500,87 @@ def test_import_training_records_endpoint():
     assert records[0].duration_minutes == 90
     assert records[0].type == "培训"
     db.close()
+
+
+def test_training_records_pagination():
+    """测试培训记录列表分页，总时长按全部过滤结果统计"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.core.security import create_access_token
+
+    db = SessionLocal()
+    try:
+        clear_tables(db)
+        emp1, emp2, admin = setup_test_data(db)
+        today = datetime.now().date()
+
+        for i in range(25):
+            db.add(TrainingRecord(
+                emp_no=emp1.emp_no,
+                record_date=today - timedelta(days=i),
+                start_time='09:00',
+                end_time='10:00',
+                duration_minutes=60,
+                type='培训',
+                reason=f'分页测试{i}',
+                created_by='Admin',
+            ))
+        db.add(TrainingRecord(
+            emp_no=emp2.emp_no,
+            record_date=today,
+            start_time='09:00',
+            end_time='10:30',
+            duration_minutes=90,
+            type='请假',
+            reason='不属于培训筛选',
+            created_by='Admin',
+        ))
+        db.commit()
+
+        token = create_access_token(data={"sub": str(admin.id)})
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.get("/api/training-records", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 26
+    assert len(data["items"]) == 20
+    assert data["total_minutes"] == 25 * 60 + 90
+
+    response = client.get(
+        "/api/training-records",
+        params={"page": 2, "limit": 10},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 26
+    assert len(data["items"]) == 10
+    assert data["total_minutes"] == 25 * 60 + 90
+
+    response = client.get(
+        "/api/training-records",
+        params={"page": 3, "limit": 10},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 26
+    assert len(data["items"]) == 6
+
+    response = client.get(
+        "/api/training-records",
+        params={"page": 1, "limit": 10, "type": "培训"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 25
+    assert len(data["items"]) == 10
+    assert data["total_minutes"] == 25 * 60
+

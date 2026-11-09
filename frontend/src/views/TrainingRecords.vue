@@ -30,7 +30,7 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadData">查询</el-button>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
           <el-button @click="resetSearch">重置</el-button>
         </el-form-item>
       </el-form>
@@ -67,6 +67,16 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.limit"
+        :total="pagination.total"
+        :page-sizes="[20, 50, 100]"
+        layout="total, sizes, prev, pager, next"
+        @current-change="loadData"
+        @size-change="handleSizeChange"
+      />
     </el-card>
 
     <el-dialog v-model="batchDialogVisible" title="批量录入培训/请假" width="650px">
@@ -140,6 +150,7 @@ const ui = useUiConfigStore()
 const empOptions = ref([])
 const tableData = ref([])
 const stats = reactive({ total: 0, total_minutes: 0 })
+const pagination = reactive({ page: 1, limit: 20, total: 0 })
 const batchDialogVisible = ref(false)
 const submitting = ref(false)
 const importVisible = ref(false)
@@ -181,13 +192,17 @@ async function loadEmployees() {
 
 async function loadData() {
   try {
-    const params = {}
+    const params = {
+      page: pagination.page,
+      limit: pagination.limit
+    }
     if (searchForm.start_date) params.start_date = searchForm.start_date
     if (searchForm.end_date) params.end_date = searchForm.end_date
     if (searchForm.emp_no) params.emp_no = searchForm.emp_no
     if (searchForm.type) params.type = searchForm.type
     const res = await api.get('/training-records', { params })
     tableData.value = res.data.items || []
+    pagination.total = res.data.total
     stats.total = res.data.total
     stats.total_minutes = res.data.total_minutes
   } catch (e) {
@@ -195,11 +210,22 @@ async function loadData() {
   }
 }
 
+function handleSearch() {
+  pagination.page = 1
+  loadData()
+}
+
+function handleSizeChange() {
+  pagination.page = 1
+  loadData()
+}
+
 function resetSearch() {
   searchForm.start_date = ''
   searchForm.end_date = ''
   searchForm.emp_no = ''
   searchForm.type = ''
+  pagination.page = 1
   loadData()
 }
 
@@ -249,6 +275,9 @@ async function handleDelete(row) {
     await ElMessageBox.confirm(`确定删除 ${row.emp_no} ${row.record_date} 的记录？`, '确认删除')
     await api.delete(`/training-records/${row.id}`)
     ElMessage.success('删除成功')
+    if (tableData.value.length === 1 && pagination.page > 1) {
+      pagination.page -= 1
+    }
     loadData()
   } catch (e) {
     if (e !== 'cancel') {
