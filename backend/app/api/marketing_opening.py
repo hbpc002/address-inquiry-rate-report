@@ -324,7 +324,6 @@ def import_openings(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing_opening.upload")
-    require_all_scope(current_user, "仅全部数据权限的账号可导入开口数据", "marketing_opening")
 
     batch = uuid.uuid4().hex[:8]
     content = file.file.read()

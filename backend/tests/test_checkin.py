@@ -10,6 +10,7 @@ from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.checkin import Checkin
 from app.models.employee import Employee
 from app.models.daily_report import DailyReport
+from app.models.user import User
 from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
@@ -38,6 +39,13 @@ client = TestClient(app)
 def setup_module():
     Base.metadata.drop_all(bind=engine)
     init_db()
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.id == 1).first():
+            db.add(User(id=1, username="test_admin", password_hash="x", role="admin", is_active=True))
+            db.commit()
+    finally:
+        db.close()
 
 
 def teardown_module():
@@ -78,11 +86,11 @@ class TestCheckinImport:
         assert data["count"] == 1
         assert len(data["batch"]) == 8
 
-    def test_import_skips_non_target_dept(self):
+    def test_import_accepts_non_target_dept(self):
         csv_content = "工号,姓名,签到时间,签退时间,设备号,归属部门\nE001,张三,2026-05-30 08:00:00,2026-05-30 17:00:00,D001,其他部门"
         resp = self._upload_csv(csv_content)
         assert resp.status_code == 200
-        assert resp.json()["count"] == 0
+        assert resp.json()["count"] == 1
 
     def test_import_empty_file(self):
         data = {"file": ("empty.csv", _make_csv(""), "text/csv")}

@@ -1,4 +1,5 @@
 """旧页面固定热线运营组范围，营销/员工页面仍按部门组隔离。"""
+import io
 import os
 from datetime import date, datetime, time
 from pathlib import Path
@@ -72,11 +73,11 @@ def setup_db():
             permissions=(
                 '{"dashboard.view": true, "reports.view": true, "reports.export": true, '
                 '"reports.dashboard_export": true, "reports.recalculate": true, '
-                '"checkins.view": true, "checkins.delete": true, "checkin_report.view": true, '
+                '"checkins.view": true, "checkins.upload": true, "checkins.delete": true, "checkin_report.view": true, '
                 '"checkin_report.export": true, "schedules.view": true, "schedules.create": true, '
-                '"schedules.edit": true, "schedules.delete": true, "workload.view": true, '
-                '"workload.delete": true, "workload_report.view": true, '
-                '"workload_report.export": true, "broadband.view": true, "broadband.delete": true, '
+                '"schedules.upload": true, "schedules.edit": true, "schedules.delete": true, "workload.view": true, '
+                '"workload.upload": true, "workload.delete": true, "workload_report.view": true, '
+                '"workload_report.export": true, "broadband.view": true, "broadband.upload": true, "broadband.delete": true, '
                 '"broadband_report.view": true, "broadband_report.export": true, '
                 '"training_records.view": true, "training_records.create": true, '
                 '"training_records.delete": true, "employees.view": true}'
@@ -367,3 +368,43 @@ def test_employee_page_keeps_department_scope_and_supports_legacy_lookup():
         "/api/employees", params={"scope": "legacy"}, headers=auth_header(ADMIN_TOKEN)
     ).json()
     assert admin_legacy["total"] == 3
+
+
+def test_legacy_import_only_needs_upload_permission_and_replaces_all_scope_data():
+    headers = auth_header(DEPT_TOKEN)
+    day2 = date(2026, 11, 3)
+
+    db = TestingSessionLocal()
+    try:
+        db.add(Checkin(
+            emp_no="HOT001", name="热线员工", dept=DEPT_A,
+            checkin_time=datetime(2026, 11, 3, 9, 0),
+            checkout_time=datetime(2026, 11, 3, 18, 0), import_batch="pre-import",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    csv_content = (
+        "工号,姓名,签到时间,签退时间,设备号,归属部门\n"
+        "MKT999,外部门员工,2026-11-03 09:00:00,2026-11-03 18:00:00,D999,其他部门"
+    )
+    resp = client.post(
+        "/api/checkins/import",
+        files={"file": ("checkins.csv", io.BytesIO(csv_content.encode("utf-8")), "text/csv")},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["count"] == 1
+
+    db = TestingSessionLocal()
+    try:
+        records = db.query(Checkin).filter(
+            Checkin.checkin_time >= datetime(2026, 11, 3),
+            Checkin.checkin_time < datetime(2026, 11, 4),
+        ).all()
+        assert len(records) == 1
+        assert records[0].emp_no == "MKT999"
+        assert records[0].dept == "其他部门"
+    finally:
+        db.close()

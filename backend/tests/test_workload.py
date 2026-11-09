@@ -8,6 +8,7 @@ os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@local
 from fastapi.testclient import TestClient
 from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.workload import Workload
+from app.models.user import User
 from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
@@ -40,6 +41,13 @@ client = TestClient(app)
 def setup_module():
     Base.metadata.drop_all(bind=engine)
     init_db()
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.id == 1).first():
+            db.add(User(id=1, username="test_admin", password_hash="x", role="admin", is_active=True))
+            db.commit()
+    finally:
+        db.close()
 
 
 def teardown_module():
@@ -153,13 +161,39 @@ class TestWorkloadImport:
         resp = client.post("/api/workloads/import", files=data)
         assert resp.status_code == 400
 
-    def test_import_skips_non_target_dept(self):
+    def test_import_accepts_non_target_dept(self):
         rows = [
             ["20260628", "广西", "NOT_EXIST", "未知人", "9999", "其他部门>>其他组", 1, 1, 3600, 0.5, 5, 900, 180, 100, 2, 90.0, 1, 0, 5, 0],
         ]
         resp = self._upload_xlsx(_make_xlsx(rows))
         assert resp.status_code == 200
-        assert resp.json()["count"] == 0
+        assert resp.json()["count"] == 1
+
+    def test_dept_scope_with_upload_permission_can_import(self):
+        from app.core.security import get_current_user
+
+        rows = [
+            ["20260629", "广西", "OTHER001", "外部门员工", "9999", "其他部门>>其他组", 1, 1, 3600, 0.5, 5, 900, 180, 100, 2, 90.0, 1, 0, 5, 0],
+        ]
+        original = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "username": "dept_upload_user",
+            "role": "user",
+            "is_system": False,
+            "permissions": '{"workload.upload": true}',
+            "data_scope": "dept",
+            "department_group_paths": ["其他部门"],
+        }
+        try:
+            resp = self._upload_xlsx(_make_xlsx(rows))
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["count"] == 1
+        finally:
+            if original is not None:
+                app.dependency_overrides[get_current_user] = original
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
 
     def test_import_replaces_old_records_on_same_date(self):
         rows1 = [

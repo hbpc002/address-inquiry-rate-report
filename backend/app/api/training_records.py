@@ -15,9 +15,7 @@ from app.models.employee import Employee
 from app.core.security import get_current_user, require_permission
 from app.core.data_scope import (
     apply_legacy_training_scope,
-    employee_in_legacy_scope,
     ensure_legacy_emp_no,
-    has_legacy_all_scope,
 )
 
 router = APIRouter(prefix="/api/training-records", tags=["培训记录"])
@@ -303,12 +301,6 @@ async def import_training_records(
                 emp_no = existing.emp_no
             else:
                 errors.append(f"第{row_count + 4}行: 找不到员工'{name}'")
-                continue
-
-        if not has_legacy_all_scope(current_user):
-            emp = db.query(Employee).filter(Employee.emp_no == emp_no).first()
-            if not employee_in_legacy_scope(emp, current_user):
-                errors.append(f"第{row_count + 4}行: 员工'{emp_no}'不在热线运营组范围内")
                 continue
 
         for dcol in date_col_letters:

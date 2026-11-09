@@ -20,7 +20,6 @@ from app.core.security import get_current_user, require_permission
 from app.core.data_scope import (
     apply_legacy_broadband_scope,
     apply_legacy_employee_scope,
-    has_legacy_all_scope,
 )
 
 router = APIRouter(prefix="/api/broadband", tags=["宽带营销"])
@@ -168,20 +167,12 @@ def import_orders(
         except Exception:
             continue
 
-    if not has_legacy_all_scope(current_user):
-        legacy_emp_nos = {
-            e[0] for e in apply_legacy_employee_scope(
-                db.query(Employee.emp_no).filter(Employee.status == "在职"), current_user
-            ).all()
-        }
-        new_records = [r for r in new_records if r.get("emp_no") in legacy_emp_nos]
-
     if not new_records:
-        raise HTTPException(status_code=400, detail="未解析到热线运营组范围内的有效数据")
+        raise HTTPException(status_code=400, detail="未解析到有效数据")
 
     for d in dates_set:
-        apply_legacy_broadband_scope(
-            db.query(SeamlessOrder).filter(SeamlessOrder.order_date == d), current_user
+        db.query(SeamlessOrder).filter(
+            SeamlessOrder.order_date == d
         ).delete(synchronize_session=False)
 
     if new_records:

@@ -71,7 +71,7 @@ def setup_db():
         dept_role = Role(
             name="scope_dept",
             data_scope="dept",
-            permissions='{"employees.view": true, "employees.edit": true, "employees.create": true, "employees.delete": true, "employees.upload": true, "employees.export": true, "marketing.view": true, "marketing_report.view": true, "marketing_report.export": true, "marketing_overall.view": true, "marketing_overall.export": true}',
+            permissions='{"employees.view": true, "employees.edit": true, "employees.create": true, "employees.delete": true, "employees.upload": true, "employees.export": true, "marketing.view": true, "marketing.upload": true, "marketing_report.view": true, "marketing_report.export": true, "marketing_overall.view": true, "marketing_overall.export": true}',
         )
         no_attendance_role = Role(
             name="dept_no_att",
@@ -266,15 +266,40 @@ def test_marketing_overall_is_scoped():
     assert res.json()["data_ranges"]["database"]["xszb"]["end_date"] == "2026-01-10"
 
 
-def test_dept_user_cannot_delete_or_import_marketing_data():
+def test_dept_user_with_upload_permission_can_import_marketing_data():
     delete_res = client.delete(f"/api/marketing/details/{DETAIL_B_ID}", headers=auth_header(DEPT_TOKEN))
     assert delete_res.status_code == 403
 
-    excel = _make_excel([{"kf_id": "A001"}])
+    excel = _make_excel([{
+        "KF_ID": "A001",
+        "CBSS订单竣工时间": "2026-01-10",
+        "重点业务分类": "叠加包",
+        "CBSS订单号": "TA999",
+        "产品ID": "P9",
+        "产品名称": "测试产品",
+    }])
     import_res = client.post(
         "/api/marketing/details/import",
         files={"file": ("marketing.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         headers=auth_header(DEPT_TOKEN),
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["count"] == 1
+
+
+def test_dept_user_without_upload_permission_cannot_import_marketing_data():
+    excel = _make_excel([{
+        "KF_ID": "A001",
+        "CBSS订单竣工时间": "2026-01-10",
+        "重点业务分类": "叠加包",
+        "CBSS订单号": "TA999",
+        "产品ID": "P9",
+        "产品名称": "测试产品",
+    }])
+    import_res = client.post(
+        "/api/marketing/details/import",
+        files={"file": ("marketing.xlsx", excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_header(NO_ATTENDANCE_TOKEN),
     )
     assert import_res.status_code == 403
 

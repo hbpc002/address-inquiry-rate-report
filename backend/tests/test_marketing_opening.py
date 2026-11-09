@@ -359,7 +359,7 @@ class TestMarketingOpening:
         resp = _upload([_row("S1", "KF001", aa=True), _row("S2", "KF002", aa=True)])
         assert resp.status_code == 200, resp.text
 
-        original = app.dependency_overrides[get_current_user]
+        original = app.dependency_overrides.get(get_current_user)
         app.dependency_overrides[get_current_user] = lambda: {
             "id": 2,
             "username": "dept_user",
@@ -382,7 +382,51 @@ class TestMarketingOpening:
             assert [item["kf_id"] for item in report["employees"]] == ["KF001"]
             assert report["stats"]["contact_count"] == 1
         finally:
-            app.dependency_overrides[get_current_user] = original
+            if original is not None:
+                app.dependency_overrides[get_current_user] = original
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
+
+    def test_dept_user_with_upload_permission_can_import(self):
+        original = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "username": "dept_upload_user",
+            "role": "user",
+            "is_system": False,
+            "permissions": json.dumps({"marketing_opening.upload": True}),
+            "data_scope": "dept",
+            "department_group_paths": ["广西分公司>>省中心>>客户服务营销中心>>热线运营组>>A部门"],
+        }
+        try:
+            resp = _upload([_row("U1", "KF001", aa=True)])
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["count"] == 1
+        finally:
+            if original is not None:
+                app.dependency_overrides[get_current_user] = original
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
+
+    def test_dept_user_without_upload_permission_cannot_import(self):
+        original = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "username": "dept_view_user",
+            "role": "user",
+            "is_system": False,
+            "permissions": json.dumps({"marketing_opening.view": True}),
+            "data_scope": "dept",
+            "department_group_paths": ["广西分公司>>省中心>>客户服务营销中心>>热线运营组>>A部门"],
+        }
+        try:
+            resp = _upload([_row("U2", "KF001", aa=True)])
+            assert resp.status_code == 403
+        finally:
+            if original is not None:
+                app.dependency_overrides[get_current_user] = original
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
 
     def test_rejects_wrong_file_header(self):
         df = pd.DataFrame([["KF_ID", "FINISH_DATE"], ["KF001", "2026-11-02"]])

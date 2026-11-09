@@ -1315,7 +1315,6 @@ def import_details(
     current_user: dict = Depends(get_current_user),
 ):
     require_permission(current_user, "marketing.upload")
-    require_all_scope(current_user, "仅全部数据权限的账号可导入营销数据", "marketing")
     batch = uuid.uuid4().hex[:8]
     content = file.file.read()
     data, mapping = _read_excel(content)

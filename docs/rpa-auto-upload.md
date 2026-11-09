@@ -61,7 +61,7 @@ username=rpa_bot&password=******
 - `POST {API_BASE}/api/checkins/import`
 - Content-Type: `multipart/form-data`，字段名固定为 **`file`**
 - 编码支持 UTF-8 / GBK 自动识别
-- 注意：系统只导入目标部门（`广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表`）的行，返回的 `count` 小于文件行数属正常现象
+- 仅有 `checkins.upload` 权限即可导入，文件内记录全部导入，并按签到日期全量覆盖旧数据
 
 成功响应 200：
 
@@ -74,7 +74,7 @@ username=rpa_bot&password=******
 - `POST {API_BASE}/api/workloads/import`
 - Content-Type: `multipart/form-data`，字段名固定为 **`file`**
 - 即「客服代表工作量和操作情况统计表」（Sheet_0，第3行为表头），.XLSX/.xlsx 均可
-- 注意：系统只导入归属部门含 `客户服务营销中心` 的行，返回的 `count` 小于文件行数属正常现象
+- 仅有 `workload.upload` 权限即可导入，文件内记录全部导入，并按日期全量覆盖旧数据
 - 权限：需要 `workload.upload`（工作量详单-导入）。若 rpa_bot 用的自定义角色，请在角色管理里勾选该权限
 
 成功响应 200：

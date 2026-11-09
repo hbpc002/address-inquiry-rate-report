@@ -23,7 +23,6 @@ from app.core.data_scope import (
     apply_legacy_employee_scope,
     apply_legacy_workload_scope,
     build_department_group_context,
-    is_legacy_dept_value,
 )
 
 router = APIRouter(prefix="/api/workloads", tags=["工作量统计"])
@@ -178,9 +177,6 @@ def import_workloads(
             emp_no_val = str(row[4]).strip() if pd.notna(row[4]) else ''
             team_desc_val = str(row[5]).strip() if pd.notna(row[5]) else ''
 
-            if not is_legacy_dept_value(team_desc_val, current_user):
-                continue
-
             metrics = {}
             for col_idx in range(6, len(header)):
                 if col_idx < len(row):
@@ -223,8 +219,8 @@ def import_workloads(
 
     if dates_set:
         for d in dates_set:
-            apply_legacy_workload_scope(
-                db.query(Workload).filter(Workload.date == d), current_user
+            db.query(Workload).filter(
+                Workload.date == d
             ).delete(synchronize_session=False)
 
     if new_records:

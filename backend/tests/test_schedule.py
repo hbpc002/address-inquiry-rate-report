@@ -10,6 +10,7 @@ from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.schedule import Schedule
 from app.models.employee import Employee
 from app.models.shift_type import ShiftType
+from app.models.user import User
 from app.main import app
 from app.core.security import get_current_user
 from sqlalchemy import text
@@ -37,6 +38,13 @@ client = TestClient(app)
 def setup_module():
     Base.metadata.drop_all(bind=engine)
     init_db()
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.id == 1).first():
+            db.add(User(id=1, username="admin", password_hash="x", role="admin", is_active=True))
+            db.commit()
+    finally:
+        db.close()
 
 
 def teardown_module():
@@ -272,6 +280,37 @@ class TestImportAttendanceReport:
             assert float(s.attendance_rate) <= 999.9999
         finally:
             db.close()
+
+    def test_dept_scope_with_upload_permission_can_import(self):
+        from app.core.security import get_current_user
+
+        xlsx = _make_attendance_xlsx([
+            ["2026-07-25", "其他部门", "外部门班组", "外部门员工", "E777",
+             "正常班", "08:00~17:00", "", "", "", "", "", 8.5, "",
+             85.5, 2.3, 0.5, 42.3, 88.0],
+        ])
+        original = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "username": "dept_upload_user",
+            "role": "user",
+            "is_system": False,
+            "permissions": '{"schedules.upload": true}',
+            "data_scope": "dept",
+            "department_group_paths": ["其他部门"],
+        }
+        try:
+            resp = client.post(
+                "/api/schedules/import-attendance-report",
+                files={"file": ("attendance.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["schedules"] == 1
+        finally:
+            if original is not None:
+                app.dependency_overrides[get_current_user] = original
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
 
     def test_import_normal_rates_no_clamp(self):
         """正常比率值应正确保存，不被限幅影响"""

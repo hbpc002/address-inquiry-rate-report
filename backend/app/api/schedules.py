@@ -25,8 +25,6 @@ from app.core.data_scope import (
     apply_legacy_employee_scope,
     apply_legacy_schedule_scope,
     ensure_legacy_employee,
-    has_legacy_all_scope,
-    is_legacy_dept_value,
 )
 from app.utils.logger import log_operation
 from app.services.attendance import save_daily_report
@@ -456,11 +454,6 @@ def import_attendance_report(
     if not rows:
         raise HTTPException(status_code=400, detail="未解析到有效数据")
 
-    if not has_legacy_all_scope(current_user):
-        rows = [r for r in rows if is_legacy_dept_value(r.get('dept'), current_user)]
-        if not rows:
-            raise HTTPException(status_code=400, detail="未解析到热线运营组范围内的有效数据")
-
     groups = defaultdict(list)
     for r in rows:
         key = (r['emp_no'], r['date'])
@@ -474,9 +467,9 @@ def import_attendance_report(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"无效日期格式: {d}")
 
-    # Delete existing schedules for covered dates (only within legacy scope)
-    deleted = apply_legacy_schedule_scope(
-        db.query(Schedule).filter(Schedule.schedule_date.in_(date_objs)), current_user
+    # Delete existing schedules for covered dates (full replacement)
+    deleted = db.query(Schedule).filter(
+        Schedule.schedule_date.in_(date_objs)
     ).delete(synchronize_session=False)
     db.commit()
     if deleted:

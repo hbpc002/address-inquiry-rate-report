@@ -21,7 +21,6 @@ from app.core.data_scope import (
     apply_legacy_employee_scope,
     build_department_group_context,
     ensure_legacy_employee,
-    is_legacy_dept_value,
 )
 from app.utils.logger import log_operation
 
@@ -161,9 +160,6 @@ def import_checkins(
             dept = row.get('所属部门全路径', '') or row.get('归属部门', '') or ''
             dept = str(dept).strip()
 
-            if not is_legacy_dept_value(dept, current_user):
-                continue
-
             emp_no = row.get('账号', '') or row.get('工号', '') or ''
             name = row.get('用户名', '') or row.get('姓名', '') or ''
             checkin_time_str = row.get('签入时间', '') or row.get('签到时间', '')
@@ -212,11 +208,10 @@ def import_checkins(
     for emp_no, dept in dept_updates.items():
         db.query(Employee).filter(Employee.emp_no == emp_no).update({"dept": dept}, synchronize_session=False)
 
-    # 按日期删除旧数据，再批量插入新数据（仅清理热线范围）
+    # 按日期删除旧数据，再批量插入新数据（全量覆盖）
     if dates:
-        apply_legacy_checkin_scope(
-            db.query(Checkin).filter(func.date(Checkin.checkin_time).in_(dates)),
-            current_user,
+        db.query(Checkin).filter(
+            func.date(Checkin.checkin_time).in_(dates)
         ).delete(synchronize_session=False)
 
     if new_records:

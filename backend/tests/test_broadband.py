@@ -135,6 +135,29 @@ class TestBroadbandImport:
         assert data["count"] == 2
         assert len(data["batch"]) == 8
 
+    def test_dept_scope_with_upload_permission_can_import(self):
+        from app.core.security import get_current_user
+
+        original = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 1,
+            "username": "dept_upload_user",
+            "role": "user",
+            "is_system": False,
+            "permissions": '{"broadband.upload": true}',
+            "data_scope": "dept",
+            "department_group_paths": ["其他部门"],
+        }
+        try:
+            resp = _upload_xlsx(_make_xlsx([_base_row("OD0009", "KF999999")]))
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["count"] == 1
+        finally:
+            if original is not None:
+                app.dependency_overrides[get_current_user] = original
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
+
     def test_import_dedupes_by_order_no(self):
         rows = [_base_row("OD0001"), _base_row("OD0001")]
         resp = _upload_xlsx(_make_xlsx(rows))
