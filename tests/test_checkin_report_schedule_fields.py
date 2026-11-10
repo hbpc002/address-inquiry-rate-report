@@ -22,7 +22,9 @@ from app.core.security import get_password_hash
 
 def clear_tables(db):
     from app.models.operation_log import OperationLog
+    from app.models.training_record import TrainingRecord
     Base.metadata.create_all(bind=db.get_bind())
+    db.query(TrainingRecord).delete()
     db.query(OperationLog).delete()
     db.query(WorkHourThreshold).delete()
     db.query(DailyReport).delete()
@@ -226,6 +228,11 @@ def test_report_aggregation_schedule_fields():
         e001 = items["E001"]
         # 遵时率 = Σactual_hours / Σscheduled_hours × 100 = (3×7.9)/(3×8.0)×100
         assert round(e001["avg_punctuality_rate"], 2) == 98.75
+        # 实际工时(交集工时)字段应显式返回 = ΣDailyReport.actual_hours = 3×7.9
+        assert round(e001["actual_hours"], 1) == 23.7
+        # 无培训记录时，系统遵时率(口径A)应等于遵时率（分子同为 actual_hours，分母=排班-培训=排班）
+        assert e001["computed_punctuality_rate"] == e001["avg_punctuality_rate"]
+        assert round(e001["computed_punctuality_rate"], 2) == 98.75
         # 工时利用率 = (Σcall+Σorganize)/Σactual×100 = (15+4.5)/23.7×100
         assert round(e001["avg_utilization_rate"], 2) == 82.28
         # 班表出勤率 = 出勤天数(3)/排班天数(3)×100
@@ -236,6 +243,8 @@ def test_report_aggregation_schedule_fields():
 
         e002 = items["E002"]
         assert round(e002["avg_punctuality_rate"], 2) == 98.75
+        assert e002["computed_punctuality_rate"] == e002["avg_punctuality_rate"]
+        assert round(e002["actual_hours"], 1) == 23.7
         assert round(e002["avg_utilization_rate"], 2) == 75.95
         assert e002["avg_attendance_rate"] == 100.0
         assert e002["total_call_duration"] == 12.0

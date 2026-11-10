@@ -447,6 +447,7 @@ def get_checkin_report(
                 "checkin_count": 0,
                 "total_hours": 0.0,
                 "scheduled_hours": scheduled_map.get(key, 0),
+                "actual_hours": actual_hours_map.get(key, 0),
                 "avg_punctuality_rate": None,
                 "total_call_duration": sched_agg.get("total_call_duration"),
                 "total_organize_duration": sched_agg.get("total_organize_duration"),
@@ -543,18 +544,17 @@ def get_checkin_report(
 
         training_hours = item.get("training_minutes", 0) / 60.0
         scheduled = item.get("scheduled_hours", 0)
+        actual_total = actual_hours_map.get(item["emp_no"], 0)
         if scheduled > 0:
-            effective_hours = max(0, item["total_hours"] - training_hours)
             effective_scheduled = scheduled - training_hours
             if effective_scheduled > 0:
-                item["computed_punctuality_rate"] = round((effective_hours / effective_scheduled) * 100, 2)
+                item["computed_punctuality_rate"] = round((actual_total / effective_scheduled) * 100, 2)
             else:
                 item["computed_punctuality_rate"] = None
         else:
             item["computed_punctuality_rate"] = None
 
         # 三个比率系统重算（实际工时取考勤日报 actual_hours，与全系统口径一致）
-        actual_total = actual_hours_map.get(item["emp_no"], 0)
         sched_total = item.get("scheduled_hours", 0)
         if sched_total > 0:
             item["avg_punctuality_rate"] = round(actual_total / sched_total * 100, 2)
@@ -1102,10 +1102,9 @@ def get_personal_report(
         scheduled_hours = float(report.scheduled_hours) if report and report.scheduled_hours else 0
         actual_hours = float(report.actual_hours) if report and report.actual_hours else 0
         if scheduled_hours > 0:
-            effective_hours = max(0, actual_hours - training_minutes / 60.0)
             effective_scheduled = scheduled_hours - training_minutes / 60.0
             if effective_scheduled > 0:
-                computed_punctuality = round((effective_hours / effective_scheduled) * 100, 2)
+                computed_punctuality = round((actual_hours / effective_scheduled) * 100, 2)
             else:
                 computed_punctuality = None
         else:

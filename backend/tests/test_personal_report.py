@@ -414,6 +414,11 @@ def test_personal_report_daily_recomputed_ratios():
     row = daily[0]
     # 遵时率 = 当日实际工时/当日排班工时×100 = 8.0/8.0×100（导入值 95.0 应被重算覆盖）
     assert row["punctuality_rate"] == 100.0
+    # 实际工时(交集工时)字段应显式返回
+    assert row["actual_hours"] == 8.0
+    # 无培训记录时，系统遵时率(口径A)应等于遵时率
+    assert row["computed_punctuality_rate"] == row["punctuality_rate"]
+    assert row["computed_punctuality_rate"] == 100.0
     # 工时利用率 = (通话+整理)/实际×100 = (6+1)/8×100 = 87.5（导入值 70.0 应被重算覆盖）
     assert row["utilization_rate"] == 87.5
     # 班表出勤率 = 当日有签到且排班 → 100（导入值 88.0 应被重算覆盖）

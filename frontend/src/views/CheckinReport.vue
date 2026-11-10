@@ -212,6 +212,11 @@
             {{ row.scheduled_hours != null ? row.scheduled_hours.toFixed(1) : '-' }}
           </template>
         </ColumnWithTip>
+        <ColumnWithTip v-if="columnVisible('actual_hours')" prop="actual_hours" label="实际工时(交集)" width="100" sortable="custom" :annotation="checkinAnnMap['actual_hours']">
+          <template #default="{ row }">
+            {{ row.actual_hours != null ? row.actual_hours.toFixed(1) : '-' }}
+          </template>
+        </ColumnWithTip>
         <ColumnWithTip v-if="columnVisible('hour_status_text')" prop="hour_status_text" label="工时状态" width="120" :annotation="checkinAnnMap['hour_status_text']">
           <template #default="{ row }">
             <el-tag v-if="row.hour_status === 'overtime'" type="danger" size="small">超时</el-tag>
@@ -543,6 +548,11 @@
                 {{ row.scheduled_hours ? row.scheduled_hours.toFixed(1) + 'h' : '-' }}
               </template>
             </ColumnWithTip>
+            <ColumnWithTip prop="actual_hours" label="实际工时(交集)" width="100" :annotation="checkinDetailAnnMap['actual_hours']">
+              <template #default="{ row }">
+                {{ row.actual_hours != null ? row.actual_hours.toFixed(1) + 'h' : '-' }}
+              </template>
+            </ColumnWithTip>
             <ColumnWithTip label="遵时率" width="70" :annotation="checkinDetailAnnMap['punctuality_rate']">
               <template #default="{ row }">
                 {{ row.punctuality_rate != null ? row.punctuality_rate.toFixed(2) + '%' : '-' }}
@@ -672,6 +682,7 @@ const ALL_COLUMNS = [
   { key: 'checkin_count', label: '签入次数' },
   { key: 'total_hours', label: '工作时长' },
   { key: 'scheduled_hours', label: '排班工时' },
+  { key: 'actual_hours', label: '实际工时(交集)' },
   { key: 'hour_status_text', label: '工时状态' },
   { key: 'avg_punctuality_rate', label: '遵时率' },
   { key: 'total_call_duration', label: '通话时长' },
@@ -709,11 +720,11 @@ function columnVisible(key) {
 }
 
 const SUMMABLE_COLUMNS = new Set([
-  'checkin_count', 'total_hours', 'scheduled_hours', 'total_call_duration', 'total_organize_duration',
+  'checkin_count', 'total_hours', 'scheduled_hours', 'actual_hours', 'total_call_duration', 'total_organize_duration',
   'training_minutes', 'attend_days', 'late_days', 'late_minutes', 'early_days', 'early_minutes'
 ])
 const DECIMAL_COLUMNS = new Set([
-  'total_hours', 'scheduled_hours', 'total_call_duration', 'total_organize_duration'
+  'total_hours', 'scheduled_hours', 'actual_hours', 'total_call_duration', 'total_organize_duration'
 ])
 
 function summaryMethod({ columns, data }) {
@@ -919,6 +930,7 @@ const filterValue = ref('')
 const summaryFilterFields = [
   { key: 'total_hours', label: '工作时长', unit: 'number', get: row => row.total_hours ?? null },
   { key: 'scheduled_hours', label: '排班工时', unit: 'number', get: row => row.scheduled_hours ?? null },
+  { key: 'actual_hours', label: '实际工时(交集)', unit: 'number', get: row => row.actual_hours ?? null },
   { key: 'checkin_count', label: '签入次数', unit: 'number', get: row => row.checkin_count ?? null },
   { key: 'avg_punctuality_rate', label: '遵时率(%)', unit: 'percent', get: row => row.avg_punctuality_rate ?? null },
   { key: 'computed_punctuality_rate', label: '系统遵时率(%)', unit: 'percent', get: row => row.computed_punctuality_rate ?? null },
@@ -1294,7 +1306,7 @@ const personalDailyChartOptions = computed(() => {
   const detail = personalDetail.value
   if (!detail || !detail.daily_stats || !detail.daily_stats.length) return {}
   const dates = detail.daily_stats.map(d => d.date.slice(5))
-  const durations = detail.daily_stats.map(d => d.duration)
+  const durations = detail.daily_stats.map(d => d.actual_hours != null ? d.actual_hours : d.duration)
   const scheduled = detail.daily_stats.map(d => d.scheduled_hours || null)
   const threshold = localThreshold.value
   return {

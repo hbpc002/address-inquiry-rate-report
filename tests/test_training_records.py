@@ -207,7 +207,7 @@ def test_training_record_delete():
 
 
 def test_training_report_computed_punctuality_rate():
-    """测试培训记录被正确计入系统遵时率：(实际工时 - 培训工时) / (排班工时 - 培训工时) × 100%"""
+    """测试培训记录被正确计入系统遵时率：实际工时 / (排班工时 - 培训工时) × 100%（口径A，培训算在场，仅扣分母）"""
     ensure_tables()
     db = SessionLocal()
     try:
@@ -231,14 +231,15 @@ def test_training_report_computed_punctuality_rate():
         assert 'E001' in training_map
         assert training_map['E001'] == 90
 
-        # 验证公式: (actual_hours - training_hours) / (scheduled_hours - training_hours) * 100
+        # 验证公式(口径A): actual_hours / (scheduled_hours - training_hours) * 100
         actual_hours = 7.9
         training_hours = 90 / 60.0  # 1.5
         scheduled_hours = 8.0
-        computed_rate = round((actual_hours - training_hours) / (scheduled_hours - training_hours) * 100, 2)
-        expected_rate = round((7.9 - 1.5) / (8.0 - 1.5) * 100, 2)
+        computed_rate = round(actual_hours / (scheduled_hours - training_hours) * 100, 2)
+        expected_rate = round(7.9 / (8.0 - 1.5) * 100, 2)
         assert computed_rate == expected_rate
-        assert expected_rate < 98.50  # 扣除培训后遵时率应低于原导入值
+        # 口径A下培训只扣分母，率应高于原遵时率(actual/scheduled=98.75)
+        assert expected_rate > 98.75
     finally:
         db.close()
 

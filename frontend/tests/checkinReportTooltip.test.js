@@ -392,3 +392,24 @@ describe('CheckinReport - 班次占比 tooltip 显示各班组人次并点击出
     expect(source).toContain('prop="days"')
   })
 })
+
+describe('CheckinReport - 实际工时(交集)列', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
+
+  it('汇总表应显式展示 实际工时(交集) 列（遵时率分子来源）', () => {
+    expect(source).toContain("columnVisible('actual_hours')")
+    expect(source).toContain('label="实际工时(交集)"')
+    expect(source).toContain('checkinAnnMap[\'actual_hours\']')
+  })
+
+  it('个人多维明细表应展示 实际工时(交集) 列', () => {
+    expect(source).toContain('label="实际工时(交集)"')
+    expect(source).toContain('row.actual_hours != null')
+  })
+
+  it('自定义列与筛选字段应包含 actual_hours', () => {
+    expect(source).toContain("{ key: 'actual_hours', label: '实际工时(交集)' }")
+    expect(source).toContain("{ key: 'actual_hours', label: '实际工时(交集)', unit: 'number', get: row => row.actual_hours ?? null }")
+    expect(source).toContain("'actual_hours'")
+  })
+})
