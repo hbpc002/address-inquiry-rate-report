@@ -413,3 +413,116 @@ describe('CheckinReport - 实际工时(交集)列', () => {
     expect(source).toContain("'actual_hours'")
   })
 })
+
+describe('CheckinReport - 班组工时明细表合计行', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../src/views/CheckinReport.vue'), 'utf-8')
+  const teamTableStart = source.indexOf('<el-table :data="teamMetricsRanking"')
+  const teamTableEnd = source.indexOf('</el-table>', teamTableStart)
+  const teamTableBlock = teamTableStart >= 0 && teamTableEnd > teamTableStart
+    ? source.slice(teamTableStart, teamTableEnd)
+    : ''
+
+  function teamSummaryMethod({ columns, data }) {
+    const rows = data || []
+    const totalCount = rows.reduce((s, t) => s + (t.count || 0), 0)
+    const totalHours = rows.reduce((s, t) => s + (t.total_hours || 0), 0)
+    const totalScheduledHours = rows.reduce((s, t) => s + (t.scheduled_hours || 0), 0)
+    const weightedRate = (key) => {
+      let sum = 0
+      let n = 0
+      rows.forEach(t => {
+        if (t[key] != null) {
+          sum += t[key] * (t.count || 0)
+          n += (t.count || 0)
+        }
+      })
+      return n > 0 ? sum / n : null
+    }
+    const formatRate = (key) => {
+      const val = weightedRate(key)
+      return val != null ? val.toFixed(2) + '%' : '-'
+    }
+    const summaryByLabel = {
+      '人数': String(totalCount),
+      '总工作时长': totalHours.toFixed(1),
+      '总排班工时': totalScheduledHours.toFixed(1),
+      '人均工作时长': totalCount > 0 ? (totalHours / totalCount).toFixed(1) : '0.0',
+      '系统遵时率': formatRate('computed_punctuality_rate'),
+      '遵时率': formatRate('avg_punctuality_rate'),
+      '工时利用率': formatRate('avg_utilization_rate'),
+      '班表出勤率': formatRate('avg_attendance_rate'),
+      '占比': '100.0%'
+    }
+    return columns.map((col, index) => {
+      if (index === 0) return '合计'
+      return summaryByLabel[col.label] != null ? summaryByLabel[col.label] : ''
+    })
+  }
+
+  const columns = [
+    { label: '排名' },
+    { label: '班组' },
+    { label: '组长' },
+    { label: '人数' },
+    { label: '总工作时长' },
+    { label: '总排班工时' },
+    { label: '人均工作时长' },
+    { label: '系统遵时率' },
+    { label: '遵时率' },
+    { label: '工时利用率' },
+    { label: '班表出勤率' },
+    { label: '占比' }
+  ]
+
+  const data = [
+    {
+      team_label: '班组A', count: 2, total_hours: 149.5, scheduled_hours: 152.0,
+      avg_hours: 74.75, computed_punctuality_rate: (96.0 + 99.0) / 2,
+      avg_punctuality_rate: (95.2 + 98.0) / 2, avg_utilization_rate: (70.0 + 80.5) / 2,
+      avg_attendance_rate: (90.0 + 95.0) / 2
+    },
+    {
+      team_label: '班组B', count: 1, total_hours: 80.0, scheduled_hours: 80.0,
+      avg_hours: 80.0, computed_punctuality_rate: 99.5,
+      avg_punctuality_rate: 99.0, avg_utilization_rate: 85.0, avg_attendance_rate: 98.0
+    }
+  ]
+
+  it('班组工时明细表应启用合计行并绑定 teamSummaryMethod', () => {
+    expect(teamTableBlock).toContain('show-summary')
+    expect(teamTableBlock).toContain(':summary-method="teamSummaryMethod"')
+  })
+
+  it('合计行在首列显示“合计”，可加总列正确求和', () => {
+    const summary = teamSummaryMethod({ columns, data })
+    expect(summary[0]).toBe('合计')
+    expect(summary[columns.findIndex(c => c.label === '班组')]).toBe('')
+    expect(summary[columns.findIndex(c => c.label === '组长')]).toBe('')
+    expect(summary[columns.findIndex(c => c.label === '人数')]).toBe('3')
+    expect(summary[columns.findIndex(c => c.label === '总工作时长')]).toBe('229.5')
+    expect(summary[columns.findIndex(c => c.label === '总排班工时')]).toBe('232.0')
+  })
+
+  it('人均工作时长与加权平均比率计算正确', () => {
+    const summary = teamSummaryMethod({ columns, data })
+    expect(summary[columns.findIndex(c => c.label === '人均工作时长')]).toBe((229.5 / 3).toFixed(1))
+    const expectedComputed = ((96.0 + 99.0) / 2 * 2 + 99.5 * 1) / 3
+    expect(summary[columns.findIndex(c => c.label === '系统遵时率')]).toBe(expectedComputed.toFixed(2) + '%')
+    const expectedPun = ((95.2 + 98.0) / 2 * 2 + 99.0 * 1) / 3
+    expect(summary[columns.findIndex(c => c.label === '遵时率')]).toBe(expectedPun.toFixed(2) + '%')
+    expect(summary[columns.findIndex(c => c.label === '工时利用率')]).toBe(((70.0 + 80.5) / 2 * 2 + 85.0 * 1) / 3 > 0 ? (((70.0 + 80.5) / 2 * 2 + 85.0 * 1) / 3).toFixed(2) + '%' : '-')
+    expect(summary[columns.findIndex(c => c.label === '班表出勤率')]).toBe((((90.0 + 95.0) / 2 * 2 + 98.0 * 1) / 3).toFixed(2) + '%')
+  })
+
+  it('占比合计显示 100.0%', () => {
+    const summary = teamSummaryMethod({ columns, data })
+    expect(summary[columns.findIndex(c => c.label === '占比')]).toBe('100.0%')
+  })
+
+  it('空数据时人数为0、比率为“-”', () => {
+    const summary = teamSummaryMethod({ columns, data: [] })
+    expect(summary[columns.findIndex(c => c.label === '人数')]).toBe('0')
+    expect(summary[columns.findIndex(c => c.label === '人均工作时长')]).toBe('0.0')
+    expect(summary[columns.findIndex(c => c.label === '系统遵时率')]).toBe('-')
+  })
+})

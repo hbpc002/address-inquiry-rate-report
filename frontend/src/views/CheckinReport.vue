@@ -160,7 +160,7 @@
           <el-card shadow="hover">
             <div style="margin-bottom: 6px; font-size: 14px; color: #606266">班组工时明细</div>
             <div style="overflow-x: auto;">
-              <el-table :data="teamMetricsRanking" size="small" border stripe max-height="280" @row-click="handleTeamTableRowClick">
+              <el-table :data="teamMetricsRanking" size="small" border stripe max-height="280" show-summary :summary-method="teamSummaryMethod" @row-click="handleTeamTableRowClick">
                 <el-table-column label="排名" width="55" type="index" />
                 <el-table-column label="班组" prop="team_label" min-width="140" />
                 <el-table-column label="组长" prop="leader" min-width="70" />
@@ -1067,6 +1067,43 @@ const teamLabelKeyMap = computed(() => {
 const teamTotalHours = computed(() => {
   return teamMetricsRanking.value.reduce((s, t) => s + t.total_hours, 0)
 })
+
+function teamSummaryMethod({ columns, data }) {
+  const rows = data || []
+  const totalCount = rows.reduce((s, t) => s + (t.count || 0), 0)
+  const totalHours = rows.reduce((s, t) => s + (t.total_hours || 0), 0)
+  const totalScheduledHours = rows.reduce((s, t) => s + (t.scheduled_hours || 0), 0)
+  const weightedRate = (key) => {
+    let sum = 0
+    let n = 0
+    rows.forEach(t => {
+      if (t[key] != null) {
+        sum += t[key] * (t.count || 0)
+        n += (t.count || 0)
+      }
+    })
+    return n > 0 ? sum / n : null
+  }
+  const formatRate = (key) => {
+    const val = weightedRate(key)
+    return val != null ? val.toFixed(2) + '%' : '-'
+  }
+  const summaryByLabel = {
+    '人数': String(totalCount),
+    '总工作时长': totalHours.toFixed(1),
+    '总排班工时': totalScheduledHours.toFixed(1),
+    '人均工作时长': totalCount > 0 ? (totalHours / totalCount).toFixed(1) : '0.0',
+    '系统遵时率': formatRate('computed_punctuality_rate'),
+    '遵时率': formatRate('avg_punctuality_rate'),
+    '工时利用率': formatRate('avg_utilization_rate'),
+    '班表出勤率': formatRate('avg_attendance_rate'),
+    '占比': '100.0%'
+  }
+  return columns.map((col, index) => {
+    if (index === 0) return '合计'
+    return summaryByLabel[col.label] != null ? summaryByLabel[col.label] : ''
+  })
+}
 
 const deptHoursOptions = computed(() => {
   const ranking = teamMetricsRanking.value
