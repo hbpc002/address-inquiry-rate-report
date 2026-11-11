@@ -83,7 +83,7 @@ def _clean():
         db.query(MarketingDetail).delete()
         db.query(SeamlessOrder).delete()
         db.query(Employee).delete()
-        db.query(AppConfig).filter(AppConfig.key.in_(["marketing_overall_row_rules", "marketing_key_products"])).delete(synchronize_session=False)
+        db.query(AppConfig).filter(AppConfig.key.in_(["marketing_overall_row_rules", "marketing_key_products", "marketing_broadband_rules"])).delete(synchronize_session=False)
         db.query(OperationLog).delete()
         db.commit()
     finally:
@@ -553,6 +553,112 @@ class TestMarketingWorkOrders:
         assert details["total"] == 1
         assert details["items"][0]["source"] == "办理工单"
         assert details["items"][0]["tenant"] == "广西"
+
+
+class TestBroadbandRules:
+
+    def setup_method(self):
+        _clean()
+        _seed_employees()
+
+    def _seed_org_map(self):
+        assert _upload(ORG_HEADERS, [
+            _org_row(kf="KF001", org="广西分公司->热线运营组", finish="20250101120000", trade="O1"),
+            _org_row(kf="KF002", org="广西分公司->区域组", finish="20250101120000", trade="O2"),
+        ]).status_code == 200
+
+    def _save_broadband_rules(self, org_rules=None, emp_rules=None):
+        resp = client.put("/api/marketing/broadband-rules", json={
+            "org_rules": org_rules or [],
+            "emp_rules": emp_rules or [],
+        })
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    def test_broadband_rules_priority_inherited_and_emp_fallback(self):
+        self._seed_org_map()
+        _set_overall_rules([
+            {"row_label": "营销工单-热线", "field": "org_name", "match_type": "contains",
+             "pattern": "热线运营组", "priority": 1, "enabled": True},
+            {"row_label": "营销工单-维系", "field": "org_name", "match_type": "contains",
+             "pattern": "区域组", "priority": 2, "enabled": True},
+            {"row_label": "线上直办-工单", "field": "org_name", "match_type": "contains",
+             "pattern": "投诉中心", "priority": 3, "enabled": True},
+        ])
+        data = self._save_broadband_rules(
+            org_rules=[
+                {"row_label": "营销工单-区域", "field": "org_name", "match_type": "contains",
+                 "pattern": "热线运营组", "priority": 1, "enabled": True},
+            ],
+            emp_rules=[
+                {"row_label": "营销工单-工单", "match_type": "equals", "pattern": "--",
+                 "priority": 1, "enabled": True},
+                {"row_label": "营销工单-分公司", "match_type": "prefix", "pattern": "QYY",
+                 "priority": 2, "enabled": True},
+                {"row_label": "营销工单-维系", "match_type": "regex", "pattern": "^AI\\d+$",
+                 "priority": 3, "enabled": True},
+            ],
+        )
+        assert len(data["org_rules"]) == 1
+        assert len(data["emp_rules"]) == 3
+        sources = {item["source"] for item in data["inherited_org_rules"]}
+        assert sources == {"办理工单规则", "线上直办规则"}
+
+        _seed_broadband_order("BB1", emp_no="KF001", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB2", emp_no="KF002", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB3", emp_no="--", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB4", emp_no="QYY123", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB5", emp_no="AI456", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB6", emp_no="OTHER", finish_date=date(2026, 10, 5))
+
+        report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        assert _overall_row(report, "营销工单-区域")["counts"]["broadband_new"] == 1
+        assert _overall_row(report, "营销工单-维系")["counts"]["broadband_new"] == 2
+        assert _overall_row(report, "营销工单-工单")["counts"]["broadband_new"] == 1
+        assert _overall_row(report, "营销工单-分公司")["counts"]["broadband_new"] == 1
+        assert report["stats"]["unclassified_broadband_rows"] == 1
+        assert report["stats"]["unclassified_broadband_no_org_rows"] == 1
+
+        preview = client.get("/api/marketing/broadband-rule-preview").json()
+        assert preview["unclassified"] == 1
+        assert preview["no_org"] == 1
+        assert preview["samples"] == [{"emp_no": "OTHER", "org_name": "", "count": 1}]
+
+    def test_broadband_rules_validation_and_permissions(self):
+        resp = client.put("/api/marketing/broadband-rules", json={
+            "org_rules": [
+                {"row_label": "线上直办-热线", "field": "org_name", "match_type": "contains", "pattern": "x"},
+            ],
+            "emp_rules": [],
+        })
+        assert resp.status_code == 400
+        resp = client.put("/api/marketing/broadband-rules", json={
+            "org_rules": [],
+            "emp_rules": [
+                {"row_label": "营销工单-热线", "match_type": "contains", "pattern": "x"},
+            ],
+        })
+        assert resp.status_code == 400
+        resp = client.put("/api/marketing/broadband-rules", json={
+            "org_rules": [],
+            "emp_rules": [
+                {"row_label": "营销工单-热线", "match_type": "equals", "pattern": "  "},
+            ],
+        })
+        assert resp.status_code == 400
+
+        original = app.dependency_overrides[get_current_user]
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 2, "username": "limited", "role": "user", "is_system": False, "permissions": "{}"
+        }
+        try:
+            assert client.get("/api/marketing/broadband-rules").status_code == 403
+            assert client.put("/api/marketing/broadband-rules", json={
+                "org_rules": [], "emp_rules": []
+            }).status_code == 403
+            assert client.get("/api/marketing/broadband-rule-preview").status_code == 403
+        finally:
+            app.dependency_overrides[get_current_user] = original
 
 
 class TestKeyProductStatistics:

@@ -36,11 +36,14 @@ router = APIRouter(prefix="/api/marketing", tags=["营销统计"])
 
 OVERALL_CONFIG_KEY = "marketing_overall_row_rules"
 DEFAULT_OVERALL_CONFIG = {"rules": []}
+BROADBAND_RULES_KEY = "marketing_broadband_rules"
+DEFAULT_BROADBAND_RULES = {"org_rules": [], "emp_rules": []}
 KEY_PRODUCT_CONFIG_KEY = "marketing_key_products"
 DEFAULT_KEY_PRODUCT_CONFIG = {"products": []}
 UNCLASSIFIED_GROUP = "未分组"
 UNASSIGNED_TEAM = "未分班组"
 MATCH_TYPES = {"contains", "equals", "prefix", "suffix", "regex"}
+BROADBAND_EMP_MATCH_TYPES = {"equals", "prefix", "regex"}
 WORK_GROUP_SUFFIXES = ("热线", "区域", "维系", "工单", "分公司")
 
 OVERALL_SECTIONS = [
@@ -140,6 +143,20 @@ class OverallRowRule(BaseModel):
 
 class OverallRulesIn(BaseModel):
     rules: List[OverallRowRule] = []
+
+
+class BroadbandEmpRule(BaseModel):
+    id: Optional[str] = None
+    row_label: str
+    match_type: str = "equals"
+    pattern: str = ""
+    priority: int = 0
+    enabled: bool = True
+
+
+class BroadbandRulesIn(BaseModel):
+    org_rules: List[OverallRowRule] = []
+    emp_rules: List[BroadbandEmpRule] = []
 
 
 class KeyProductItem(BaseModel):
@@ -290,6 +307,10 @@ def _overall_config(db: Session) -> Dict[str, Any]:
     return _get_config(db, OVERALL_CONFIG_KEY, DEFAULT_OVERALL_CONFIG)
 
 
+def _broadband_rules_config(db: Session) -> Dict[str, Any]:
+    return _get_config(db, BROADBAND_RULES_KEY, DEFAULT_BROADBAND_RULES)
+
+
 def _clean_rules(rules: List[Any]) -> List[Dict[str, Any]]:
     result = []
     for item in rules:
@@ -302,6 +323,44 @@ def _clean_rules(rules: List[Any]) -> List[Dict[str, Any]]:
         data["priority"] = int(data.get("priority") or 0)
         data["enabled"] = bool(data.get("enabled", True))
         result.append(data)
+    return result
+
+
+def _clean_broadband_org_rules(rules: List[Any]) -> List[Dict[str, Any]]:
+    result = _clean_rules(rules)
+    for rule in result:
+        rule["field"] = "org_name"
+        if rule.get("row_label") not in WORK_ORDER_ROW_LABELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"宽带组织机构规则只支持营销工单行分类: {rule.get('row_label')}",
+            )
+    return result
+
+
+def _clean_broadband_emp_rules(rules: List[Any]) -> List[Dict[str, Any]]:
+    result = []
+    for item in rules:
+        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        match_type = data.get("match_type") or "equals"
+        if match_type not in BROADBAND_EMP_MATCH_TYPES:
+            raise HTTPException(status_code=400, detail=f"不支持的工号匹配方式: {match_type}")
+        if data.get("row_label") not in WORK_ORDER_ROW_LABELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"宽带工号规则只支持营销工单行分类: {data.get('row_label')}",
+            )
+        pattern = str(data.get("pattern") or "").strip()
+        if not pattern:
+            raise HTTPException(status_code=400, detail="宽带工号规则的匹配内容不能为空")
+        result.append({
+            "id": data.get("id") or uuid.uuid4().hex,
+            "row_label": data.get("row_label"),
+            "match_type": match_type,
+            "pattern": pattern,
+            "priority": int(data.get("priority") or 0),
+            "enabled": bool(data.get("enabled", True)),
+        })
     return result
 
 
@@ -400,9 +459,19 @@ def _detail_values(detail: MarketingDetail) -> Dict[str, str]:
     return {field: _detail_value(detail, field) for field in OVERALL_FIELDS}
 
 
+def _sorted_rule_list(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    enabled = [rule for rule in rules if rule.get("enabled", True)]
+    return [
+        rule
+        for _, rule in sorted(
+            enumerate(enabled),
+            key=lambda pair: (int(pair[1].get("priority") or 0), pair[0]),
+        )
+    ]
+
+
 def _sorted_rules(config: Dict[str, Any]) -> List[Dict[str, Any]]:
-    rules = [r for r in config.get("rules", []) if r.get("enabled", True)]
-    return [rule for _, rule in sorted(enumerate(rules), key=lambda pair: (int(pair[1].get("priority") or 0), pair[0]))]
+    return _sorted_rule_list(config.get("rules", []))
 
 
 def _normalize_work_order_label(value: Any) -> Optional[str]:
@@ -413,6 +482,67 @@ def _normalize_work_order_label(value: Any) -> Optional[str]:
         candidate = f"营销工单-{label.split('-', 1)[1]}"
         if candidate in WORK_ORDER_ROW_LABELS:
             return candidate
+    return None
+
+
+def _inherited_work_order_org_rules(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    result = []
+    for rule in _sorted_rules(config):
+        if (rule.get("field") or "org_name") != "org_name":
+            continue
+        label = _normalize_work_order_label(rule.get("row_label"))
+        if not label:
+            continue
+        source_row_label = str(rule.get("row_label") or "").strip()
+        item = dict(rule)
+        item["source_row_label"] = source_row_label
+        item["row_label"] = label
+        item["source"] = "线上直办规则" if source_row_label.startswith("线上直办-") else "办理工单规则"
+        result.append(item)
+    return result
+
+
+def _broadband_rule_sets(db: Session) -> Dict[str, List[Dict[str, Any]]]:
+    broadband = _broadband_rules_config(db)
+    overall = _overall_config(db)
+    return {
+        "org_rules": _sorted_rule_list(broadband.get("org_rules") or []),
+        "emp_rules": _sorted_rule_list(broadband.get("emp_rules") or []),
+        "inherited_org_rules": _inherited_work_order_org_rules(overall),
+    }
+
+
+def _broadband_rules_response(db: Session) -> Dict[str, Any]:
+    broadband = _broadband_rules_config(db)
+    return {
+        "org_rules": broadband.get("org_rules") or [],
+        "emp_rules": broadband.get("emp_rules") or [],
+        "inherited_org_rules": _inherited_work_order_org_rules(_overall_config(db)),
+    }
+
+
+def _match_org_row(org_name: str, rules: List[Dict[str, Any]]) -> Optional[str]:
+    if not org_name:
+        return None
+    for rule in rules:
+        if (rule.get("field") or "org_name") != "org_name":
+            continue
+        if _rule_match(org_name, rule):
+            label = _normalize_work_order_label(rule.get("row_label"))
+            if label:
+                return label
+    return None
+
+
+def _match_emp_row(emp_no: str, rules: List[Dict[str, Any]]) -> Optional[str]:
+    source = str(emp_no or "").strip()
+    if not source:
+        return None
+    for rule in rules:
+        if _rule_match(source, rule):
+            label = _normalize_work_order_label(rule.get("row_label"))
+            if label:
+                return label
     return None
 
 
@@ -488,25 +618,21 @@ def _classify_work_order_row(
 
 def _classify_broadband_row(
     order: SeamlessOrder,
-    config: Dict[str, Any],
+    rule_sets: Dict[str, List[Dict[str, Any]]],
     org_map: Dict[str, str],
     cache: Dict[str, str],
 ) -> Optional[str]:
-    org_name = org_map.get(_norm_emp_no(order.emp_no), "")
-    cache_key = SOURCE_BROADBAND + "\u0001" + org_name
+    emp_no = _norm_emp_no(order.emp_no)
+    org_name = org_map.get(emp_no, "")
+    cache_key = SOURCE_BROADBAND + "\u0001" + org_name + "\u0001" + emp_no
     if cache_key in cache:
         return cache[cache_key] or None
 
-    result = None
-    if org_name:
-        for rule in _sorted_rules(config):
-            if (rule.get("field") or "org_name") != "org_name":
-                continue
-            if _rule_match(org_name, rule):
-                label = _normalize_work_order_label(rule.get("row_label"))
-                if label:
-                    result = label
-                    break
+    result = _match_org_row(org_name, rule_sets.get("org_rules") or [])
+    if not result:
+        result = _match_org_row(org_name, rule_sets.get("inherited_org_rules") or [])
+    if not result:
+        result = _match_emp_row(order.emp_no, rule_sets.get("emp_rules") or [])
 
     cache[cache_key] = result or ""
     return result
@@ -1261,6 +1387,8 @@ def _compute_overall(
     unclassified_rows = 0
     unclassified_business_rows = 0
     unclassified_broadband_rows = 0
+    unclassified_broadband_no_org_rows = 0
+    broadband_rule_sets = _broadband_rule_sets(db)
 
     online_query = db.query(MarketingDetail).filter(
         MarketingDetail.finish_date >= start,
@@ -1303,9 +1431,11 @@ def _compute_overall(
         row_counts[row_label][biz] += 1
 
     for order in _broadband_completed_query(db, start, end, current_user).all():
-        row_label = _classify_broadband_row(order, config, org_map, cache)
+        row_label = _classify_broadband_row(order, broadband_rule_sets, org_map, cache)
         if not row_label:
             unclassified_broadband_rows += 1
+            if not org_map.get(_norm_emp_no(order.emp_no), ""):
+                unclassified_broadband_no_org_rows += 1
             continue
         row_counts[row_label]["broadband_new"] += 1
 
@@ -1380,6 +1510,7 @@ def _compute_overall(
             "unclassified_rows": unclassified_rows,
             "unclassified_business_rows": unclassified_business_rows,
             "unclassified_broadband_rows": unclassified_broadband_rows,
+            "unclassified_broadband_no_org_rows": unclassified_broadband_no_org_rows,
         },
         "columns": OVERALL_COLUMNS,
         "rows": rows,
@@ -1862,6 +1993,30 @@ def update_overall_row_rules(
     return _overall_config(db)
 
 
+@router.get("/broadband-rules", response_model=dict)
+def get_broadband_rules(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing_settings.view")
+    return _broadband_rules_response(db)
+
+
+@router.put("/broadband-rules", response_model=dict)
+def update_broadband_rules(
+    body: BroadbandRulesIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing_settings.edit")
+    require_all_scope(current_user, "仅全部数据权限的账号可修改营销设置")
+    org_rules = _clean_broadband_org_rules(body.org_rules)
+    emp_rules = _clean_broadband_emp_rules(body.emp_rules)
+    _set_config(db, BROADBAND_RULES_KEY, {"org_rules": org_rules, "emp_rules": emp_rules})
+    db.commit()
+    return _broadband_rules_response(db)
+
+
 @router.get("/key-products", response_model=dict)
 def get_key_products(
     db: Session = Depends(get_db),
@@ -1930,6 +2085,7 @@ def get_product_options(
 @router.get("/organizations", response_model=dict)
 def get_organizations(
     limit: int = Query(200, ge=1, le=1000),
+    source: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1938,7 +2094,10 @@ def get_organizations(
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
     counter: Dict[tuple, int] = {}
-    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing").all()
+    query = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing")
+    if source in (SOURCE_XSZB, SOURCE_FWGD):
+        query = query.filter(_source_condition(source))
+    details = query.all()
     for detail in details:
         source = _detail_source(detail)
         if source == SOURCE_FWGD:
@@ -1965,6 +2124,7 @@ def get_organizations(
 @router.get("/row-rule-preview", response_model=dict)
 def get_row_rule_preview(
     limit: int = Query(100, ge=1, le=500),
+    source: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -1972,7 +2132,10 @@ def get_row_rule_preview(
     config = _overall_config(db)
     cache: Dict[str, str] = {}
     org_map = _xszb_org_map(db)
-    details = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing").all()
+    query = apply_marketing_scope(db.query(MarketingDetail), db, current_user, "marketing")
+    if source in (SOURCE_XSZB, SOURCE_FWGD):
+        query = query.filter(_source_condition(source))
+    details = query.all()
     unclassified = 0
     counter: Dict[tuple, int] = {}
     for detail in details:
@@ -1999,6 +2162,37 @@ def get_row_rule_preview(
         for (field, value), count in sorted(counter.items(), key=lambda item: item[1], reverse=True)[:limit]
     ]
     return {"unclassified": unclassified, "samples": samples}
+
+
+@router.get("/broadband-rule-preview", response_model=dict)
+def get_broadband_rule_preview(
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    require_permission(current_user, "marketing_settings.view")
+    rule_sets = _broadband_rule_sets(db)
+    org_map = _xszb_org_map(db)
+    cache: Dict[str, str] = {}
+    unclassified = 0
+    no_org = 0
+    counter: Dict[tuple, int] = {}
+    for order in _broadband_completed_query(db, current_user=current_user).all():
+        row_label = _classify_broadband_row(order, rule_sets, org_map, cache)
+        if row_label:
+            continue
+        unclassified += 1
+        emp_no = str(order.emp_no or "").strip()
+        org_name = org_map.get(_norm_emp_no(order.emp_no), "")
+        if not org_name:
+            no_org += 1
+        key = (emp_no, org_name)
+        counter[key] = counter.get(key, 0) + 1
+    samples = [
+        {"emp_no": emp_no, "org_name": org_name, "count": count}
+        for (emp_no, org_name), count in sorted(counter.items(), key=lambda item: item[1], reverse=True)[:limit]
+    ]
+    return {"unclassified": unclassified, "no_org": no_org, "samples": samples}
 
 
 @router.get("/report", response_model=dict)

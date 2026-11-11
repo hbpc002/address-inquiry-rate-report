@@ -129,7 +129,7 @@ describe('总体营销重点业务产品班组组长显示', () => {
     api.get.mockResolvedValue({
       data: {
         ...reportData,
-        stats: { ...reportData.stats, unclassified_broadband_rows: 2 },
+        stats: { ...reportData.stats, unclassified_broadband_rows: 2, unclassified_broadband_no_org_rows: 1 },
         data_ranges: {
           database: {
             xszb: { start_date: '2026-10-01', end_date: '2026-10-31' },
@@ -150,5 +150,6 @@ describe('总体营销重点业务产品班组组长显示', () => {
     expect(ranges[2].text()).toContain('宽带营销数据')
     expect(ranges[2].text()).toContain('2026-10-03 ~ 2026-10-28')
     expect(wrapper.text()).toContain('2 条宽带订单未匹配行分类规则')
+    expect(wrapper.text()).toContain('其中 1 条工号未匹配组织机构')
   })
 })

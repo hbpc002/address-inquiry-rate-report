@@ -1262,6 +1262,7 @@ def get_default_permissions(role_name):
 | v1.12 | 2026-11-04 | 旧页面固定热线运营组范围，营销页面继续按部门组隔离，修复仪表盘混入其他部门数据 |
 | v1.13 | 2026-11-06 | 新增开口率明细导入、开口率报表及营销统计总开口率；支持 O-X 十列分产品开口统计 |
 | v1.14 | 2026-11-11 | 总体营销“营销工单”分区接入宽带营销竣工订单，计入“宽带新装”列 |
+| v1.15 | 2026-11-11 | 营销设置按数据源分 Tab，新增宽带独立组织机构规则、继承规则展示与工号兜底规则 |
 
 ---
 
@@ -1354,7 +1355,7 @@ def get_default_permissions(role_name):
 | 开口率明细 | `/marketing-openings` | `marketing_opening.view` / `marketing_opening.upload` / `marketing_opening.delete` / `marketing_opening.export` | 导入“大模型质检台导出”原始表，查看/删除/导出开口明细 |
 | 开口率报表 | `/marketing-opening-report` | `marketing_opening_report.view` / `marketing_opening_report.export` | 按员工、班组、班级、日期汇总总开口率及 O-X 十列分产品开口量 |
 | 总体营销 | `/marketing-overall` | `marketing_overall.view` / `marketing_overall.export` | 固定 9 列总体营销表、重点业务产品统计表及带样式 Excel 导出 |
-| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 总体营销行分类规则、重点业务产品配置（同时用于营销统计行分类） |
+| 营销设置 | `/marketing-settings` | `marketing_settings.view` / `marketing_settings.edit` | 按数据源配置行分类规则、宽带组织机构与工号兜底规则、重点业务产品配置 |
 
 ### 16.2 明细导入规则
 
@@ -1376,10 +1377,12 @@ def get_default_permissions(role_name):
 
 ### 16.4 总体营销行分类
 
-- 营销设置中只维护一套“总体营销行分类规则”，总体营销表和营销统计的“行分类”共用该数据。
+- 营销设置按数据源分 Tab：线上直办、办理工单、宽带营销、降套维系。
 - 线上直办数据只接受“线上直办-*”/“降套维系”行分类。
 - 营销工单数据先用 `工单受理工号` 匹配线上直办 `KF_ID`，取线上直办“组织机构”命中的“线上直办-*”并自动映射为“营销工单-*”；未匹配时再用“建单租户”规则分类。
-- 宽带营销竣工订单按 `下单新客服工号` 匹配线上直办 `KF_ID`，使用同一套组织机构规则归入“营销工单-*”；未匹配的宽带订单不计入固定表。
+- 线上直办和办理工单的“组织机构”规则会自动作为宽带营销的继承规则，在宽带营销 Tab 中只读展示并标注来源。
+- 宽带营销竣工订单按以下顺序分类：宽带独立组织机构规则 → 继承的办理工单组织机构规则 → 宽带工号兜底规则。工号规则支持等于、前缀、正则，用于 `--`、`QYY` 等匹配不到组织机构的情况。
+- 宽带独立规则配置为 `marketing_broadband_rules`，包含 `org_rules` 和 `emp_rules`，不会改变原有线上直办/办理工单规则。
 - 按优先级从小到大匹配，第一条命中生效；未命中归入“未分组”。
 - 支持包含、等于、前缀、后缀、正则匹配；正则匹配不区分大小写，页面会提示正则表达式示例。
 - 支持按组织机构、建单租户、受理渠道、岗位性质、发展渠道、业务分类、数据类型、地市、通报区域等字段配置。
@@ -1431,11 +1434,13 @@ def get_default_permissions(role_name):
 | DELETE | `/api/marketing/details/by-date` | 按竣工日期删除 |
 | DELETE | `/api/marketing/details/import/{batch}` | 按导入批次删除 |
 | DELETE | `/api/marketing/details/{id}` | 删除单条明细 |
-| GET/PUT | `/api/marketing/overall-row-rules` | 读取/保存总体营销行分类规则 |
+| GET/PUT | `/api/marketing/overall-row-rules` | 读取/保存线上直办、办理工单、降套维系行分类规则 |
+| GET/PUT | `/api/marketing/broadband-rules` | 读取/保存宽带独立组织机构规则和工号兜底规则，并返回继承规则 |
 | GET/PUT | `/api/marketing/key-products` | 读取/保存重点业务产品配置 |
 | GET | `/api/marketing/product-options` | 产品库下拉选项，支持 `keyword` 搜索 |
-| GET | `/api/marketing/organizations` | 组织机构命中预览 |
-| GET | `/api/marketing/row-rule-preview` | 未分类取值预览 |
+| GET | `/api/marketing/organizations` | 组织机构命中预览，支持 `source=xszb/fwgd` |
+| GET | `/api/marketing/row-rule-preview` | 未分类取值预览，支持 `source=xszb/fwgd` |
+| GET | `/api/marketing/broadband-rule-preview` | 宽带未分类订单、未匹配组织机构订单和工号预览 |
 | GET | `/api/marketing/report` | 营销多维统计，支持 `data_type` 来源筛选 |
 | GET | `/api/marketing/report/export` | CSV 导出，支持 `data_type` 来源筛选 |
 | POST | `/api/marketing-openings/import` | 导入大模型质检台开口数据 |

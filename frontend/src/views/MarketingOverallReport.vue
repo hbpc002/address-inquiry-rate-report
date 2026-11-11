@@ -162,7 +162,8 @@ const stats = reactive({
   grand_total: 0,
   unclassified_rows: 0,
   unclassified_business_rows: 0,
-  unclassified_broadband_rows: 0
+  unclassified_broadband_rows: 0,
+  unclassified_broadband_no_org_rows: 0
 })
 const columns = ref([
   { key: 'overlay', label: '叠加包' },
@@ -198,9 +199,15 @@ const unclassifiedText = computed(() => {
   const parts = []
   if (stats.unclassified_rows) parts.push(`${stats.unclassified_rows} 条产品行未匹配行分类规则`)
   if (stats.unclassified_business_rows) parts.push(`${stats.unclassified_business_rows} 条产品行不属于当前统计业务类型`)
-  if (stats.unclassified_broadband_rows) parts.push(`${stats.unclassified_broadband_rows} 条宽带订单未匹配行分类规则`)
+  if (stats.unclassified_broadband_rows) {
+    let text = `${stats.unclassified_broadband_rows} 条宽带订单未匹配行分类规则`
+    if (stats.unclassified_broadband_no_org_rows) {
+      text += `（其中 ${stats.unclassified_broadband_no_org_rows} 条工号未匹配组织机构，可在“宽带营销”工号兜底规则中处理）`
+    }
+    parts.push(text)
+  }
   if (!parts.length) return ''
-  return `有 ${parts.join('，')}；未分类数据不计入下表，请在营销设置中补充规则。`
+  return `有 ${parts.join('，')}；未分类数据不计入下表，请在营销设置的对应数据源中补充规则。`
 })
 
 function formatRange(range) {
