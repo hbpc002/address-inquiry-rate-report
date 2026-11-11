@@ -1,6 +1,7 @@
 import zipfile
 import io
 import re
+import uuid
 from xml.etree import ElementTree as ET
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
@@ -34,15 +35,22 @@ class BatchCreateRequest(BaseModel):
     records: list[TrainingRecordItem]
 
 
+class BatchDeleteRequest(BaseModel):
+    ids: list[int]
+
+
 class TrainingRecordResponse(BaseModel):
     id: int
     emp_no: str
+    name: Optional[str] = None
+    team: Optional[str] = None
     record_date: str
     start_time: str
     end_time: str
     duration_minutes: int
     type: str
     reason: Optional[str] = None
+    import_batch: Optional[str] = None
     created_by: Optional[str] = None
     created_at: Optional[str] = None
 
@@ -63,7 +71,9 @@ def list_training_records(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     emp_no: Optional[str] = Query(None),
+    team: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
+    import_batch: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
@@ -75,8 +85,16 @@ def list_training_records(
         query = query.filter(TrainingRecord.record_date <= datetime.strptime(end_date, "%Y-%m-%d").date())
     if emp_no:
         query = query.filter(TrainingRecord.emp_no == emp_no)
+    if team:
+        query = query.filter(
+            TrainingRecord.emp_no.in_(
+                db.query(Employee.emp_no).filter(Employee.team == team)
+            )
+        )
     if type:
         query = query.filter(TrainingRecord.type == type)
+    if import_batch:
+        query = query.filter(TrainingRecord.import_batch == import_batch)
     total = query.count()
     total_minutes = query.with_entities(
         func.coalesce(func.sum(TrainingRecord.duration_minutes), 0)
@@ -84,6 +102,15 @@ def list_training_records(
     records = query.order_by(
         TrainingRecord.record_date.desc(), TrainingRecord.emp_no
     ).offset((page - 1) * limit).limit(limit).all()
+
+    emp_nos = {r.emp_no for r in records}
+    employee_map = {}
+    if emp_nos:
+        employee_map = {
+            e.emp_no: e
+            for e in db.query(Employee).filter(Employee.emp_no.in_(emp_nos)).all()
+        }
+
     return {
         "total": total,
         "total_minutes": total_minutes,
@@ -91,18 +118,76 @@ def list_training_records(
             {
                 "id": r.id,
                 "emp_no": r.emp_no,
+                "name": employee_map[r.emp_no].name if r.emp_no in employee_map else "",
+                "team": employee_map[r.emp_no].team if r.emp_no in employee_map else "",
                 "record_date": r.record_date.isoformat() if r.record_date else None,
                 "start_time": r.start_time,
                 "end_time": r.end_time,
                 "duration_minutes": r.duration_minutes,
                 "type": r.type,
                 "reason": r.reason,
+                "import_batch": r.import_batch,
                 "created_by": r.created_by,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in records
         ]
     }
+
+
+@router.get("/teams")
+def list_training_teams(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "training_records.view")
+    query = apply_legacy_training_scope(
+        db.query(Employee.team, func.count(TrainingRecord.id))
+        .select_from(TrainingRecord)
+        .join(Employee, Employee.emp_no == TrainingRecord.emp_no),
+        current_user,
+    )
+    results = (
+        query.filter(Employee.team.isnot(None), Employee.team != "")
+        .group_by(Employee.team)
+        .order_by(Employee.team)
+        .all()
+    )
+    return [{"team": row[0], "count": row[1]} for row in results]
+
+
+@router.get("/batches")
+def list_training_batches(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "training_records.view")
+    query = apply_legacy_training_scope(
+        db.query(
+            TrainingRecord.import_batch,
+            func.count(TrainingRecord.id),
+            func.min(TrainingRecord.reason),
+            func.max(TrainingRecord.created_at),
+        ).filter(
+            TrainingRecord.import_batch.isnot(None),
+            TrainingRecord.import_batch != "",
+        ),
+        current_user,
+    )
+    results = (
+        query.group_by(TrainingRecord.import_batch)
+        .order_by(func.max(TrainingRecord.created_at).desc())
+        .all()
+    )
+    return [
+        {
+            "batch": row[0],
+            "count": row[1],
+            "reason": row[2] or "",
+            "created_at": row[3].isoformat() if row[3] else None,
+        }
+        for row in results
+    ]
 
 
 @router.post("/batch")
@@ -112,6 +197,7 @@ def batch_create(
     current_user: dict = Depends(get_current_user)
 ):
     require_permission(current_user, "training_records.create")
+    batch = uuid.uuid4().hex[:8]
     created = []
     for item in data.records:
         ensure_legacy_emp_no(db, item.emp_no, current_user)
@@ -125,6 +211,7 @@ def batch_create(
             duration_minutes=minutes,
             type=item.type,
             reason=item.reason,
+            import_batch=batch,
             created_by=current_user.get("display_name") or current_user.get("username"),
         )
         db.add(record)
@@ -132,8 +219,86 @@ def batch_create(
     db.commit()
     return {
         "message": f"成功创建 {len(created)} 条记录",
-        "count": len(created)
+        "count": len(created),
+        "batch": batch,
     }
+
+
+@router.post("/batch-delete")
+def batch_delete_records(
+    data: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "training_records.delete")
+    ids = list(dict.fromkeys(data.ids))
+    if not ids:
+        return {"deleted": 0, "message": "未选择记录"}
+    records = apply_legacy_training_scope(
+        db.query(TrainingRecord).filter(TrainingRecord.id.in_(ids)), current_user
+    ).all()
+    for record in records:
+        db.delete(record)
+    db.commit()
+    return {"deleted": len(records), "message": f"成功删除 {len(records)} 条记录"}
+
+
+@router.delete("/by-date")
+def delete_records_by_date(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "training_records.delete")
+    try:
+        target = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="日期格式无效，应为 YYYY-MM-DD")
+    count = apply_legacy_training_scope(
+        db.query(TrainingRecord).filter(TrainingRecord.record_date == target), current_user
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": count, "message": f"成功删除 {count} 条记录"}
+
+
+@router.delete("/by-month")
+def delete_records_by_month(
+    year_month: str = Query(..., description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "training_records.delete")
+    try:
+        start = datetime.strptime(f"{year_month}-01", "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="月份格式无效，应为 YYYY-MM")
+    if start.month == 12:
+        next_start = date(start.year + 1, 1, 1)
+    else:
+        next_start = date(start.year, start.month + 1, 1)
+    count = apply_legacy_training_scope(
+        db.query(TrainingRecord).filter(
+            TrainingRecord.record_date >= start,
+            TrainingRecord.record_date < next_start,
+        ),
+        current_user,
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": count, "message": f"成功删除 {count} 条记录"}
+
+
+@router.delete("/import/{batch}")
+def delete_records_by_batch(
+    batch: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    require_permission(current_user, "training_records.delete")
+    count = apply_legacy_training_scope(
+        db.query(TrainingRecord).filter(TrainingRecord.import_batch == batch), current_user
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": count, "message": f"成功删除 {count} 条记录"}
 
 
 @router.delete("/{record_id}")
@@ -271,6 +436,7 @@ async def import_training_records(
 
     date_col_letters = sorted(time_cols.keys())
 
+    batch = uuid.uuid4().hex[:8]
     created = []
     errors = []
     row_count = 0
@@ -328,6 +494,7 @@ async def import_training_records(
                 duration_minutes=duration_minutes,
                 type="培训",
                 reason=file.filename,
+                import_batch=batch,
                 created_by=current_user.get("display_name") or current_user.get("username"),
             )
             db.add(record)
@@ -338,5 +505,6 @@ async def import_training_records(
     return {
         "message": f"成功导入 {len(created)} 条培训记录",
         "count": len(created),
+        "batch": batch,
         "errors": errors,
     }

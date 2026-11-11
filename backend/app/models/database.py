@@ -259,6 +259,7 @@ def _migrate_db():
                         duration_minutes INTEGER NOT NULL,
                         type VARCHAR(20) NOT NULL DEFAULT '培训',
                         reason TEXT,
+                        import_batch VARCHAR(50),
                         created_by VARCHAR(50),
                         created_at TIMESTAMP DEFAULT NOW(),
                         updated_at TIMESTAMP
@@ -266,9 +267,19 @@ def _migrate_db():
                 """))
                 db.execute(text("CREATE INDEX idx_training_records_emp_no ON training_records(emp_no)"))
                 db.execute(text("CREATE INDEX idx_training_records_date ON training_records(record_date)"))
+                db.execute(text("CREATE INDEX idx_training_records_batch ON training_records(import_batch)"))
                 print("Created table training_records")
             except Exception as e:
                 print(f"Failed to create training_records: {e}")
+        elif 'training_records' in tables:
+            tr_cols = {col['name'] for col in inspector.get_columns('training_records')}
+            if 'import_batch' not in tr_cols:
+                try:
+                    db.execute(text("ALTER TABLE training_records ADD COLUMN import_batch VARCHAR(50)"))
+                    db.execute(text("CREATE INDEX idx_training_records_batch ON training_records(import_batch)"))
+                    print("Added column import_batch to training_records")
+                except Exception as e:
+                    print(f"Failed to add import_batch to training_records: {e}")
 
         db.commit()
         _migrate_legacy_user_departments(db)

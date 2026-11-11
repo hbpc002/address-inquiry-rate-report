@@ -493,6 +493,7 @@ def test_import_training_records_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["count"] == 1
+    assert data["batch"]
     assert "成功导入 1 条培训记录" in data["message"]
 
     db = _SessionLocal()
@@ -500,6 +501,7 @@ def test_import_training_records_endpoint():
     assert len(records) == 1
     assert records[0].duration_minutes == 90
     assert records[0].type == "培训"
+    assert records[0].import_batch == data["batch"]
     db.close()
 
 
@@ -585,3 +587,224 @@ def test_training_records_pagination():
     assert len(data["items"]) == 10
     assert data["total_minutes"] == 25 * 60
 
+
+
+def _admin_headers(db):
+    from app.core.security import create_access_token
+    admin = db.query(User).filter(User.username == 'admin').first()
+    token = create_access_token(data={"sub": str(admin.id)})
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_training_records_list_includes_name_team_and_team_filter():
+    """列表返回姓名/班组，并支持按班组筛选"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    db = SessionLocal()
+    try:
+        clear_tables(db)
+        emp1, emp2, admin = setup_test_data(db)
+        emp2.team = '二班2组'
+        db.commit()
+        today = datetime.now().date()
+
+        db.add_all([
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='一组培训', created_by='Admin'),
+            TrainingRecord(emp_no=emp2.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='二组培训', created_by='Admin'),
+        ])
+        db.commit()
+        headers = _admin_headers(db)
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    response = client.get('/api/training-records', headers=headers)
+    assert response.status_code == 200
+    items = response.json()['items']
+    assert len(items) == 2
+    assert all('name' in item and 'team' in item for item in items)
+
+    response = client.get('/api/training-records', params={'team': '二班2组'}, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data['total'] == 1
+    assert data['items'][0]['name'] == '李四'
+    assert data['items'][0]['team'] == '二班2组'
+
+    response = client.get('/api/training-records/teams', headers=headers)
+    assert response.status_code == 200
+    teams = {item['team']: item['count'] for item in response.json()}
+    assert teams.get('一班1组') == 1
+    assert teams.get('二班2组') == 1
+
+    response = client.get('/api/training-records', params={'team': '一班1组'}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()['total'] == 1
+    assert response.json()['items'][0]['name'] == '张三'
+
+
+def test_training_records_delete_by_date():
+    """按天删除培训记录"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    db = SessionLocal()
+    try:
+        clear_tables(db)
+        emp1, emp2, admin = setup_test_data(db)
+        today = datetime.now().date()
+        yesterday = today - timedelta(days=1)
+
+        db.add_all([
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='today', created_by='Admin'),
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='14:00', end_time='15:00', duration_minutes=60, type='请假', reason='today2', created_by='Admin'),
+            TrainingRecord(emp_no=emp2.emp_no, record_date=yesterday, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='yesterday', created_by='Admin'),
+        ])
+        db.commit()
+        headers = _admin_headers(db)
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    response = client.delete('/api/training-records/by-date', params={'date': today.isoformat()}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()['deleted'] == 2
+
+    db = SessionLocal()
+    try:
+        remaining = db.query(TrainingRecord).all()
+        assert len(remaining) == 1
+        assert remaining[0].record_date == yesterday
+    finally:
+        db.close()
+
+
+def test_training_records_delete_by_month():
+    """按月删除培训记录，跨月数据保留"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from datetime import date
+
+    db = SessionLocal()
+    try:
+        clear_tables(db)
+        emp1, emp2, admin = setup_test_data(db)
+        today = datetime.now().date()
+        if today.month == 1:
+            prev_month = date(today.year - 1, 12, 1)
+        else:
+            prev_month = date(today.year, today.month - 1, 1)
+
+        db.add_all([
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='本月', created_by='Admin'),
+            TrainingRecord(emp_no=emp1.emp_no, record_date=date(today.year, today.month, 1), start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='本月首日', created_by='Admin'),
+            TrainingRecord(emp_no=emp2.emp_no, record_date=prev_month, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='上月', created_by='Admin'),
+        ])
+        db.commit()
+        headers = _admin_headers(db)
+    finally:
+        db.close()
+
+    year_month = today.strftime('%Y-%m')
+    client = TestClient(app)
+    response = client.delete('/api/training-records/by-month', params={'year_month': year_month}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()['deleted'] == 2
+
+    db = SessionLocal()
+    try:
+        remaining = db.query(TrainingRecord).all()
+        assert len(remaining) == 1
+        assert remaining[0].record_date == prev_month
+    finally:
+        db.close()
+
+    response = client.delete('/api/training-records/by-month', params={'year_month': 'bad-format'}, headers=headers)
+    assert response.status_code == 400
+
+
+def test_training_records_delete_by_batch():
+    """按导入批次删除培训记录，并支持批次列表"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    db = SessionLocal()
+    try:
+        clear_tables(db)
+        emp1, emp2, admin = setup_test_data(db)
+        today = datetime.now().date()
+
+        db.add_all([
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='a.xlsx', import_batch='batchA', created_by='Admin'),
+            TrainingRecord(emp_no=emp2.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='a.xlsx', import_batch='batchA', created_by='Admin'),
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='14:00', end_time='15:00', duration_minutes=60, type='培训', reason='b.xlsx', import_batch='batchB', created_by='Admin'),
+        ])
+        db.commit()
+        headers = _admin_headers(db)
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    response = client.get('/api/training-records/batches', headers=headers)
+    assert response.status_code == 200
+    batches = {item['batch']: item for item in response.json()}
+    assert batches['batchA']['count'] == 2
+    assert batches['batchB']['count'] == 1
+
+    response = client.get('/api/training-records', params={'import_batch': 'batchA'}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()['total'] == 2
+
+    response = client.delete('/api/training-records/import/batchA', headers=headers)
+    assert response.status_code == 200
+    assert response.json()['deleted'] == 2
+
+    db = SessionLocal()
+    try:
+        remaining = db.query(TrainingRecord).all()
+        assert len(remaining) == 1
+        assert remaining[0].import_batch == 'batchB'
+    finally:
+        db.close()
+
+
+def test_training_records_batch_delete_by_ids():
+    """按勾选记录ID批量删除"""
+    ensure_tables()
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    db = SessionLocal()
+    try:
+        clear_tables(db)
+        emp1, emp2, admin = setup_test_data(db)
+        today = datetime.now().date()
+        records = [
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='09:00', end_time='10:00', duration_minutes=60, type='培训', reason='1', created_by='Admin'),
+            TrainingRecord(emp_no=emp1.emp_no, record_date=today, start_time='10:00', end_time='11:00', duration_minutes=60, type='培训', reason='2', created_by='Admin'),
+            TrainingRecord(emp_no=emp2.emp_no, record_date=today, start_time='11:00', end_time='12:00', duration_minutes=60, type='培训', reason='3', created_by='Admin'),
+        ]
+        db.add_all(records)
+        db.commit()
+        ids = [records[0].id, records[1].id]
+        headers = _admin_headers(db)
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    response = client.post('/api/training-records/batch-delete', json={'ids': ids}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()['deleted'] == 2
+
+    db = SessionLocal()
+    try:
+        remaining = db.query(TrainingRecord).all()
+        assert len(remaining) == 1
+        assert remaining[0].reason == '3'
+    finally:
+        db.close()

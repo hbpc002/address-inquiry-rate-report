@@ -14,6 +14,7 @@ class TrainingRecord(Base):
     duration_minutes = Column(Integer, nullable=False)
     type = Column(String(20), nullable=False, default="培训")
     reason = Column(Text)
+    import_batch = Column(String(50), index=True)
     created_by = Column(String(50))
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())

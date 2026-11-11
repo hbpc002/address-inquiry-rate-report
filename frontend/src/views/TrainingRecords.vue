@@ -6,6 +6,18 @@
           <span>{{ ui.labels.training_records }}</span>
           <el-space>
             <el-button v-if="userStore.hasPermission('training_records.view')" @click="loadData">刷新</el-button>
+            <el-button
+              v-if="userStore.hasPermission('training_records.delete')"
+              type="danger"
+              :disabled="!selectedIds.length"
+              @click="handleBatchDelete"
+            >批量删除</el-button>
+            <el-button
+              v-if="userStore.hasPermission('training_records.delete')"
+              type="danger"
+              plain
+              @click="openCleanupDialog"
+            >按天/月/批次删除</el-button>
             <el-button v-if="userStore.hasPermission('training_records.create')" type="primary" @click="openBatchDialog">批量录入</el-button>
             <el-button v-if="userStore.hasPermission('training_records.create')" type="success" @click="importVisible = true">导入培训记录</el-button>
           </el-space>
@@ -21,6 +33,11 @@
         <el-form-item label="员工">
           <el-select v-model="searchForm.emp_no" filterable clearable placeholder="选择员工" style="width:160px">
             <el-option v-for="e in empOptions" :key="e.emp_no" :label="`${e.name} (${e.emp_no})`" :value="e.emp_no" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="班组">
+          <el-select v-model="searchForm.team" filterable clearable placeholder="全部班组" style="width:140px">
+            <el-option v-for="t in teams" :key="t.team" :label="`${t.team} (${t.count})`" :value="t.team" />
           </el-select>
         </el-form-item>
         <el-form-item label="类型">
@@ -40,8 +57,19 @@
         <el-tag type="warning" style="margin-left: 8px">总时长: {{ stats.total_minutes }} 分钟 ({{ (stats.total_minutes / 60).toFixed(1) }}h)</el-tag>
       </div>
 
-      <el-table :data="tableData" border stripe max-height="calc(100vh - 320px)">
+      <el-table
+        ref="tableRef"
+        :data="tableData"
+        row-key="id"
+        border
+        stripe
+        max-height="calc(100vh - 320px)"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column v-if="userStore.hasPermission('training_records.delete')" type="selection" width="45" />
         <el-table-column prop="emp_no" label="工号" width="90" />
+        <el-table-column prop="name" label="姓名" width="90" />
+        <el-table-column prop="team" label="班组" width="120" show-overflow-tooltip />
         <el-table-column prop="record_date" label="日期" width="100" />
         <el-table-column label="起止时间" width="130">
           <template #default="{ row }">
@@ -52,6 +80,11 @@
         <el-table-column prop="type" label="类型" width="70">
           <template #default="{ row }">
             <el-tag :type="row.type === '培训' ? 'primary' : 'warning'" size="small">{{ row.type }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="批次" width="90">
+          <template #default="{ row }">
+            {{ row.import_batch || '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="reason" label="备注" min-width="150" show-overflow-tooltip />
@@ -134,6 +167,34 @@
         <el-button type="primary" :loading="importing" @click="handleImport" :disabled="!importFile">确认导入</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="cleanupVisible" title="按天/按月/按批次删除" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="删除方式">
+          <el-radio-group v-model="cleanupForm.mode">
+            <el-radio-button value="date">按天</el-radio-button>
+            <el-radio-button value="month">按月</el-radio-button>
+            <el-radio-button value="batch">按批次</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="cleanupForm.mode === 'date'" label="选择日期">
+          <el-date-picker v-model="cleanupForm.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+        </el-form-item>
+        <el-form-item v-else-if="cleanupForm.mode === 'month'" label="选择月份">
+          <el-date-picker v-model="cleanupForm.month" type="month" value-format="YYYY-MM" placeholder="选择月份" style="width: 100%" />
+        </el-form-item>
+        <el-form-item v-else label="选择批次">
+          <el-select v-model="cleanupForm.batch" filterable clearable placeholder="选择批次" style="width: 100%">
+            <el-option v-for="b in batches" :key="b.batch" :label="batchLabel(b)" :value="b.batch" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="cleanup-tip">删除后不可恢复，请谨慎操作。</div>
+      <template #footer>
+        <el-button @click="cleanupVisible = false">取消</el-button>
+        <el-button type="danger" :loading="cleanupLoading" :disabled="!canCleanup" @click="handleCleanupDelete">确认删除</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -148,6 +209,12 @@ const userStore = useUserStore()
 const ui = useUiConfigStore()
 
 const empOptions = ref([])
+const teams = ref([])
+const batches = ref([])
+const tableRef = ref(null)
+const cleanupVisible = ref(false)
+const cleanupLoading = ref(false)
+const selectedIds = ref([])
 const tableData = ref([])
 const stats = reactive({ total: 0, total_minutes: 0 })
 const pagination = reactive({ page: 1, limit: 20, total: 0 })
@@ -162,6 +229,7 @@ const searchForm = reactive({
   start_date: '',
   end_date: '',
   emp_no: '',
+  team: '',
   type: ''
 })
 
@@ -174,11 +242,24 @@ const batchForm = reactive({
   reason: ''
 })
 
+const cleanupForm = reactive({
+  mode: 'date',
+  date: '',
+  month: '',
+  batch: ''
+})
+
 const canSubmit = computed(() => {
   return batchForm.selectedEmps.length > 0
     && batchForm.dates.length > 0
     && batchForm.startTime
     && batchForm.endTime
+})
+
+const canCleanup = computed(() => {
+  if (cleanupForm.mode === 'date') return Boolean(cleanupForm.date)
+  if (cleanupForm.mode === 'month') return Boolean(cleanupForm.month)
+  return Boolean(cleanupForm.batch)
 })
 
 async function loadEmployees() {
@@ -190,6 +271,39 @@ async function loadEmployees() {
   }
 }
 
+async function loadTeams() {
+  try {
+    const res = await api.get('/training-records/teams')
+    teams.value = res.data || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function loadBatches() {
+  try {
+    const res = await api.get('/training-records/batches')
+    batches.value = res.data || []
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+function batchLabel(b) {
+  const reason = b.reason ? ` · ${b.reason}` : ''
+  const createdAt = b.created_at ? ` · ${b.created_at.slice(0, 16).replace('T', ' ')}` : ''
+  return `${b.batch}${reason} · ${b.count}条${createdAt}`
+}
+
+function openCleanupDialog() {
+  cleanupForm.mode = 'date'
+  cleanupForm.date = ''
+  cleanupForm.month = ''
+  cleanupForm.batch = ''
+  cleanupVisible.value = true
+  loadBatches()
+}
+
 async function loadData() {
   try {
     const params = {
@@ -199,9 +313,12 @@ async function loadData() {
     if (searchForm.start_date) params.start_date = searchForm.start_date
     if (searchForm.end_date) params.end_date = searchForm.end_date
     if (searchForm.emp_no) params.emp_no = searchForm.emp_no
+    if (searchForm.team) params.team = searchForm.team
     if (searchForm.type) params.type = searchForm.type
     const res = await api.get('/training-records', { params })
     tableData.value = res.data.items || []
+    tableRef.value?.clearSelection()
+    selectedIds.value = []
     pagination.total = res.data.total
     stats.total = res.data.total
     stats.total_minutes = res.data.total_minutes
@@ -224,9 +341,72 @@ function resetSearch() {
   searchForm.start_date = ''
   searchForm.end_date = ''
   searchForm.emp_no = ''
+  searchForm.team = ''
   searchForm.type = ''
   pagination.page = 1
   loadData()
+}
+
+function handleSelectionChange(rows) {
+  selectedIds.value = rows.map(r => r.id)
+}
+
+async function handleBatchDelete() {
+  if (!selectedIds.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedIds.value.length} 条记录？此操作不可恢复。`,
+      '确认批量删除',
+      { type: 'warning' }
+    )
+    const res = await api.post('/training-records/batch-delete', { ids: selectedIds.value })
+    ElMessage.success(res.data.message || '删除成功')
+    tableRef.value?.clearSelection()
+    selectedIds.value = []
+    loadData()
+    loadTeams()
+    loadBatches()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('删除失败: ' + (e.response?.data?.detail || e.message))
+    }
+  }
+}
+
+async function handleCleanupDelete() {
+  if (!canCleanup.value) return
+  let target = ''
+  if (cleanupForm.mode === 'date') target = `日期 ${cleanupForm.date}`
+  else if (cleanupForm.mode === 'month') target = `月份 ${cleanupForm.month}`
+  else target = `批次 ${cleanupForm.batch}`
+  try {
+    await ElMessageBox.confirm(
+      `确定删除${target}的全部培训记录？此操作不可恢复。`,
+      '确认删除',
+      { type: 'warning' }
+    )
+    cleanupLoading.value = true
+    let res
+    if (cleanupForm.mode === 'date') {
+      res = await api.delete('/training-records/by-date', { params: { date: cleanupForm.date } })
+    } else if (cleanupForm.mode === 'month') {
+      res = await api.delete('/training-records/by-month', { params: { year_month: cleanupForm.month } })
+    } else {
+      res = await api.delete(`/training-records/import/${encodeURIComponent(cleanupForm.batch)}`)
+    }
+    ElMessage.success(res.data.message || '删除成功')
+    cleanupVisible.value = false
+    pagination.page = 1
+    loadData()
+    loadTeams()
+    loadBatches()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('删除失败: ' + (e.response?.data?.detail || e.message))
+    }
+  } finally {
+    cleanupLoading.value = false
+  }
 }
 
 function openBatchDialog() {
@@ -263,6 +443,8 @@ async function handleBatchCreate() {
     ElMessage.success(`成功录入 ${records.length} 条记录`)
     batchDialogVisible.value = false
     loadData()
+    loadTeams()
+    loadBatches()
   } catch (e) {
     ElMessage.error('录入失败: ' + (e.response?.data?.detail || e.message))
   } finally {
@@ -279,6 +461,8 @@ async function handleDelete(row) {
       pagination.page -= 1
     }
     loadData()
+    loadTeams()
+    loadBatches()
   } catch (e) {
     if (e !== 'cancel') {
       ElMessage.error('删除失败: ' + (e.response?.data?.detail || e.message))
@@ -315,6 +499,8 @@ async function handleImport() {
     importFile.value = null
     importFileList.value = []
     loadData()
+    loadTeams()
+    loadBatches()
   } catch (e) {
     const detail = e.response?.data?.detail || e.message
     ElMessage.error('导入失败: ' + detail)
@@ -325,6 +511,8 @@ async function handleImport() {
 
 onMounted(() => {
   loadEmployees()
+  loadTeams()
+  loadBatches()
   loadData()
 })
 </script>
@@ -334,5 +522,10 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.cleanup-tip {
+  font-size: 12px;
+  color: #f56c6c;
 }
 </style>
