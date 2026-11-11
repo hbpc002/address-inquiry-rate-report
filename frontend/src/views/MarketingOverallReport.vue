@@ -39,12 +39,12 @@
       />
 
       <el-alert
-        v-if="stats.unclassified_rows || stats.unclassified_business_rows"
+        v-if="unclassifiedText"
         type="warning"
         :closable="false"
         show-icon
         style="margin-bottom: 12px"
-        :title="`有 ${stats.unclassified_rows} 条产品行未匹配行分类规则，${stats.unclassified_business_rows} 条产品行不属于当前统计业务类型；未分类数据不计入下表，请在营销设置中补充规则。`"
+        :title="unclassifiedText"
       />
 
       <div v-if="dataRangesLoaded" class="query-range-summary">
@@ -54,6 +54,9 @@
         </div>
         <div class="query-range-item" :class="{ 'range-incomplete': isRangeIncomplete(queryRanges.fwgd) }">
           <span class="range-label">营销工单数据：</span>{{ formatQueryRange(queryRanges.fwgd) }}
+        </div>
+        <div class="query-range-item" :class="{ 'range-incomplete': isRangeIncomplete(queryRanges.broadband) }">
+          <span class="range-label">宽带营销数据：</span>{{ formatQueryRange(queryRanges.broadband) }}
         </div>
       </div>
 
@@ -153,7 +156,14 @@ const ui = useUiConfigStore()
 const now = new Date()
 const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 const searchForm = reactive({ type: 'month', month: defaultMonth, start_date: '', end_date: '' })
-const stats = reactive({ start_date: '', end_date: '', grand_total: 0, unclassified_rows: 0, unclassified_business_rows: 0 })
+const stats = reactive({
+  start_date: '',
+  end_date: '',
+  grand_total: 0,
+  unclassified_rows: 0,
+  unclassified_business_rows: 0,
+  unclassified_broadband_rows: 0
+})
 const columns = ref([
   { key: 'overlay', label: '叠加包' },
   { key: 'package_change', label: '套餐变更' },
@@ -172,14 +182,25 @@ const dataRangesLoaded = ref(false)
 const databaseRanges = computed(() => dataRanges.value.database || {})
 const queryRanges = computed(() => dataRanges.value.query || {})
 const databaseRangeMismatch = computed(() => {
-  const onlineEnd = databaseRanges.value.xszb?.end_date
-  const workOrderEnd = databaseRanges.value.fwgd?.end_date
-  return Boolean((onlineEnd || workOrderEnd) && onlineEnd !== workOrderEnd)
+  const ends = [
+    databaseRanges.value.xszb?.end_date,
+    databaseRanges.value.fwgd?.end_date,
+    databaseRanges.value.broadband?.end_date
+  ].filter(Boolean)
+  return new Set(ends).size > 1
 })
 const databaseRangeType = computed(() => databaseRangeMismatch.value ? 'warning' : 'info')
 const databaseRangeText = computed(() => {
-  const suffix = databaseRangeMismatch.value ? '，两者截止日期不一致，请确认数据是否导入完整' : ''
-  return `数据库数据范围：线上直办 ${formatRange(databaseRanges.value.xszb)}；营销工单 ${formatRange(databaseRanges.value.fwgd)}${suffix}`
+  const suffix = databaseRangeMismatch.value ? '，截止日期不一致，请确认数据是否导入完整' : ''
+  return `数据库数据范围：线上直办 ${formatRange(databaseRanges.value.xszb)}；营销工单 ${formatRange(databaseRanges.value.fwgd)}；宽带营销 ${formatRange(databaseRanges.value.broadband)}${suffix}`
+})
+const unclassifiedText = computed(() => {
+  const parts = []
+  if (stats.unclassified_rows) parts.push(`${stats.unclassified_rows} 条产品行未匹配行分类规则`)
+  if (stats.unclassified_business_rows) parts.push(`${stats.unclassified_business_rows} 条产品行不属于当前统计业务类型`)
+  if (stats.unclassified_broadband_rows) parts.push(`${stats.unclassified_broadband_rows} 条宽带订单未匹配行分类规则`)
+  if (!parts.length) return ''
+  return `有 ${parts.join('，')}；未分类数据不计入下表，请在营销设置中补充规则。`
 })
 
 function formatRange(range) {

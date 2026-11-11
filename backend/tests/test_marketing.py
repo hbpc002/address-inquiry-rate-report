@@ -24,6 +24,7 @@ from app.models.database import Base, SessionLocal, engine, init_db
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
 from app.models.operation_log import OperationLog
+from app.models.seamless_order import SeamlessOrder
 from app.models.user import User
 
 ADMIN = {"id": 1, "username": "marketing_admin", "role": "admin", "is_system": True, "permissions": "{}"}
@@ -80,6 +81,7 @@ def _clean():
     db = SessionLocal()
     try:
         db.query(MarketingDetail).delete()
+        db.query(SeamlessOrder).delete()
         db.query(Employee).delete()
         db.query(AppConfig).filter(AppConfig.key.in_(["marketing_overall_row_rules", "marketing_key_products"])).delete(synchronize_session=False)
         db.query(OperationLog).delete()
@@ -153,6 +155,24 @@ def _org_row(kf="KF001", org="广西分公司->省中心->客户服务营销中�
              finish="20261005120000", service="叠加包", valid="月包",
              product_id="OP1", product_name="线上直办产品", trade="O1"):
     return [kf, org, finish, service, valid, product_id, product_name, trade]
+
+
+def _seed_broadband_order(order_no, emp_no="KF001", finish_date=None,
+                          completed="是", excluded="否", duplicate="否"):
+    db = SessionLocal()
+    try:
+        db.add(SeamlessOrder(
+            order_no=order_no,
+            emp_no=emp_no,
+            order_date=finish_date or date(2026, 10, 5),
+            finish_date=finish_date,
+            is_completed=completed,
+            is_excluded=excluded,
+            is_duplicate=duplicate,
+        ))
+        db.commit()
+    finally:
+        db.close()
 
 
 def _upload(headers, rows, pre_rows=None, filename="marketing.xlsx"):
@@ -345,6 +365,9 @@ class TestMarketingReport:
             _fwgd_row(trade="WO2", product_id="W2", finish="20261022120000"),
         ]
         assert _upload(FWGD_HEADERS, work_order_rows).status_code == 200
+        _seed_broadband_order("BB1", finish_date=date(2026, 10, 3))
+        _seed_broadband_order("BB2", finish_date=date(2026, 10, 25))
+        _seed_broadband_order("BB3", finish_date=date(2026, 11, 5), excluded="是")
 
         report = client.get("/api/marketing/overall-report", params={
             "start_date": "2026-10-01",
@@ -355,10 +378,12 @@ class TestMarketingReport:
         assert report["data_ranges"]["database"] == {
             "xszb": {"start_date": "2026-09-30", "end_date": "2026-11-01"},
             "fwgd": {"start_date": "2026-10-02", "end_date": "2026-10-22"},
+            "broadband": {"start_date": "2026-10-03", "end_date": "2026-10-25"},
         }
         assert report["data_ranges"]["query"] == {
             "xszb": {"start_date": "2026-10-01", "end_date": "2026-10-20"},
             "fwgd": {"start_date": "2026-10-02", "end_date": "2026-10-22"},
+            "broadband": {"start_date": "2026-10-03", "end_date": "2026-10-25"},
         }
 
         monthly = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
@@ -372,6 +397,7 @@ class TestMarketingReport:
         assert empty["data_ranges"]["query"] == {
             "xszb": {"start_date": None, "end_date": None},
             "fwgd": {"start_date": None, "end_date": None},
+            "broadband": {"start_date": None, "end_date": None},
         }
 
     def test_overall_export_has_style_merge_and_formulas(self):
@@ -437,6 +463,75 @@ class TestMarketingWorkOrders:
         assert report["stats"]["grand_total"] == 0
         assert report["stats"]["unclassified_rows"] == 1
         assert all(row["total"] == 0 for row in report["rows"])
+
+    def test_broadband_completed_orders_added_to_work_order_broadband_new(self):
+        assert _upload(ORG_HEADERS, [
+            _org_row(kf="KF001", org="广西分公司->省中心->客户服务营销中心->热线运营组",
+                     finish="20250101120000", trade="O1"),
+        ]).status_code == 200
+        _set_overall_rules([
+            {"row_label": "营销工单-热线", "field": "org_name", "match_type": "contains",
+             "pattern": "热线运营组", "priority": 1, "enabled": True},
+        ])
+
+        _seed_broadband_order("BB1", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB2", finish_date=date(2026, 10, 6), completed="否")
+        _seed_broadband_order("BB3", finish_date=date(2026, 10, 7), excluded="是")
+        _seed_broadband_order("BB4", finish_date=date(2026, 10, 8), duplicate="是")
+        _seed_broadband_order("BB5", emp_no="KF999", finish_date=date(2026, 10, 9))
+        _seed_broadband_order("BB6", finish_date=date(2026, 11, 1))
+
+        report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        hotline = _overall_row(report, "营销工单-热线")
+        assert hotline["counts"]["broadband_new"] == 1
+        assert hotline["counts"]["overlay"] == 0
+        assert hotline["total"] == 1
+        assert _overall_row(report, "线上直办-热线")["counts"]["broadband_new"] == 0
+        assert report["stats"]["unclassified_broadband_rows"] == 1
+        assert report["stats"]["grand_total"] == 1
+        assert report["total_row"]["counts"]["broadband_new"] == 1
+
+    def test_broadband_orders_respect_marketing_overall_scope(self):
+        db = SessionLocal()
+        try:
+            db.add(Employee(emp_no="KF003", name="王五", team="区域三组", dept="其他部门", status="在职"))
+            db.commit()
+        finally:
+            db.close()
+        assert _upload(ORG_HEADERS, [
+            _org_row(kf="KF001", org="广西分公司->热线运营组", finish="20250101120000", trade="O1"),
+            _org_row(kf="KF003", org="其他部门->区域组", finish="20250101120000", trade="O2"),
+        ]).status_code == 200
+        _set_overall_rules([
+            {"row_label": "营销工单-热线", "field": "org_name", "match_type": "contains",
+             "pattern": "热线运营组", "priority": 1, "enabled": True},
+            {"row_label": "营销工单-区域", "field": "org_name", "match_type": "contains",
+             "pattern": "其他部门", "priority": 2, "enabled": True},
+        ])
+        _seed_broadband_order("BB1", emp_no="KF001", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB2", emp_no="KF003", finish_date=date(2026, 10, 5))
+
+        original = app.dependency_overrides[get_current_user]
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": 2,
+            "username": "dept_user",
+            "role": "user",
+            "is_system": False,
+            "permissions": '{"marketing_overall.view": true}',
+            "data_scope": "dept",
+            "department_group_paths": ["客服部"],
+        }
+        try:
+            report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+            assert _overall_row(report, "营销工单-热线")["counts"]["broadband_new"] == 1
+            assert _overall_row(report, "营销工单-区域")["counts"]["broadband_new"] == 0
+            assert report["stats"]["grand_total"] == 1
+            assert report["data_ranges"]["database"]["broadband"] == {
+                "start_date": "2026-10-05",
+                "end_date": "2026-10-05",
+            }
+        finally:
+            app.dependency_overrides[get_current_user] = original
 
     def test_marketing_report_source_filter(self):
         assert _upload(ORG_HEADERS, [_org_row(kf="KF001", trade="O1", product_id="OP1")]).status_code == 200

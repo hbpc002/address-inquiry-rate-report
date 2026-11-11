@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_permission
 from app.core.data_scope import (
+    apply_broadband_marketing_scope,
     apply_marketing_scope,
     build_department_group_context,
     require_all_scope,
@@ -28,6 +29,7 @@ from app.models.database import get_db
 from app.models.employee import Employee
 from app.models.marketing_detail import MarketingDetail
 from app.models.marketing_opening import MarketingOpeningRecord
+from app.models.seamless_order import SeamlessOrder
 from app.utils.logger import log_operation
 
 router = APIRouter(prefix="/api/marketing", tags=["营销统计"])
@@ -82,7 +84,8 @@ ONLINE_ROW_LABELS = {f"线上直办-{suffix}" for suffix in ONLINE_ROW_SUFFIXES}
 WORK_ORDER_ROW_LABELS = {f"营销工单-{suffix}" for suffix in ONLINE_ROW_SUFFIXES}
 SOURCE_XSZB = "xszb"
 SOURCE_FWGD = "fwgd"
-SOURCE_LABELS = {SOURCE_XSZB: "线上直办", SOURCE_FWGD: "办理工单"}
+SOURCE_BROADBAND = "broadband"
+SOURCE_LABELS = {SOURCE_XSZB: "线上直办", SOURCE_FWGD: "办理工单", SOURCE_BROADBAND: "宽带营销"}
 PRODUCT_SOURCE_ALL = "all"
 PRODUCT_SOURCE_LABELS = {
     SOURCE_XSZB: SOURCE_LABELS[SOURCE_XSZB],
@@ -481,6 +484,52 @@ def _classify_work_order_row(
 
     cache[cache_key] = result or ""
     return result
+
+
+def _classify_broadband_row(
+    order: SeamlessOrder,
+    config: Dict[str, Any],
+    org_map: Dict[str, str],
+    cache: Dict[str, str],
+) -> Optional[str]:
+    org_name = org_map.get(_norm_emp_no(order.emp_no), "")
+    cache_key = SOURCE_BROADBAND + "\u0001" + org_name
+    if cache_key in cache:
+        return cache[cache_key] or None
+
+    result = None
+    if org_name:
+        for rule in _sorted_rules(config):
+            if (rule.get("field") or "org_name") != "org_name":
+                continue
+            if _rule_match(org_name, rule):
+                label = _normalize_work_order_label(rule.get("row_label"))
+                if label:
+                    result = label
+                    break
+
+    cache[cache_key] = result or ""
+    return result
+
+
+def _broadband_completed_query(
+    db: Session,
+    start: Optional[date] = None,
+    end: Optional[date] = None,
+    current_user: dict = None,
+):
+    query = db.query(SeamlessOrder).filter(
+        SeamlessOrder.is_completed == "是",
+        SeamlessOrder.is_excluded == "否",
+        SeamlessOrder.is_duplicate == "否",
+    )
+    if start:
+        query = query.filter(SeamlessOrder.finish_date >= start)
+    if end:
+        query = query.filter(SeamlessOrder.finish_date <= end)
+    if current_user:
+        query = apply_broadband_marketing_scope(query, db, current_user, "marketing_overall")
+    return query
 
 
 def _classify_overall_row(detail: MarketingDetail, config: Dict[str, Any], cache: Dict[str, str]) -> Optional[str]:
@@ -1173,6 +1222,28 @@ def _source_date_ranges(
             "start_date": min_date.isoformat() if min_date else None,
             "end_date": max_date.isoformat() if max_date else None,
         }
+
+    broadband_query = db.query(
+        func.min(SeamlessOrder.finish_date),
+        func.max(SeamlessOrder.finish_date),
+    ).filter(
+        SeamlessOrder.is_completed == "是",
+        SeamlessOrder.is_excluded == "否",
+        SeamlessOrder.is_duplicate == "否",
+    )
+    if current_user:
+        broadband_query = apply_broadband_marketing_scope(
+            broadband_query, db, current_user, "marketing_overall"
+        )
+    if start:
+        broadband_query = broadband_query.filter(SeamlessOrder.finish_date >= start)
+    if end:
+        broadband_query = broadband_query.filter(SeamlessOrder.finish_date <= end)
+    min_date, max_date = broadband_query.one()
+    ranges[SOURCE_BROADBAND] = {
+        "start_date": min_date.isoformat() if min_date else None,
+        "end_date": max_date.isoformat() if max_date else None,
+    }
     return ranges
 
 
@@ -1189,6 +1260,7 @@ def _compute_overall(
     row_counts = {label: _overall_counts() for label in OVERALL_ROW_LABELS}
     unclassified_rows = 0
     unclassified_business_rows = 0
+    unclassified_broadband_rows = 0
 
     online_query = db.query(MarketingDetail).filter(
         MarketingDetail.finish_date >= start,
@@ -1229,6 +1301,13 @@ def _compute_overall(
             unclassified_rows += 1
             continue
         row_counts[row_label][biz] += 1
+
+    for order in _broadband_completed_query(db, start, end, current_user).all():
+        row_label = _classify_broadband_row(order, config, org_map, cache)
+        if not row_label:
+            unclassified_broadband_rows += 1
+            continue
+        row_counts[row_label]["broadband_new"] += 1
 
     rows = []
     grand_total = 0
@@ -1300,6 +1379,7 @@ def _compute_overall(
             "grand_total": grand_total,
             "unclassified_rows": unclassified_rows,
             "unclassified_business_rows": unclassified_business_rows,
+            "unclassified_broadband_rows": unclassified_broadband_rows,
         },
         "columns": OVERALL_COLUMNS,
         "rows": rows,

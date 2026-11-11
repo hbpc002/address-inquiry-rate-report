@@ -97,7 +97,7 @@ const stubs = {
   'el-radio': { template: '<label class="el-radio-stub"><slot /></label>' },
   'el-radio-button': { template: '<label class="el-radio-button-stub"><slot /></label>' },
   'el-date-picker': { template: '<input class="el-date-picker-stub" />' },
-  'el-alert': { template: '<div class="el-alert-stub" />' }
+  'el-alert': { props: ['title'], template: '<div class="el-alert-stub">{{ title }}</div>' }
 }
 
 async function mountPage() {
@@ -123,5 +123,32 @@ describe('总体营销重点业务产品班组组长显示', () => {
     expect(rows[1].find('.team-col').text()).toBe('热线一组（李组长）')
     expect(rows[2].find('.team-col').text()).toBe('未分班组')
     expect(rows[3].find('.team-col').text()).toBe('小计')
+  })
+
+  it('显示宽带营销数据范围和未分类宽带订单提示', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...reportData,
+        stats: { ...reportData.stats, unclassified_broadband_rows: 2 },
+        data_ranges: {
+          database: {
+            xszb: { start_date: '2026-10-01', end_date: '2026-10-31' },
+            fwgd: { start_date: '2026-10-01', end_date: '2026-10-31' },
+            broadband: { start_date: '2026-10-03', end_date: '2026-10-28' }
+          },
+          query: {
+            xszb: { start_date: '2026-10-01', end_date: '2026-10-31' },
+            fwgd: { start_date: '2026-10-01', end_date: '2026-10-31' },
+            broadband: { start_date: '2026-10-03', end_date: '2026-10-28' }
+          }
+        }
+      }
+    })
+    const wrapper = await mountPage()
+    const ranges = wrapper.findAll('.query-range-item')
+
+    expect(ranges[2].text()).toContain('宽带营销数据')
+    expect(ranges[2].text()).toContain('2026-10-03 ~ 2026-10-28')
+    expect(wrapper.text()).toContain('2 条宽带订单未匹配行分类规则')
   })
 })

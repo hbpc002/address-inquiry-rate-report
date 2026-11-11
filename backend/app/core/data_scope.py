@@ -246,6 +246,19 @@ def apply_marketing_scope(query, db: Session, user: dict, module: str = "marketi
     return query.filter(func.upper(MarketingDetail.kf_id).in_(emp_nos))
 
 
+def apply_broadband_marketing_scope(query, db: Session, user: dict, module: str = "marketing_overall"):
+    if is_all_scope(user, module):
+        return query
+    paths = get_user_scope_paths(user)
+    if not paths:
+        return query.filter(false())
+
+    emp_nos = select(func.upper(Employee.emp_no)).where(
+        or_(*_path_filters(paths, Employee.dept))
+    )
+    return query.filter(func.upper(SeamlessOrder.emp_no).in_(emp_nos))
+
+
 def apply_marketing_opening_scope(query, db: Session, user: dict, module: str = "marketing_opening"):
     if is_all_scope(user, module):
         return query
