@@ -242,6 +242,44 @@ class TestMarketingOpening:
         assert "叠加包主动开口量" in text
         assert "50.00%" in text
 
+    def test_report_stats_follow_filters(self):
+        rows = [
+            _row("C1", "KF001", aa=True, active_overlay=True, opened_overlay=True),
+            _row("C2", "KF001", aa=False),
+            _row("C3", "KF002", name="李四", team="10010区域客服代表", aa=True, active_broadband=True, opened_broadband=True),
+            _row("C4", "KF002", name="李四", team="10010区域客服代表", aa=False, active_package=True, opened_package=True),
+        ]
+        resp = _upload(rows)
+        assert resp.status_code == 200, resp.text
+
+        unfiltered = client.get(
+            "/api/marketing-openings/report", params={"year_month": "2026-11"}
+        ).json()
+        assert unfiltered["stats"]["people_count"] == 2
+        assert unfiltered["stats"]["contact_count"] == 4
+
+        by_team = client.get(
+            "/api/marketing-openings/report", params={"year_month": "2026-11", "team": "热线1组"}
+        ).json()
+        assert by_team["stats"]["people_count"] == 1
+        assert by_team["stats"]["contact_count"] == 2
+        assert by_team["stats"]["opened_count"] == 1
+        assert by_team["stats"]["opening_rate"] == 0.5
+
+        by_name = client.get(
+            "/api/marketing-openings/report", params={"year_month": "2026-11", "name": "李四"}
+        ).json()
+        assert by_name["stats"]["people_count"] == 1
+        assert by_name["stats"]["contact_count"] == 2
+        assert by_name["stats"]["opened_count"] == 1
+
+        by_emp_no = client.get(
+            "/api/marketing-openings/report", params={"year_month": "2026-11", "emp_no": "KF002"}
+        ).json()
+        assert by_emp_no["stats"]["people_count"] == 1
+        assert by_emp_no["stats"]["contact_count"] == 2
+        assert by_emp_no["stats"]["opened_count"] == 1
+
     def test_same_date_overwrite_and_contact_deduplication(self):
         first = _upload(
             [

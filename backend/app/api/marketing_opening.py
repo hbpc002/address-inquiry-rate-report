@@ -688,7 +688,6 @@ def _compute_opening_report(
 
     all_teams = set()
     all_classes = set()
-    all_people = set()
     for record in all_records:
         emp = emps.get(_norm_emp_no(record.emp_no))
         team = _record_team(record, emp)
@@ -696,8 +695,6 @@ def _compute_opening_report(
         class_name = _extract_class(team)
         if class_name:
             all_classes.add(class_name)
-        if record.emp_no:
-            all_people.add(record.emp_no)
 
     dept = (filters.get("dept") or "").strip()
     department_group = (filters.get("department_group") or "").strip()
@@ -828,10 +825,11 @@ def _compute_opening_report(
     day_items = finalize_items(days, day_extra)
     day_items.sort(key=lambda item: item.get("date") or "")
 
+    filtered_people = {record.emp_no for record, _ in records if record.emp_no}
     stats = _finalize_opening_bucket(total_bucket)
     stats.update(
         {
-            "people_count": len(all_people),
+            "people_count": len(filtered_people),
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
         }
