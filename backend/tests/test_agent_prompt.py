@@ -30,11 +30,14 @@ def test_system_prompt_mentions_platform_and_business_tables():
         "排班",
         "工作量",
         "营销",
+        "开口率",
         "宽带订单",
         "employees",
         "daily_reports",
         "workloads",
         "marketing_details",
+        "marketing_opening_records",
+        "department_groups",
         "seamless_orders",
         "attendance_configs",
         "salary_configs",
@@ -80,9 +83,15 @@ def test_catalog_prompt_contains_field_semantics():
         "seamless_orders",
         "is_excluded",
         "attendance_configs",
+        "marketing_opening_records",
+        "contact_id",
+        "five_products_opened",
+        "assign_team",
+        "department_groups",
     ):
         assert term in catalog, term
     assert "服务量合计-通话量" in catalog
+    assert "COUNT(DISTINCT contact_id)" in catalog
 
 
 def test_tool_routing_and_sql_rules_cover_all_query_types():
@@ -91,9 +100,12 @@ def test_tool_routing_and_sql_rules_cover_all_query_types():
     assert "query_team_ranking" in routing
     assert "query_efficiency" in routing
     assert "run_sql" in routing
+    assert "marketing_opening_records" in routing
     assert "禁止 WITH/CTE" in rules
     assert "marketing_details.kf_id" in rules
     assert "is_excluded='否'" in rules
+    assert "COUNT(DISTINCT contact_id)" in rules
+    assert "marketing_opening_records.emp_no" in rules
 
 
 def test_data_catalog_covers_every_business_table_and_field():
@@ -121,8 +133,30 @@ def test_legacy_default_prompt_is_upgraded_but_custom_prompt_is_preserved():
         assert upgraded["system_prompt"] == DEFAULT_SETTINGS["system_prompt"]
         assert upgraded["max_iterations"] == 9
 
+    # 旧平台名 intro + 无目录特征 → 判为旧默认并自动升级
+    stored_legacy = (
+        "你是一个企业「客户服务中心运营管理平台」的数据分析智能体，用中文回答用户关于考勤、工时、出勤率、排班的问题。\n"
+        "当前日期：{current_date}，涉及日期范围时请据此计算。\n"
+        "{data_range}\n"
+        "\n"
+        "# 能力与工具优先级\n"
+        "- **必须优先**使用提供的报表工具获取结构化数据：\n"
+        "  · query_team_ranking(year_month) — 按月查班组排名\n"
+        "- 先理解用户意图，必要时调用工具，再基于真实返回的数据给出结论，不要编造数字。\n"
+    )
+    upgraded = merge_settings({"system_prompt": stored_legacy})
+    assert upgraded["system_prompt"] == DEFAULT_SETTINGS["system_prompt"]
+
+    # 首行是旧 intro 但含目录（人工在旧版上补充了目录）→ 视为自定义保留
+    custom_with_catalog = stored_legacy + "\n# 数据表与字段\n- 自定义\n"
+    assert merge_settings({"system_prompt": custom_with_catalog})["system_prompt"] == custom_with_catalog
+
     custom = merge_settings({"system_prompt": "自定义提示词 {current_date}"})
     assert custom["system_prompt"] == "自定义提示词 {current_date}"
+
+
+def test_default_suggestions_include_opening_rate():
+    assert any("开口率" in suggestion for suggestion in DEFAULT_SETTINGS["suggestions"])
 
 
 def test_initial_messages_use_new_prompt():

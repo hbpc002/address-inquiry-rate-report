@@ -306,3 +306,47 @@ def test_count_consecutive_run_sql_failures():
         ToolMessage(content='{"error":"bad"}', tool_call_id="c2"),
     ]}
     assert _count_consecutive_run_sql_failures(state6) == 1
+
+
+def test_build_data_range_includes_opening_records_when_seeded():
+    """插入开口明细后，数据范围提示应包含开口明细分段；清理后删掉。"""
+    import datetime
+
+    db = SessionLocal()
+    try:
+        from app.agent.tools import _build_data_range
+        from app.models.marketing_opening import MarketingOpeningRecord
+
+        record = MarketingOpeningRecord(
+            contact_id="TEST_OPEN_001",
+            record_date=datetime.date(2026, 11, 2),
+            emp_no="KF999",
+            emp_name="测试员工",
+        )
+        db.add(record)
+        db.commit()
+        try:
+            out = _build_data_range(db)
+            assert "开口明细数据范围" in out
+            assert "2026-11-02" in out
+            assert "去重接触记录" in out
+        finally:
+            db.delete(record)
+            db.commit()
+    finally:
+        db.close()
+
+
+def test_run_sql_tool_description_contains_column_comments():
+    """run_sql 动态 schema 应带出 PG 列注释（语义锚点）。"""
+    db = SessionLocal()
+    try:
+        from app.agent.tools import make_tools
+        tools = make_tools(db)
+        by_name = {t.name: t for t in tools}
+        doc = by_name["run_sql"].description
+        assert "assign_team:归属班组" in doc
+        assert "marketing_opening_records" in doc
+        assert "record_date:录音日期" in doc
+    finally:
+        db.close()

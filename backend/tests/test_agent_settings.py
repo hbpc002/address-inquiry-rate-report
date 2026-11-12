@@ -51,7 +51,7 @@ def test_default_settings_structure():
     assert DEFAULT_SETTINGS["max_history_messages"] == 12
     assert DEFAULT_SETTINGS["consecutive_run_sql_failures"] == 2
     assert DEFAULT_SETTINGS["conversation_retention_days"] == 180
-    assert len(DEFAULT_SETTINGS["suggestions"]) == 4
+    assert len(DEFAULT_SETTINGS["suggestions"]) == 6
 
 
 def test_get_defaults():

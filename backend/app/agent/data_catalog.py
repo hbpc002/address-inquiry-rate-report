@@ -16,12 +16,13 @@ TABLE_CATALOG = [
         "name": "employees",
         "label": "员工主表",
         "fields": [
-            "id", "emp_no", "name", "team", "dept", "role", "status",
-            "hire_date", "deleted_at", "created_by", "created_at", "updated_at",
+            "id", "emp_no", "name", "team", "dept", "assign_dept", "assign_team",
+            "role", "status", "hire_date", "deleted_at", "created_by",
+            "created_at", "updated_at",
         ],
-        "purpose": "员工工号、姓名、班组、部门、岗位、在职状态、入职日期。",
-        "notes": "主键 id；默认过滤 status='在职' AND deleted_at IS NULL；role 常见值：组长、师傅、组员。",
-        "scenarios": "人员筛选、班组/部门归属、与考勤/排班/工作量/营销/宽带表联表。",
+        "purpose": "员工工号、姓名、班组、部门、岗位、在职状态、入职日期、归属部门、归属班组。",
+        "notes": "主键 id；默认过滤 status='在职' AND deleted_at IS NULL；role 常见值：组长、师傅、组员；assign_dept/assign_team 为归属部门/归属班组，营销统计与开口率统计按归属班组归组，assign_team 为空时回退 team（见 FIELD_NOTES）。",
+        "scenarios": "人员筛选、班组/部门归属、与考勤/排班/工作量/营销/宽带/开口率表联表。",
     },
     {
         "name": "shift_types",
@@ -102,8 +103,8 @@ TABLE_CATALOG = [
         "label": "培训记录",
         "fields": [
             "id", "emp_no", "record_date", "start_time", "end_time",
-            "duration_minutes", "type", "reason", "created_by",
-            "created_at", "updated_at",
+            "duration_minutes", "type", "reason", "import_batch",
+            "created_by", "created_at", "updated_at",
         ],
         "purpose": "员工培训/请假等扣减记录。",
         "notes": "emp_no→employees.emp_no；start_time/end_time 为 HH:MM 字符串；duration_minutes 单位为分钟；type 常见值：培训、请假。",
@@ -138,6 +139,42 @@ TABLE_CATALOG = [
         "purpose": "宽带无缝订单明细，含竣工、1小时短单、剔除、重复单、意向单受理人。",
         "notes": "emp_no→employees.emp_no；order_date 为下单日期，finish_date 为线下办理CB竣工时间（未竣工为空）；is_completed/is_hour_short/is_excluded/is_duplicate 取值为 是/否；统计默认过滤 is_excluded='否' AND is_duplicate='否'。",
         "scenarios": "宽带订单量、竣工量、短单、剔除/重复分析、地市/产品/速率、意向单转化。",
+    },
+    {
+        "name": "marketing_opening_records",
+        "label": "开口率明细（大模型质检台导出）",
+        "fields": [
+            "id", "contact_id", "record_time", "record_date", "emp_no", "emp_name",
+            "source_team", "active_overlay", "opened_overlay",
+            "active_broadband", "opened_broadband",
+            "active_mobile_new", "opened_mobile_new",
+            "active_terminal", "opened_terminal",
+            "active_package", "opened_package",
+            "five_products_opened", "import_batch", "created_at",
+        ],
+        "purpose": "每通录音的接触记录及五大产品（叠加包/宽带/移网新装/终端/套餐）的主动开口与已开口标记。",
+        "notes": "emp_no→employees.emp_no；record_date 为录音日期（YYYY-MM-DD），record_time 为录音时间；十列 active_*/opened_* 与 five_products_opened 为布尔，True 即“是”；同一 contact_id 可能有多条导入记录，统计必须按 contact_id 去重：总开口率 = COUNT(DISTINCT contact_id) FILTER (WHERE five_products_opened) / COUNT(DISTINCT contact_id)；区间查询同样必须去重，禁止 COUNT(*)。",
+        "scenarios": "开口率、五大产品已开口量、按班组/员工/日期开口排行。",
+    },
+    {
+        "name": "department_groups",
+        "label": "部门组",
+        "fields": [
+            "id", "name", "description", "is_active", "created_at", "updated_at",
+        ],
+        "purpose": "部门组定义，营销/开口率统计按部门组归组与筛选。",
+        "notes": "is_active=true 的分组才启用；name 为部门组名称，供报表筛选项使用。",
+        "scenarios": "部门组列表、营销/开口率按部门组归组。",
+    },
+    {
+        "name": "department_group_paths",
+        "label": "部门组-部门路径",
+        "fields": [
+            "id", "group_id", "path", "created_at",
+        ],
+        "purpose": "部门组包含的部门路径清单。",
+        "notes": "group_id→department_groups.id；path 为以 '>>' 分隔的部门路径（如“广西分公司>>省中心>>客户服务营销中心>>热线运营组”），归属关系按路径前缀匹配。",
+        "scenarios": "判断部门属于哪个部门组、按部门组过滤人员。",
     },
     {
         "name": "attendance_configs",
@@ -219,6 +256,9 @@ FIELD_NOTES = [
     "workloads 的时长指标单位为秒，工时利用率/满意率为 0-1 小数；展示时按需换算。",
     "marketing_details.data_type：xszb=线上直办，fwgd=办理工单；kf_id 关联 employees.emp_no。",
     "seamless_orders 的 is_completed/is_hour_short/is_excluded/is_duplicate 取值为 是/否；默认排除 is_excluded='否' AND is_duplicate='否'。",
+    "employees.assign_team/assign_dept：营销统计与开口率统计按归属班组/归属部门归组；归组口径 effective = assign_team 为空时回退 team，未匹配班组显示“未匹配班组”。",
+    "marketing_opening_records 必须按 contact_id 去重；总开口率 = COUNT(DISTINCT contact_id) FILTER (WHERE five_products_opened) / NULLIF(COUNT(DISTINCT contact_id), 0)；禁止 COUNT(*)。",
+    "workloads.metrics 中不存在键名“开口率”；开口率只能来自 marketing_opening_records。",
     "attendance_configs 是 key/value 配置；salary_configs.rule_data 是 JSON 字符串；work_hour_thresholds 是班组级倍数阈值。",
 ]
 
@@ -229,7 +269,9 @@ TOOL_ROUTING = [
     ("单日明细、迟到名单、某人某天", "query_daily(schedule_date, ...)"),
     ("月度效能、出勤率、工时效率、预警", "query_efficiency(year_month, ...)"),
     ("整体总人数/总工时/总览", "query_dashboard_stats(year_month)"),
-    ("夜班、班次、排班规则、培训、原始签到、工作量、营销、宽带订单、配置", "run_sql"),
+    ("夜班、班次、排班规则、培训、原始签到、工作量、配置", "run_sql"),
+    ("开口率、五大产品已开口、开口排行", "run_sql（marketing_opening_records，注意 contact_id 去重）"),
+    ("营销工单、宽带订单、产品/渠道/地市分析", "run_sql（marketing_details / seamless_orders）"),
 ]
 
 
@@ -282,9 +324,10 @@ def build_sql_rules_prompt() -> str:
         "- 日期统一使用 YYYY-MM-DD；月份使用 YYYY-MM；不要用空字符串日期。",
         "- 日期过滤用 schedule_date/record_date/date/order_date/finish_date，不要用 created_at 代替业务日期。",
         "- 未写 LIMIT 时系统会自动补 LIMIT 200；run_sql 回传最多 50 行、2000 字符，优先写聚合查询。",
-        "- 联表键：employees.id = daily_reports.emp_id / schedules.emp_id / monthly_reports.emp_id；employees.emp_no = checkins.emp_no / workloads.emp_no / training_records.emp_no / marketing_details.kf_id / seamless_orders.emp_no。",
+        "- 联表键：employees.id = daily_reports.emp_id / schedules.emp_id / monthly_reports.emp_id；employees.emp_no = checkins.emp_no / workloads.emp_no / training_records.emp_no / marketing_details.kf_id / seamless_orders.emp_no / marketing_opening_records.emp_no；department_groups.id = department_group_paths.group_id。",
         "- 统计在职员工时加 employees.status='在职' AND employees.deleted_at IS NULL。",
         "- 宽带订单默认加 is_excluded='否' AND is_duplicate='否'；营销明细按 data_type 区分线上直办/办理工单。",
+        "- marketing_opening_records 统计必须按 contact_id 去重；总开口率 = COUNT(DISTINCT contact_id) FILTER (WHERE five_products_opened) / NULLIF(COUNT(DISTINCT contact_id), 0)；结果全为 NULL 时先怀疑表名/键名选错，换表重查后再下结论，禁止据此回答“数据暂无”。",
         "- 查询结果为空时说明日期范围和筛选条件，不要编造数据。",
         "",
         "# 常用 SQL 示例",
@@ -294,4 +337,6 @@ def build_sql_rules_prompt() -> str:
         "  SELECT e.name, s.schedule_date, s.shift_name FROM schedules s JOIN employees e ON e.id = s.emp_id WHERE s.is_night = TRUE AND s.schedule_date >= '2026-07-01' AND s.schedule_date < '2026-08-01' ORDER BY s.schedule_date",
         "- 工作量通话量：",
         "  SELECT w.name, SUM((w.metrics->>'服务量合计-通话量')::numeric) AS calls FROM workloads w WHERE w.date >= '2026-07-01' AND w.date < '2026-08-01' GROUP BY w.name ORDER BY calls DESC",
+        "- 按班组开口率（按 contact_id 去重）：",
+        "  SELECT COALESCE(e.assign_team, e.team, '未匹配班组') AS team, COUNT(DISTINCT r.contact_id) AS contacts, COUNT(DISTINCT r.contact_id) FILTER (WHERE r.five_products_opened) AS opened FROM marketing_opening_records r JOIN employees e ON e.emp_no = r.emp_no WHERE r.record_date >= '2026-11-01' AND r.record_date < '2026-12-01' GROUP BY 1 ORDER BY contacts DESC",
     ])

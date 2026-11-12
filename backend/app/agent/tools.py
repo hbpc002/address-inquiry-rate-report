@@ -22,9 +22,9 @@ MAX_RESULT_ROWS = 50
 
 # 含日期时间的表列名，用于判断空字符串字面量应被当作日期占位符
 _DATE_COLUMNS = (
-    "schedule_date", "record_date", "checkin_time", "checkout_time",
+    "schedule_date", "record_date", "record_time", "checkin_time", "checkout_time",
     "actual_checkin", "actual_checkout", "date", "start_time", "end_time",
-    "scheduled_start", "scheduled_end", "training_date",
+    "scheduled_start", "scheduled_end", "training_date", "order_date", "finish_date",
 )
 
 
@@ -83,23 +83,44 @@ def _rows_to_dicts(result) -> list:
 
 
 def _build_data_range(db) -> str:
-    """查询真实考勤数据的日期范围，返回人类可读提示（供 system prompt / 工具描述用）。
+    """查询真实数据的日期范围，返回人类可读提示（供 system prompt / 工具描述用）。
 
-    空库或查询失败时返回空字符串（优雅降级）。
+    分段独立查询，某一分段失败/为空时不影响另一分段；全部不可用时返回空字符串（优雅降级）。
     """
     try:
         bind = db.get_bind()
+    except Exception:
+        return ""
+    parts = []
+    try:
         with bind.connect() as conn:
             row = conn.execute(text(
                 "SELECT MIN(schedule_date), MAX(schedule_date), "
                 "COUNT(DISTINCT schedule_date) FROM daily_reports"
             )).fetchone()
-        if not row or not row[0] or not row[1]:
-            return ""
-        return (f"每日考勤数据范围: {row[0]} ~ {row[1]}，共 {row[2]} 个工作日。"
-                f"「最近一周/本月」等相对日期请据此折算成具体日期后再查询。")
+        if row and row[0] and row[1]:
+            parts.append(
+                f"每日考勤数据范围: {row[0]} ~ {row[1]}，共 {row[2]} 个工作日。"
+                f"「最近一周/本月」等相对日期请据此折算成具体日期后再查询"
+            )
     except Exception:
+        pass
+    try:
+        with bind.connect() as conn:
+            row = conn.execute(text(
+                "SELECT MIN(record_date), MAX(record_date), COUNT(DISTINCT contact_id) "
+                "FROM marketing_opening_records"
+            )).fetchone()
+        if row and row[0] and row[1]:
+            parts.append(
+                f"开口明细数据范围: {row[0]} ~ {row[1]}，共 {row[2]} 条去重接触记录。"
+                f"开口率/五大产品已开口的相对日期也请据此折算"
+            )
+    except Exception:
+        pass
+    if not parts:
         return ""
+    return "；".join(parts) + "。"
 
 
 def _build_schema_description(db) -> str:
@@ -120,12 +141,14 @@ def _build_schema_description(db) -> str:
         if not columns:
             continue
         show = TABLE_COLUMNS.get(table_name)
-        if show is not None:
-            col_names = [c["name"] for c in columns if c["name"] in show]
-        else:
-            col_names = [c["name"] for c in columns]
-        if not col_names:
+        columns = [c for c in columns if show is None or c["name"] in show]
+        if not columns:
             continue
+        col_names = []
+        for c in columns:
+            name = c["name"]
+            comment = (c.get("comment") or "").strip()
+            col_names.append(f"{name}:{comment}" if comment else name)
         label = TABLE_LABELS.get(table_name, "")
         notes = TABLE_NOTES.get(table_name, "")
         hint = "；".join(part for part in (label, notes) if part)
@@ -227,6 +250,7 @@ def _make_run_sql(db, schema_desc: str, data_range: str = ""):
         "注意：仅允许单条 SELECT，禁止 INSERT/UPDATE/DELETE/DROP/ALTER/WITH/INTO，禁止注释和多语句。\n"
         "日期列必须使用 'YYYY-MM-DD' 格式（如 '2026-09-03'），月份使用 'YYYY-MM'，禁止使用空字符串。\n"
         "涉及日期范围查询（如'最近一周/本月'）请优先使用 query_date_range 工具。\n"
+        "若结果全为 NULL，先怀疑表名/键名选错，换表重查后再下结论；禁止据此回答“数据暂无”。\n"
         "结果最多回传 50 行、2000 字符，优先写聚合查询。\n"
         f"{data_range}\n"
         "以下是数据库中实际存在的业务表和字段（PostgreSQL 语法）：\n"

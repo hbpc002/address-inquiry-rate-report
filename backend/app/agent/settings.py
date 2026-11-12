@@ -41,6 +41,20 @@ LEGACY_SYSTEM_PROMPTS = frozenset({
     ),
 })
 
+# 判断某提示词是否为旧版默认提示词（可自动升级为新版默认）：
+# 1) 逐字节命中 LEGACY_SYSTEM_PROMPTS；或
+# 2) 首行是旧平台名 intro 且不包含新版目录特征（说明是旧版默认被原样保存下来的），
+#    含目录标记的视为自定义提示词，不覆盖。
+def _is_legacy_default_prompt(v: str) -> bool:
+    if v in LEGACY_SYSTEM_PROMPTS:
+        return True
+    legacy_intro = (
+        "你是一个企业「客户服务中心运营管理平台」的数据分析智能体，"
+        "用中文回答用户关于考勤、工时、出勤率、排班的问题。"
+    )
+    return v.startswith(legacy_intro) and "数据表与字段" not in v
+
+
 CONVERSATION_RETENTION_DAYS = 180
 
 DEFAULT_SETTINGS = {
@@ -50,6 +64,8 @@ DEFAULT_SETTINGS = {
         "最近一周谁工时最低",
         "本月迟到次数最多的人",
         "2026-07 每天实际工时趋势",
+        "2026-11 各班组开口率排名",
+        "本月五大产品已开口量最高的员工",
     ],
     "max_iterations": MAX_ITERATIONS,
     "max_history_messages": MAX_HISTORY_MESSAGES,
@@ -77,7 +93,7 @@ def merge_settings(stored) -> dict:
         if k == "system_prompt":
             if not str(v).strip():
                 continue
-            if str(v) in LEGACY_SYSTEM_PROMPTS:
+            if _is_legacy_default_prompt(str(v)):
                 continue
         if k == "suggestions" and not isinstance(v, list):
             continue
