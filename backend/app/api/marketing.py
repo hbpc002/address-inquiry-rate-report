@@ -18,6 +18,7 @@ from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, require_permission
+from app.core.team_identity import effective_dept, effective_team
 from app.core.data_scope import (
     apply_broadband_marketing_scope,
     apply_marketing_scope,
@@ -714,8 +715,8 @@ def _emp_map(db: Session) -> Dict[str, Employee]:
 def _team_leader_map(emps: Dict[str, Employee]) -> Dict[tuple, str]:
     leader_names: Dict[tuple, set] = {}
     for emp in emps.values():
-        if emp.role == "组长" and emp.status == "在职" and emp.team and emp.name:
-            key = ((emp.dept or "").strip(), emp.team)
+        if emp.role == "组长" and emp.status == "在职" and (emp.assign_team or emp.team) and emp.name:
+            key = (effective_dept(emp), effective_team(emp))
             leader_names.setdefault(key, set()).add(emp.name)
     return {
         key: "、".join(sorted(names))
@@ -879,9 +880,9 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
             group = _classify_online_row(detail, config, group_cache) or UNCLASSIFIED_GROUP
             effective_org = _detail_value(detail, "org_name")
         prepared.append((detail, emp, group, effective_org))
-        emp_dept = (emp.dept or "").strip() if emp else ""
+        emp_dept = effective_dept(emp)
         emp_dept_group = dept_group_of(emp_dept)
-        emp_team = emp.team if emp and emp.team else "未匹配班组"
+        emp_team = effective_team(emp)
         emp_class = _extract_class(emp_team)
         all_groups.add(group)
         all_teams.add(emp_team)
@@ -911,17 +912,15 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     for detail, emp, group, effective_org in prepared:
         if group_name and group != group_name:
             continue
-        if dept and (not emp or (emp.dept or "").strip() != dept):
+        if dept and effective_dept(emp) != dept:
             continue
-        if department_group and dept_group_of(emp.dept if emp else "") != department_group:
+        if department_group and dept_group_of(effective_dept(emp)) != department_group:
             continue
         if team:
-            team_value = emp.team if emp and emp.team else "未匹配班组"
-            if team_value != team:
+            if effective_team(emp) != team:
                 continue
         if class_name:
-            team_value = emp.team if emp and emp.team else "未匹配班组"
-            if _extract_class(team_value) != class_name:
+            if _extract_class(effective_team(emp)) != class_name:
                 continue
         if name and not (emp and name.lower() in (emp.name or "").lower()):
             continue
@@ -1006,8 +1005,8 @@ def _compute_report(db: Session, start: date, end: date, filters: Dict[str, Any]
     for detail, emp, group, effective_org in filtered:
         kf_id = detail.kf_id or ""
         emp_name = emp.name if emp else ""
-        emp_team = emp.team if emp and emp.team else "未匹配班组"
-        emp_dept = emp.dept if emp else ""
+        emp_team = effective_team(emp)
+        emp_dept = effective_dept(emp) if emp else ""
         emp_dept_group = dept_group_of(emp_dept)
         if kf_id:
             people.add(kf_id)
@@ -1254,8 +1253,8 @@ def _compute_key_product_table(
             continue
 
         emp = emps.get(_norm_emp_no(detail.kf_id))
-        team = (emp.team or "").strip() if emp and emp.team else UNASSIGNED_TEAM
-        dept = (emp.dept or "").strip() if emp else ""
+        team = effective_team(emp) if emp else UNASSIGNED_TEAM
+        dept = effective_dept(emp)
         dept_group = resolve_dept_group(dept)
         bucket = buckets.setdefault(
             (work_group, dept, team),
@@ -1710,12 +1709,12 @@ def _detail_serialize(
     else:
         group = _classify_online_row(detail, config, cache) or UNCLASSIFIED_GROUP
         effective_org = detail.org_name or detail.organization or ""
-    dept = emp.dept if emp else ""
+    dept = effective_dept(emp)
     return {
         "id": detail.id,
         "kf_id": detail.kf_id,
         "name": emp.name if emp else "",
-        "team": emp.team if emp else "",
+        "team": effective_team(emp) if emp else "",
         "dept": dept,
         "dept_group": resolve_dept_group(dept),
         "group_name": group,
@@ -1770,10 +1769,10 @@ def _details_options(
     class_options = set()
     for kf_id in kf_ids:
         emp = emps.get(_norm_emp_no(kf_id))
-        team = (emp.team or "").strip() if emp else ""
+        team = effective_team(emp).strip() if emp else ""
         if not team:
             continue
-        dept = (emp.dept or "").strip()
+        dept = effective_dept(emp)
         dept_group = resolve_dept_group(dept)
         team_options.add((dept, dept_group, team))
         class_name = _extract_class(team)

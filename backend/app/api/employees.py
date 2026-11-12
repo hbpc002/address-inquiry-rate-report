@@ -38,6 +38,20 @@ TEAM_LOOKUP_PERMISSIONS = [
 ]
 
 
+def _ensure_assign_dept_writable(value: Optional[str], current_user: dict) -> Optional[str]:
+    target = (value or "").strip()
+    if not target:
+        return None
+    if is_all_employee_write_scope(current_user):
+        return target
+    paths = get_user_scope_paths(current_user)
+    if not paths:
+        raise HTTPException(status_code=403, detail="当前账号未配置所属部门组，无法维护员工")
+    if not any(target.startswith(path) for path in paths):
+        raise HTTPException(status_code=403, detail="无权将员工归属到其他部门")
+    return target
+
+
 def _apply_read_scope(query, current_user: dict, scope: Optional[str]):
     requested = (scope or "").strip().lower()
     if requested == "all":
@@ -101,6 +115,8 @@ def create_employee(
 
     data = employee.model_dump()
     data["dept"] = ensure_dept_writable(data.get("dept"), current_user)
+    if "assign_dept" in data:
+        data["assign_dept"] = _ensure_assign_dept_writable(data.get("assign_dept"), current_user)
     db_employee = Employee(**data, created_by=current_user["id"])
     db.add(db_employee)
     db.commit()
@@ -134,6 +150,8 @@ def update_employee(
     update_data = employee.model_dump(exclude_unset=True)
     if "dept" in update_data:
         update_data["dept"] = ensure_dept_writable(update_data["dept"], current_user)
+    if "assign_dept" in update_data:
+        update_data["assign_dept"] = _ensure_assign_dept_writable(update_data["assign_dept"], current_user)
     for key, value in update_data.items():
         setattr(db_employee, key, value)
     db.commit()
@@ -367,10 +385,18 @@ def import_employees(
             continue
 
         row_dept = str(row.get('部门', '')).strip() if pd.notna(row.get('部门')) else ''
+        row_assign_dept = str(row.get('归属部门', '')).strip() if pd.notna(row.get('归属部门')) else None
+        row_assign_team = str(row.get('归属班组', '')).strip() if pd.notna(row.get('归属班组')) else None
+        has_assign_dept = '归属部门' in cols
+        has_assign_team = '归属班组' in cols
         if scope_paths:
             if row_dept and not any(row_dept.startswith(path) for path in scope_paths):
                 skipped += 1
                 errors.append(f"第{idx + 2}行: 无权导入其他部门员工")
+                continue
+            if row_assign_dept and not any(row_assign_dept.startswith(path) for path in scope_paths):
+                skipped += 1
+                errors.append(f"第{idx + 2}行: 无权将员工归属到其他部门")
                 continue
             target_dept = row_dept or scope_paths[0]
         else:
@@ -398,6 +424,10 @@ def import_employees(
             if target_dept:
                 existing.dept = target_dept
             existing.role = str(row.get('岗位', existing.role or '')).strip() if pd.notna(row.get('岗位')) else existing.role
+            if has_assign_dept:
+                existing.assign_dept = row_assign_dept or None
+            if has_assign_team:
+                existing.assign_team = row_assign_team or None
             if pd.notna(row.get('状态')):
                 existing.status = str(row.get('状态', '在职')).strip()
             if hire_date is not None:
@@ -409,6 +439,8 @@ def import_employees(
                 name=name,
                 team=str(row.get('班组', '')).strip() if pd.notna(row.get('班组')) else '',
                 dept=target_dept or '客服中心',
+                assign_dept=row_assign_dept or None if has_assign_dept else None,
+                assign_team=row_assign_team or None if has_assign_team else None,
                 role=str(row.get('岗位', '组员')).strip() if pd.notna(row.get('岗位')) else '组员',
                 status=str(row.get('状态', '在职')).strip() if pd.notna(row.get('状态')) else '在职',
                 hire_date=hire_date,
@@ -450,10 +482,10 @@ def export_employees(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["工号", "姓名", "班组", "部门", "岗位", "状态", "入职日期"])
+    writer.writerow(["工号", "姓名", "班组", "部门", "归属部门", "归属班组", "岗位", "状态", "入职日期"])
     for emp in items:
         hire_date_str = emp.hire_date.isoformat() if emp.hire_date else ""
-        writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", emp.role, emp.status, hire_date_str])
+        writer.writerow([emp.emp_no, emp.name, emp.team, emp.dept or "", emp.assign_dept or "", emp.assign_team or "", emp.role, emp.status, hire_date_str])
 
     output.seek(0)
     return StreamingResponse(

@@ -8,8 +8,9 @@ os.environ.setdefault('DATABASE_URL', 'postgresql://postgres:admin123%40kf@local
 from fastapi.testclient import TestClient
 from app.models.database import Base, engine, SessionLocal, init_db
 from app.models.employee import Employee
+from app.models.user import User
 from app.main import app
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_password_hash
 from sqlalchemy import text
 from datetime import date
 import io
@@ -36,6 +37,13 @@ client = TestClient(app)
 def setup_module():
     Base.metadata.drop_all(bind=engine)
     init_db()
+    db = SessionLocal()
+    try:
+        if not db.query(User).filter(User.id == 1).first():
+            db.add(User(id=1, username="admin", password_hash=get_password_hash("x"), role="admin", is_active=True))
+            db.commit()
+    finally:
+        db.close()
 
 
 def teardown_module():
@@ -143,5 +151,41 @@ class TestEmployeeImport:
         try:
             emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
             assert emp.hire_date == date(2026, 3, 20)
+        finally:
+            db.close()
+
+    def test_import_assign_team_columns(self):
+        rows = [
+            ["工号", "姓名", "班组", "部门", "岗位", "归属部门", "归属班组"],
+            ["E001", "张三", "热线一组", "广西分公司>>省中心>>客户服务营销中心>>二线支撑组", "组长",
+             "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表", "热线一组"],
+        ]
+        xlsx = _make_xlsx(rows)
+        resp = client.post("/api/employees/import", files={"file": ("test.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["created"] == 1
+
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
+            assert emp.assign_dept == "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+            assert emp.assign_team == "热线一组"
+        finally:
+            db.close()
+
+        rows2 = [
+            ["工号", "姓名", "班组", "归属部门", "归属班组"],
+            ["E001", "张三", "热线一组", "", ""],
+        ]
+        xlsx2 = _make_xlsx(rows2)
+        resp = client.post("/api/employees/import", files={"file": ("test.xlsx", xlsx2, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["updated"] == 1
+
+        db = SessionLocal()
+        try:
+            emp = db.query(Employee).filter(Employee.emp_no == "E001").first()
+            assert emp.assign_dept is None
+            assert emp.assign_team is None
         finally:
             db.close()

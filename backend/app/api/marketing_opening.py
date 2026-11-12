@@ -17,6 +17,7 @@ from app.core.data_scope import (
     build_department_group_context,
     require_all_scope,
 )
+from app.core.team_identity import effective_dept, effective_team
 from app.core.security import get_current_user, require_permission
 from app.models.database import get_db
 from app.models.employee import Employee
@@ -193,7 +194,7 @@ def _serialize_record(record: MarketingOpeningRecord, emp: Optional[Employee]) -
         "emp_name": record.emp_name or (emp.name if emp else ""),
         "name": emp.name if emp else (record.emp_name or ""),
         "team": record.source_team or "",
-        "system_team": emp.team if emp else "",
+        "system_team": effective_team(emp) if emp else "",
         "import_batch": record.import_batch or "",
         "five_products_opened": "是" if record.five_products_opened else "否",
     }
@@ -257,8 +258,8 @@ def _extract_class(team: Optional[str]) -> str:
 
 
 def _record_team(record: MarketingOpeningRecord, emp: Optional[Employee]) -> str:
-    if emp and emp.team:
-        return emp.team
+    if emp and (emp.assign_team or emp.team):
+        return effective_team(emp)
     return record.source_team or UNASSIGNED_TEAM
 
 
@@ -267,7 +268,7 @@ def _record_name(record: MarketingOpeningRecord, emp: Optional[Employee]) -> str
 
 
 def _record_dept(record: MarketingOpeningRecord, emp: Optional[Employee]) -> str:
-    return emp.dept if emp else ""
+    return effective_dept(emp) if emp else ""
 
 
 def _opening_query(

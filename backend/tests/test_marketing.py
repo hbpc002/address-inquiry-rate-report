@@ -936,3 +936,89 @@ class TestMarketingRulesAndExports:
         assert ws["I2"].font.color.rgb == "FF00B050"
         assert ws["I2"].fill.start_color.rgb == "FFC6EFCE"
         assert ws["H15"].value == "=SUM(C15:G15)"
+
+
+class TestAssignedTeamMerge:
+    LEADER_DEPT = "广西分公司>>省中心>>客户服务营销中心>>二线支撑组"
+    MEMBER_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+
+    def setup_method(self):
+        _clean()
+        db = SessionLocal()
+        try:
+            db.add_all([
+                Employee(emp_no="KF001", name="张三", team="热线一组", dept=self.MEMBER_DEPT, status="在职"),
+                Employee(emp_no="KF009", name="王组长", team="热线一组", dept=self.LEADER_DEPT, role="组长", status="在职"),
+            ])
+            db.commit()
+        finally:
+            db.close()
+
+    def _upload_rows(self):
+        rows = [
+            _en_row(kf="KF001", trade="T1", product_id="P1"),
+            _en_row(kf="KF009", trade="T9", product_id="P9"),
+        ]
+        resp = _upload(EN_HEADERS, rows)
+        assert resp.status_code == 200, resp.text
+
+    def _leader_id(self):
+        db = SessionLocal()
+        try:
+            return db.query(Employee).filter(Employee.emp_no == "KF009").first().id
+        finally:
+            db.close()
+
+    def test_assign_team_merges_buckets_and_leader(self):
+        self._upload_rows()
+        report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
+        split = [t for t in report["teams"] if t["team"] == "热线一组"]
+        assert len(split) == 2
+
+        resp = client.put(f"/api/employees/{self._leader_id()}", json={
+            "assign_dept": self.MEMBER_DEPT,
+            "assign_team": "热线一组",
+        })
+        assert resp.status_code == 200, resp.text
+
+        report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
+        merged = [t for t in report["teams"] if t["team"] == "热线一组"]
+        assert len(merged) == 1
+        team = merged[0]
+        assert team["dept"] == self.MEMBER_DEPT
+        assert team["leader"] == "王组长"
+        assert team["people"] == 2
+
+        team_options = [o for o in report["options"]["team_options"] if o["team"] == "热线一组"]
+        assert [(o["dept"], o["team"]) for o in team_options] == [(self.MEMBER_DEPT, "热线一组")]
+
+    def test_assign_team_clear_restores_split(self):
+        self._upload_rows()
+        resp = client.put(f"/api/employees/{self._leader_id()}", json={
+            "assign_dept": self.MEMBER_DEPT,
+            "assign_team": "热线一组",
+        })
+        assert resp.status_code == 200, resp.text
+        resp = client.put(f"/api/employees/{self._leader_id()}", json={
+            "assign_dept": None,
+            "assign_team": None,
+        })
+        assert resp.status_code == 200, resp.text
+
+        report = client.get("/api/marketing/report", params={"year_month": "2026-10"}).json()
+        split = [t for t in report["teams"] if t["team"] == "热线一组"]
+        assert len(split) == 2
+
+    def test_assign_team_filter_uses_effective_values(self):
+        self._upload_rows()
+        resp = client.put(f"/api/employees/{self._leader_id()}", json={
+            "assign_dept": self.MEMBER_DEPT,
+            "assign_team": "热线一组",
+        })
+        assert resp.status_code == 200, resp.text
+
+        report = client.get("/api/marketing/report", params={
+            "year_month": "2026-10", "dept": self.MEMBER_DEPT, "team": "热线一组",
+        }).json()
+        emp_nos = sorted(item["kf_id"] for item in report["employees"])
+        assert emp_nos == ["KF001", "KF009"]

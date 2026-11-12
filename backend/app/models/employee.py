@@ -11,6 +11,8 @@ class Employee(Base):
     name = Column(String(50), nullable=False)
     team = Column(String(50), nullable=False, index=True)
     dept = Column(String(100), index=True)
+    assign_dept = Column(String(100), nullable=True, comment="归属部门（营销统计按此归组）")
+    assign_team = Column(String(50), nullable=True, comment="归属班组（营销统计按此归组）")
     role = Column(String(20), default="组员")
     status = Column(String(20), default="在职", index=True)
     hire_date = Column(Date, nullable=True, comment="入职日期")

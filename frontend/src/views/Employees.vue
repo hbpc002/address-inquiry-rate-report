@@ -63,6 +63,14 @@
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="120" />
             <el-table-column prop="dept" label="部门" width="120" />
+            <el-table-column label="归属班组" width="150" show-overflow-tooltip>
+              <template #default="{ row }">
+                <template v-if="row.assign_dept && row.assign_team">
+                  {{ row.assign_team }}<span class="assign-dept">（{{ deptShort(row.assign_dept) }}）</span>
+                </template>
+                <template v-else>-</template>
+              </template>
+            </el-table-column>
             <el-table-column prop="role" label="岗位" width="80" />
             <el-table-column prop="status" label="状态" width="80">
               <template #default="{ row }">
@@ -126,6 +134,14 @@
             <el-table-column prop="name" label="姓名" width="100" />
             <el-table-column prop="team" label="班组" width="120" />
             <el-table-column prop="dept" label="部门" width="120" />
+            <el-table-column label="归属班组" width="150" show-overflow-tooltip>
+              <template #default="{ row }">
+                <template v-if="row.assign_dept && row.assign_team">
+                  {{ row.assign_team }}<span class="assign-dept">（{{ deptShort(row.assign_dept) }}）</span>
+                </template>
+                <template v-else>-</template>
+              </template>
+            </el-table-column>
             <el-table-column prop="role" label="岗位" width="80" />
             <el-table-column prop="hire_date" label="入职日期" width="120">
               <template #default="{ row }">
@@ -173,6 +189,22 @@
         <el-form-item label="部门">
           <el-input v-model="form.dept" />
         </el-form-item>
+        <el-form-item label="归属班组">
+          <el-select
+            v-model="assignTeamKey"
+            placeholder="不归属则按原部门/班组统计"
+            clearable
+            filterable
+            style="width:100%"
+          >
+            <el-option
+              v-for="opt in assignOptions"
+              :key="opt.key"
+              :label="opt.label"
+              :value="opt.key"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="岗位">
           <el-select v-model="form.role">
             <el-option label="组长" value="组长" />
@@ -202,7 +234,8 @@
         <template #tip>
           <div class="el-upload__tip">
             请上传员工信息Excel文件，需包含以下列：工号、姓名<br/>
-            可选列：班组、部门、岗位、状态、入职日期
+            可选列：班组、部门、岗位、状态、入职日期、归属部门、归属班组<br/>
+            归属部门+归属班组按“部门+班组”定位，用于将组长等员工并入指定班组统计营销数据（留空则清除归属）
           </div>
         </template>
       </el-upload>
@@ -219,6 +252,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../stores/user'
 import { useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
+import { deptShort, teamKey } from '../utils/teamIdentity'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
@@ -262,7 +296,9 @@ const activeTab = ref('active')
 
 const searchForm = reactive({ search: '', team: '', dept: '', role: '' })
 const recycleSearch = reactive({ search: '', team: '', dept: '' })
-const form = reactive({ emp_no: '', name: '', team: '', dept: '', role: '组员', hire_date: '' })
+const form = reactive({ emp_no: '', name: '', team: '', dept: '', assign_dept: null, assign_team: null, role: '组员', hire_date: '' })
+const assignTeamKey = ref('')
+const assignOptions = ref([])
 const teams = ref([])
 const departments = ref([])
 const roles = ref([])
@@ -309,6 +345,13 @@ async function loadFilters() {
     teams.value = tRes.data
     departments.value = dRes.data
     roles.value = rRes.data
+    const aRes = await api.get('/employees/teams', { params: { ...params, include_dept: true } })
+    assignOptions.value = (aRes.data || []).map(item => ({
+      key: teamKey(item.dept, item.team),
+      label: `${item.team}（${deptShort(item.dept)}）`,
+      dept: item.dept,
+      team: item.team
+    }))
   } catch (e) {
     console.error(e)
   }
@@ -326,7 +369,8 @@ function handleTabChange() {
 }
 
 function handleAdd() {
-  Object.assign(form, { emp_no: '', name: '', team: '', dept: canEditAll.value ? '' : userDept.value, role: '组员', hire_date: '' })
+  Object.assign(form, { emp_no: '', name: '', team: '', dept: canEditAll.value ? '' : userDept.value, assign_dept: null, assign_team: null, role: '组员', hire_date: '' })
+  assignTeamKey.value = ''
   isEdit.value = false
   dialogVisible.value = true
 }
@@ -361,13 +405,17 @@ async function handleExport() {
 }
 
 function handleEdit(row) {
-  Object.assign(form, { ...row })
+  Object.assign(form, { assign_dept: null, assign_team: null, ...row })
+  assignTeamKey.value = row.assign_dept && row.assign_team ? teamKey(row.assign_dept, row.assign_team) : ''
   isEdit.value = true
   dialogVisible.value = true
 }
 
 async function handleSubmit() {
   try {
+    const opt = assignOptions.value.find(o => o.key === assignTeamKey.value)
+    form.assign_dept = opt ? opt.dept : null
+    form.assign_team = opt ? opt.team : null
     if (isEdit.value) {
       await api.put(`/employees/${form.id}`, form)
       ElMessage.success('更新成功')
@@ -517,5 +565,10 @@ onMounted(() => {
 
 .scope-switch {
   margin-bottom: 12px;
+}
+
+.assign-dept {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

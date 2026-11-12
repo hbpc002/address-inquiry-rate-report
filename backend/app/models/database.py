@@ -180,6 +180,18 @@ def _migrate_db():
                     print("Added column hire_date to employees")
                 except Exception as e:
                     print(f"Failed to add column hire_date: {e}")
+            if 'assign_dept' not in emp_cols:
+                try:
+                    db.execute(text("ALTER TABLE employees ADD COLUMN assign_dept VARCHAR(100)"))
+                    print("Added column assign_dept to employees")
+                except Exception as e:
+                    print(f"Failed to add column assign_dept: {e}")
+            if 'assign_team' not in emp_cols:
+                try:
+                    db.execute(text("ALTER TABLE employees ADD COLUMN assign_team VARCHAR(50)"))
+                    print("Added column assign_team to employees")
+                except Exception as e:
+                    print(f"Failed to add column assign_team: {e}")
 
         if 'daily_reports' in tables:
             report_cols = {col['name'] for col in inspector.get_columns('daily_reports')}

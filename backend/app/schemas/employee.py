@@ -8,6 +8,8 @@ class EmployeeBase(BaseModel):
     name: str
     team: str
     dept: Optional[str] = None
+    assign_dept: Optional[str] = None
+    assign_team: Optional[str] = None
     role: str = "组员"
     hire_date: Optional[date] = None
 
@@ -21,6 +23,8 @@ class EmployeeUpdate(BaseModel):
     name: Optional[str] = None
     team: Optional[str] = None
     dept: Optional[str] = None
+    assign_dept: Optional[str] = None
+    assign_team: Optional[str] = None
     role: Optional[str] = None
     status: Optional[str] = None
     hire_date: Optional[date] = None

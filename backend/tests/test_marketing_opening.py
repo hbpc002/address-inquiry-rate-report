@@ -439,3 +439,56 @@ class TestMarketingOpening:
         )
         assert resp.status_code == 400
         assert "开口数据表头" in resp.json()["detail"]
+
+
+class TestAssignedTeamMerge:
+    LEADER_DEPT = "广西分公司>>省中心>>客户服务营销中心>>二线支撑组"
+    MEMBER_DEPT = "广西分公司>>省中心>>客户服务营销中心>>热线运营组>>10010热线客服代表"
+
+    def setup_method(self):
+        _clean()
+        db = SessionLocal()
+        try:
+            db.add_all([
+                Employee(emp_no="KF001", name="张三", team="热线1组", dept=self.MEMBER_DEPT, status="在职"),
+                Employee(emp_no="KF009", name="王组长", team="热线1组", dept=self.LEADER_DEPT, role="组长", status="在职"),
+            ])
+            db.commit()
+        finally:
+            db.close()
+
+    def test_assign_team_merges_team_and_class_buckets(self):
+        rows = [
+            _row("C1", "KF001", "张三", aa=True, active_overlay=True, opened_overlay=True),
+            _row("C2", "KF009", "王组长", aa=True, active_broadband=True, opened_broadband=True),
+        ]
+        resp = _upload(rows)
+        assert resp.status_code == 200, resp.text
+
+        report = client.get("/api/marketing-openings/report", params={"year_month": "2026-11"}).json()
+        split = [t for t in report["teams"] if t["team"] == "热线1组"]
+        assert len(split) == 2
+
+        db = SessionLocal()
+        try:
+            leader = db.query(Employee).filter(Employee.emp_no == "KF009").first()
+            leader_id = leader.id
+        finally:
+            db.close()
+        resp = client.put(f"/api/employees/{leader_id}", json={
+            "assign_dept": self.MEMBER_DEPT,
+            "assign_team": "热线1组",
+        })
+        assert resp.status_code == 200, resp.text
+
+        report = client.get("/api/marketing-openings/report", params={"year_month": "2026-11"}).json()
+        merged = [t for t in report["teams"] if t["team"] == "热线1组"]
+        assert len(merged) == 1
+        team = merged[0]
+        assert team["dept"] == self.MEMBER_DEPT
+        assert team["contact_count"] == 2
+        assert team["people"] == 2
+        classes = [c for c in report["classes"] if c["class_name"] == "热线"]
+        assert len(classes) == 1
+        assert classes[0]["dept"] == self.MEMBER_DEPT
+        assert classes[0]["people"] == 2
