@@ -75,46 +75,56 @@
         <el-tab-pane label="按日" name="day" />
       </el-tabs>
 
-      <el-table :data="tableData" border stripe max-height="calc(100vh - 450px)">
+      <el-table :data="pagedData" border stripe max-height="calc(100vh - 450px)" show-summary :summary-method="summaryMethod" @sort-change="handleSortChange">
         <template v-if="dimension === 'employee'">
-          <el-table-column prop="kf_id" label="员工工号" width="120" sortable />
-          <el-table-column prop="name" label="姓名" width="90" sortable />
-          <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip sortable />
-          <el-table-column prop="dept" label="部门" width="150" show-overflow-tooltip sortable />
-          <el-table-column prop="dept_group" label="部门组" width="120" show-overflow-tooltip sortable />
-          <el-table-column prop="class_name" label="班级" width="120" show-overflow-tooltip sortable />
+          <el-table-column prop="kf_id" label="员工工号" width="120" sortable="custom" />
+          <el-table-column prop="name" label="姓名" width="90" sortable="custom" />
+          <el-table-column prop="team" label="班组" width="140" show-overflow-tooltip sortable="custom" />
+          <el-table-column prop="dept" label="部门" width="150" show-overflow-tooltip sortable="custom" />
+          <el-table-column prop="dept_group" label="部门组" width="120" show-overflow-tooltip sortable="custom" />
+          <el-table-column prop="class_name" label="班级" width="120" show-overflow-tooltip sortable="custom" />
         </template>
         <template v-else-if="dimension === 'team'">
-          <el-table-column prop="dept_group" label="部门组" width="120" sortable />
-          <el-table-column prop="dept" label="部门" min-width="150" show-overflow-tooltip sortable />
-          <el-table-column prop="team" label="班组" min-width="150" sortable />
-          <el-table-column prop="people" label="人数" width="80" sortable />
+          <el-table-column prop="dept_group" label="部门组" width="120" sortable="custom" />
+          <el-table-column prop="dept" label="部门" min-width="150" show-overflow-tooltip sortable="custom" />
+          <el-table-column prop="team" label="班组" min-width="150" sortable="custom" />
+          <el-table-column prop="people" label="人数" width="80" sortable="custom" />
         </template>
         <template v-else-if="dimension === 'class'">
-          <el-table-column prop="dept_group" label="部门组" width="120" sortable />
-          <el-table-column prop="dept" label="部门" min-width="150" show-overflow-tooltip sortable />
-          <el-table-column prop="class_name" label="班级" min-width="140" sortable />
-          <el-table-column prop="people" label="人数" width="80" sortable />
+          <el-table-column prop="dept_group" label="部门组" width="120" sortable="custom" />
+          <el-table-column prop="dept" label="部门" min-width="150" show-overflow-tooltip sortable="custom" />
+          <el-table-column prop="class_name" label="班级" min-width="140" sortable="custom" />
+          <el-table-column prop="people" label="人数" width="80" sortable="custom" />
         </template>
         <template v-else>
-          <el-table-column prop="date" label="录音日期" width="120" sortable />
-          <el-table-column prop="people" label="人数" width="80" sortable />
+          <el-table-column prop="date" label="录音日期" width="120" sortable="custom" />
+          <el-table-column prop="people" label="人数" width="80" sortable="custom" />
         </template>
-        <el-table-column prop="contact_count" label="接触量" width="90" sortable />
-        <el-table-column prop="opened_count" label="已开口量" width="100" sortable />
-        <el-table-column prop="opening_rate" label="总开口率" width="100" sortable>
+        <el-table-column prop="contact_count" label="接触量" width="90" sortable="custom" />
+        <el-table-column prop="opened_count" label="已开口量" width="100" sortable="custom" />
+        <el-table-column prop="opening_rate" label="总开口率" width="100" sortable="custom">
           <template #default="{ row }">
             {{ formatRate(row.opening_rate) }}
           </template>
         </el-table-column>
-        <el-table-column v-for="column in openingColumns" :key="column.key" :prop="column.key" :label="column.label" width="120" sortable />
+        <el-table-column v-for="column in openingColumns" :key="column.key" :prop="column.key" :label="column.label" width="120" sortable="custom" />
       </el-table>
+      <el-pagination
+        v-if="tableData.length > 0"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="tableData.length"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="handleSizeChange"
+        style="margin-top: 15px; justify-content: flex-end"
+      />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
@@ -141,6 +151,9 @@ const stats = reactive({ contact_count: 0, opened_count: 0, opening_rate: null, 
 const options = reactive({ teams: [], classes: [], department_groups: [] })
 const result = ref({ employees: [], teams: [], classes: [], days: [], columns: [] })
 const dimension = ref('employee')
+const currentPage = ref(1)
+const pageSize = ref(20)
+const sortState = reactive({ prop: '', order: '' })
 const DEFAULT_OPENING_COLUMNS = [
   { key: 'active_overlay', label: '叠加包主动' },
   { key: 'opened_overlay', label: '叠加包已开' },
@@ -164,12 +177,72 @@ const openingColumns = computed(() => {
 })
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', class: 'classes', day: 'days' }[dimension.value]))
 const tableData = computed(() => result.value[dimensionKey.value] || [])
+const sortedTableData = computed(() => {
+  const rows = [...tableData.value]
+  const { prop, order } = sortState
+  if (!prop || !order) return rows
+  const direction = order === 'ascending' ? 1 : -1
+  rows.sort((a, b) => {
+    const av = a?.[prop]
+    const bv = b?.[prop]
+    const an = av == null ? null : Number(av)
+    const bn = bv == null ? null : Number(bv)
+    if (an != null && bn != null && Number.isFinite(an) && Number.isFinite(bn)) return (an - bn) * direction
+    return String(av ?? '').localeCompare(String(bv ?? ''), 'zh-Hans-CN') * direction
+  })
+  return rows
+})
+const pagedData = computed(() => {
+  const maxPage = Math.max(1, Math.ceil(sortedTableData.value.length / pageSize.value))
+  const page = Math.min(Math.max(1, currentPage.value), maxPage)
+  const start = (page - 1) * pageSize.value
+  return sortedTableData.value.slice(start, start + pageSize.value)
+})
 const statsRate = computed(() => stats.opening_rate == null ? 0 : Number((stats.opening_rate * 100).toFixed(2)))
 
 function formatRate(value) {
   if (value == null) return '-'
   return `${(Number(value) * 100).toFixed(2)}%`
 }
+
+const productKeys = computed(() => openingColumns.value.map(column => column.key))
+
+function summaryMethod({ columns }) {
+  const rows = tableData.value
+  const productSet = new Set(productKeys.value)
+  const sumOf = key => rows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0)
+  return columns.map((column, index) => {
+    if (index === 0) return '合计'
+    const key = column.property
+    if (!key) return ''
+    if (key === 'people') return '-'
+    if (key === 'opening_rate') {
+      const contact = sumOf('contact_count')
+      const opened = sumOf('opened_count')
+      return contact ? formatRate(opened / contact) : '-'
+    }
+    if (key === 'contact_count' || key === 'opened_count' || productSet.has(key)) {
+      return String(sumOf(key))
+    }
+    return ''
+  })
+}
+
+function handleSortChange({ prop, order }) {
+  sortState.prop = prop || ''
+  sortState.order = order || ''
+  currentPage.value = 1
+}
+
+function handleSizeChange() {
+  currentPage.value = 1
+}
+
+watch(dimension, () => {
+  sortState.prop = ''
+  sortState.order = ''
+  currentPage.value = 1
+})
 
 function buildParams() {
   const params = {}
@@ -190,6 +263,7 @@ function buildParams() {
 }
 
 async function loadData() {
+  currentPage.value = 1
   try {
     const res = await api.get('/marketing-openings/report', { params: buildParams() })
     Object.assign(stats, res.data.stats)

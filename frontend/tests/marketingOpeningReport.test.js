@@ -89,12 +89,13 @@ const stubs = {
   'el-statistic': { template: '<div class="stat-stub" />' },
   'el-tabs': { template: '<div><slot /></div>' },
   'el-tab-pane': { template: '<div />' },
+  'el-pagination': { template: '<div class="pagination-stub" />' },
   'el-table': { template: '<table><slot /></table>' },
   'el-table-column': {
     props: {
       prop: String,
       label: String,
-      sortable: { type: Boolean, default: false }
+      sortable: { type: [Boolean, String], default: false }
     },
     template: '<col :data-prop="prop != null ? String(prop) : \'\'" :data-label="label != null ? String(label) : \'\'" :data-sortable="sortable ? \'true\' : \'false\'" />'
   }
@@ -136,5 +137,79 @@ describe('开口率报表', () => {
       expect.objectContaining({ dimension: 'team' }),
       '开口率报表.csv'
     )
+  })
+
+  it('分页 slicing 当前维度数据并在翻页/改页大小时重置', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    expect(state.currentPage).toBe(1)
+    expect(state.pageSize).toBe(20)
+    expect(state.pagedData).toHaveLength(2)
+    state.pageSize = 1
+    expect(state.pagedData).toHaveLength(1)
+    expect(state.pagedData[0].kf_id).toBe('KF001')
+    state.currentPage = 2
+    expect(state.pagedData[0].kf_id).toBe('KF002')
+    state.handleSizeChange()
+    expect(state.currentPage).toBe(1)
+  })
+
+  it('切换维度时重置页码和排序', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    state.handleSortChange({ prop: 'contact_count', order: 'ascending' })
+    state.currentPage = 2
+    state.dimension = 'team'
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+    expect(state.currentPage).toBe(1)
+    expect(state.sortState.prop).toBe('')
+    expect(state.sortState.order).toBe('')
+  })
+
+  it('自定义排序对完整数据生效并回到第一页', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    state.currentPage = 2
+    state.handleSortChange({ prop: 'contact_count', order: 'ascending' })
+    expect(state.currentPage).toBe(1)
+    expect(state.sortedTableData.map(row => row.kf_id)).toEqual(['KF002', 'KF001'])
+    state.handleSortChange({ prop: 'contact_count', order: 'descending' })
+    expect(state.sortedTableData.map(row => row.kf_id)).toEqual(['KF001', 'KF002'])
+    state.handleSortChange({ prop: '', order: '' })
+    expect(state.sortedTableData.map(row => row.kf_id)).toEqual(['KF001', 'KF002'])
+  })
+
+  it('合计行汇总全部行：数值求和、开口率重算、人数显示-', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    const sums = state.summaryMethod({
+      columns: [
+        { property: 'kf_id' },
+        { property: 'team' },
+        { property: 'people' },
+        { property: 'contact_count' },
+        { property: 'opened_count' },
+        { property: 'opening_rate' },
+        { property: 'active_overlay' },
+        { property: 'unknown_col' }
+      ]
+    })
+    expect(sums).toEqual(['合计', '', '-', '6', '3', '50.00%', '4', ''])
+  })
+
+  it('无接触数据时合计开口率显示-', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...reportData,
+        employees: [{ ...reportData.employees[0], contact_count: 0, opened_count: 0, opening_rate: null }]
+      }
+    })
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+    const sums = state.summaryMethod({
+      columns: [{ property: 'kf_id' }, { property: 'contact_count' }, { property: 'opened_count' }, { property: 'opening_rate' }]
+    })
+    expect(sums).toEqual(['合计', '0', '0', '-'])
   })
 })
