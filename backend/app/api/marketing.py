@@ -43,8 +43,9 @@ KEY_PRODUCT_CONFIG_KEY = "marketing_key_products"
 DEFAULT_KEY_PRODUCT_CONFIG = {"products": []}
 UNCLASSIFIED_GROUP = "未分组"
 UNASSIGNED_TEAM = "未分班组"
-MATCH_TYPES = {"contains", "equals", "prefix", "suffix", "regex"}
-BROADBAND_EMP_MATCH_TYPES = {"equals", "prefix", "regex"}
+FALLBACK_MATCH_TYPE = "fallback"
+MATCH_TYPES = {"contains", "equals", "prefix", "suffix", "regex", FALLBACK_MATCH_TYPE}
+BROADBAND_EMP_MATCH_TYPES = {"equals", "prefix", "regex", FALLBACK_MATCH_TYPE}
 WORK_GROUP_SUFFIXES = ("热线", "区域", "维系", "工单", "分公司")
 
 OVERALL_SECTIONS = [
@@ -352,7 +353,7 @@ def _clean_broadband_emp_rules(rules: List[Any]) -> List[Dict[str, Any]]:
                 detail=f"宽带工号规则只支持营销工单行分类: {data.get('row_label')}",
             )
         pattern = str(data.get("pattern") or "").strip()
-        if not pattern:
+        if match_type != FALLBACK_MATCH_TYPE and not pattern:
             raise HTTPException(status_code=400, detail="宽带工号规则的匹配内容不能为空")
         result.append({
             "id": data.get("id") or uuid.uuid4().hex,
@@ -475,6 +476,18 @@ def _sorted_rules(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     return _sorted_rule_list(config.get("rules", []))
 
 
+def _is_fallback_rule(rule: Dict[str, Any]) -> bool:
+    return (rule.get("match_type") or "") == FALLBACK_MATCH_TYPE
+
+
+def _specific_rules(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [rule for rule in rules if not _is_fallback_rule(rule)]
+
+
+def _fallback_rules(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [rule for rule in rules if _is_fallback_rule(rule)]
+
+
 def _normalize_work_order_label(value: Any) -> Optional[str]:
     label = str(value or "").strip()
     if label in WORK_ORDER_ROW_LABELS:
@@ -488,7 +501,7 @@ def _normalize_work_order_label(value: Any) -> Optional[str]:
 
 def _inherited_work_order_org_rules(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     result = []
-    for rule in _sorted_rules(config):
+    for rule in _specific_rules(_sorted_rules(config)):
         if (rule.get("field") or "org_name") != "org_name":
             continue
         label = _normalize_work_order_label(rule.get("row_label"))
@@ -506,9 +519,14 @@ def _inherited_work_order_org_rules(config: Dict[str, Any]) -> List[Dict[str, An
 def _broadband_rule_sets(db: Session) -> Dict[str, List[Dict[str, Any]]]:
     broadband = _broadband_rules_config(db)
     overall = _overall_config(db)
+    org_rules = _sorted_rule_list(broadband.get("org_rules") or [])
+    emp_rules = _sorted_rule_list(broadband.get("emp_rules") or [])
     return {
-        "org_rules": _sorted_rule_list(broadband.get("org_rules") or []),
-        "emp_rules": _sorted_rule_list(broadband.get("emp_rules") or []),
+        "org_rules": org_rules,
+        "emp_rules": emp_rules,
+        "specific_org_rules": _specific_rules(org_rules),
+        "specific_emp_rules": _specific_rules(emp_rules),
+        "fallback_rules": _sorted_rule_list(_fallback_rules(org_rules) + _fallback_rules(emp_rules)),
         "inherited_org_rules": _inherited_work_order_org_rules(overall),
     }
 
@@ -526,6 +544,8 @@ def _match_org_row(org_name: str, rules: List[Dict[str, Any]]) -> Optional[str]:
     if not org_name:
         return None
     for rule in rules:
+        if _is_fallback_rule(rule):
+            continue
         if (rule.get("field") or "org_name") != "org_name":
             continue
         if _rule_match(org_name, rule):
@@ -540,10 +560,22 @@ def _match_emp_row(emp_no: str, rules: List[Dict[str, Any]]) -> Optional[str]:
     if not source:
         return None
     for rule in rules:
+        if _is_fallback_rule(rule):
+            continue
         if _rule_match(source, rule):
             label = _normalize_work_order_label(rule.get("row_label"))
             if label:
                 return label
+    return None
+
+
+def _fallback_row(rules: List[Dict[str, Any]]) -> Optional[str]:
+    for rule in rules:
+        if not _is_fallback_rule(rule):
+            continue
+        label = _normalize_work_order_label(rule.get("row_label"))
+        if label:
+            return label
     return None
 
 
@@ -567,12 +599,19 @@ def _classify_online_row(detail: MarketingDetail, config: Dict[str, Any], cache:
     cache_key = SOURCE_XSZB + "\u0001" + "\u0001".join(values.get(field, "") for field in OVERALL_FIELDS)
     if cache_key in cache:
         return cache[cache_key] or None
+    rules = _sorted_rules(config)
     result = None
-    for rule in _sorted_rules(config):
+    for rule in _specific_rules(rules):
         field = rule.get("field") or "org_name"
         if field not in OVERALL_FIELDS:
             continue
         if _rule_match(values.get(field, ""), rule):
+            label = str(rule.get("row_label") or "").strip()
+            if label in ONLINE_ROW_LABELS or label == "降套维系":
+                result = label
+                break
+    if not result:
+        for rule in _fallback_rules(rules):
             label = str(rule.get("row_label") or "").strip()
             if label in ONLINE_ROW_LABELS or label == "降套维系":
                 result = label
@@ -594,8 +633,9 @@ def _classify_work_order_row(
         return cache[cache_key] or None
 
     rules = _sorted_rules(config)
+    specific_rules = _specific_rules(rules)
     result = None
-    for rule in rules:
+    for rule in specific_rules:
         if (rule.get("field") or "org_name") != "org_name":
             continue
         if _rule_match(values.get("org_name", ""), rule):
@@ -604,7 +644,7 @@ def _classify_work_order_row(
                 result = label
                 break
     if not result:
-        for rule in rules:
+        for rule in specific_rules:
             if rule.get("field") != "tenant":
                 continue
             if _rule_match(values.get("tenant", ""), rule):
@@ -612,6 +652,12 @@ def _classify_work_order_row(
                 if label:
                     result = label
                     break
+    if not result:
+        fallback_rules = [
+            rule for rule in _fallback_rules(rules)
+            if str(rule.get("row_label") or "").strip() in WORK_ORDER_ROW_LABELS
+        ]
+        result = _fallback_row(fallback_rules)
 
     cache[cache_key] = result or ""
     return result
@@ -629,11 +675,13 @@ def _classify_broadband_row(
     if cache_key in cache:
         return cache[cache_key] or None
 
-    result = _match_org_row(org_name, rule_sets.get("org_rules") or [])
+    result = _match_org_row(org_name, rule_sets.get("specific_org_rules") or [])
     if not result:
         result = _match_org_row(org_name, rule_sets.get("inherited_org_rules") or [])
     if not result:
-        result = _match_emp_row(order.emp_no, rule_sets.get("emp_rules") or [])
+        result = _match_emp_row(order.emp_no, rule_sets.get("specific_emp_rules") or [])
+    if not result:
+        result = _fallback_row(rule_sets.get("fallback_rules") or [])
 
     cache[cache_key] = result or ""
     return result

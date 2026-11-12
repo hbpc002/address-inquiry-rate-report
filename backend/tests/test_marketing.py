@@ -661,6 +661,73 @@ class TestBroadbandRules:
             app.dependency_overrides[get_current_user] = original
 
 
+class TestFallbackRules:
+
+    def setup_method(self):
+        _clean()
+        _seed_employees()
+
+    def test_online_and_work_order_fallback(self):
+        _set_overall_rules([
+            {"row_label": "线上直办-热线", "field": "org_name", "match_type": "contains",
+             "pattern": "热线", "priority": 1, "enabled": True},
+            {"row_label": "线上直办-工单", "field": "org_name", "match_type": "fallback",
+             "pattern": "", "priority": 99, "enabled": True},
+            {"row_label": "营销工单-分公司", "field": "tenant", "match_type": "fallback",
+             "pattern": "", "priority": 99, "enabled": True},
+        ])
+        assert _upload(EN_HEADERS, [
+            _en_row(kf="KF001", org="广西分公司>>热线运营组", trade="T1", product_id="P1"),
+            _en_row(kf="KF002", org="未知组织", trade="T2", product_id="P2"),
+        ]).status_code == 200
+        assert _upload(FWGD_HEADERS, [
+            _fwgd_row(kf="KF999", tenant="未知租户", trade="W1", product_id="WP1"),
+        ]).status_code == 200
+
+        report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        assert _overall_row(report, "线上直办-热线")["counts"]["overlay"] == 1
+        assert _overall_row(report, "线上直办-工单")["counts"]["overlay"] == 1
+        assert _overall_row(report, "营销工单-分公司")["counts"]["overlay"] == 1
+        assert report["stats"]["unclassified_rows"] == 0
+
+    def test_broadband_fallback_handles_empty_and_unmatched_emp_no(self):
+        assert _upload(ORG_HEADERS, [
+            _org_row(kf="KF001", org="广西分公司->热线运营组", finish="20250101120000", trade="O1"),
+        ]).status_code == 200
+        _set_overall_rules([
+            {"row_label": "营销工单-热线", "field": "org_name", "match_type": "contains",
+             "pattern": "热线运营组", "priority": 1, "enabled": True},
+            {"row_label": "线上直办-工单", "field": "org_name", "match_type": "fallback",
+             "pattern": "", "priority": 99, "enabled": True},
+        ])
+        resp = client.put("/api/marketing/broadband-rules", json={
+            "org_rules": [],
+            "emp_rules": [
+                {"row_label": "营销工单-分公司", "match_type": "prefix", "pattern": "QYY",
+                 "priority": 1, "enabled": True},
+                {"row_label": "营销工单-工单", "match_type": "fallback", "pattern": "",
+                 "priority": 99, "enabled": True},
+            ],
+        })
+        assert resp.status_code == 200, resp.text
+        assert all(rule["match_type"] != "fallback" for rule in resp.json()["inherited_org_rules"])
+
+        _seed_broadband_order("BB1", emp_no="KF001", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB2", emp_no="QYY123", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB3", emp_no="", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB4", emp_no="--", finish_date=date(2026, 10, 5))
+        _seed_broadband_order("BB5", emp_no="OTHER", finish_date=date(2026, 10, 5))
+
+        report = client.get("/api/marketing/overall-report", params={"year_month": "2026-10"}).json()
+        assert _overall_row(report, "营销工单-热线")["counts"]["broadband_new"] == 1
+        assert _overall_row(report, "营销工单-分公司")["counts"]["broadband_new"] == 1
+        assert _overall_row(report, "营销工单-工单")["counts"]["broadband_new"] == 3
+        assert report["stats"]["unclassified_broadband_rows"] == 0
+        assert report["stats"]["unclassified_broadband_no_org_rows"] == 0
+        preview = client.get("/api/marketing/broadband-rule-preview").json()
+        assert preview["unclassified"] == 0
+
+
 class TestKeyProductStatistics:
 
     def setup_method(self):

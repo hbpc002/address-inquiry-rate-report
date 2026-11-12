@@ -211,6 +211,40 @@ describe('营销设置按数据源分组', () => {
     })
   })
 
+  it('各数据源可新增无需匹配内容的兜底规则', async () => {
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+
+    state.addOnlineFallbackRule()
+    expect(state.config.rules.at(-1)).toMatchObject({
+      row_label: '线上直办-工单',
+      match_type: 'fallback',
+      pattern: ''
+    })
+    expect(state.patternPlaceholder(state.config.rules.at(-1))).toContain('无需填写')
+
+    state.addWorkOrderFallbackRule()
+    expect(state.config.rules.at(-1)).toMatchObject({
+      row_label: '营销工单-工单',
+      match_type: 'fallback',
+      pattern: ''
+    })
+
+    state.addDowngradeFallbackRule()
+    expect(state.config.rules.at(-1)).toMatchObject({
+      row_label: '降套维系',
+      match_type: 'fallback',
+      pattern: ''
+    })
+
+    state.addBroadbandFallbackRule()
+    expect(state.broadbandRules.emp_rules.at(-1)).toMatchObject({
+      row_label: '营销工单-工单',
+      match_type: 'fallback',
+      pattern: ''
+    })
+  })
+
   it('可从未分类宽带订单预览快速添加工号规则', async () => {
     const wrapper = await mountPage()
     const state = wrapper.vm.$.setupState

@@ -39,6 +39,7 @@
           <el-form inline>
             <el-form-item>
               <el-button type="primary" @click="addOnlineRule">新增线上直办规则</el-button>
+              <el-button @click="addOnlineFallbackRule">新增兜底规则</el-button>
             </el-form-item>
             <el-form-item label="未分类产品行">
               <el-tag type="warning">{{ previews.xszb.unclassified }}</el-tag>
@@ -72,7 +73,8 @@
             </el-table-column>
             <el-table-column label="匹配内容" min-width="220">
               <template #default="{ row }">
-                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" />
+                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" :disabled="isFallbackRule(row)" />
+                <div v-if="isFallbackRule(row)" class="regex-hint">匹配所有具体规则未命中的剩余数据，可处理空工号</div>
                 <div v-if="row.match_type === 'regex'" class="regex-hint">正则例：热线|营销</div>
               </template>
             </el-table-column>
@@ -113,6 +115,7 @@
             <el-form-item>
               <el-button type="primary" @click="addWorkOrderOrgRule">新增组织机构规则</el-button>
               <el-button type="primary" @click="addWorkOrderTenantRule">新增租户规则</el-button>
+              <el-button @click="addWorkOrderFallbackRule">新增兜底规则</el-button>
             </el-form-item>
             <el-form-item label="未分类工单行">
               <el-tag type="warning">{{ previews.fwgd.unclassified }}</el-tag>
@@ -140,7 +143,8 @@
             </el-table-column>
             <el-table-column label="匹配内容" min-width="220">
               <template #default="{ row }">
-                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" />
+                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" :disabled="isFallbackRule(row)" />
+                <div v-if="isFallbackRule(row)" class="regex-hint">匹配所有具体规则未命中的剩余数据，可处理空工号</div>
               </template>
             </el-table-column>
             <el-table-column label="优先级" width="110">
@@ -193,7 +197,8 @@
             </el-table-column>
             <el-table-column label="建单租户" min-width="220">
               <template #default="{ row }">
-                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" />
+                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" :disabled="isFallbackRule(row)" />
+                <div v-if="isFallbackRule(row)" class="regex-hint">匹配所有具体规则未命中的剩余数据，可处理空工号</div>
               </template>
             </el-table-column>
             <el-table-column label="优先级" width="110">
@@ -274,7 +279,10 @@
               </template>
             </el-table-column>
             <el-table-column label="组织机构" min-width="220">
-              <template #default="{ row }"><el-input v-model="row.pattern" placeholder="如：热线运营组" /></template>
+              <template #default="{ row }">
+                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" :disabled="isFallbackRule(row)" />
+                <div v-if="isFallbackRule(row)" class="regex-hint">匹配所有具体规则未命中的剩余数据</div>
+              </template>
             </el-table-column>
             <el-table-column label="优先级" width="110">
               <template #default="{ row }"><el-input-number v-model="row.priority" :min="0" :max="9999" size="small" /></template>
@@ -290,6 +298,7 @@
           <el-form inline>
             <el-form-item>
               <el-button type="primary" @click="addBroadbandEmpRule">新增工号规则</el-button>
+              <el-button @click="addBroadbandFallbackRule">新增兜底规则</el-button>
             </el-form-item>
             <el-form-item label="未分类宽带订单">
               <el-tag type="warning">{{ broadbandPreview.unclassified }}</el-tag>
@@ -317,7 +326,10 @@
               </template>
             </el-table-column>
             <el-table-column label="下单新客服工号" min-width="220">
-              <template #default="{ row }"><el-input v-model="row.pattern" placeholder="如：--、QYY" /></template>
+              <template #default="{ row }">
+                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" :disabled="isFallbackRule(row)" />
+                <div v-if="isFallbackRule(row)" class="regex-hint">匹配所有具体规则未命中的剩余数据，可处理空工号</div>
+              </template>
             </el-table-column>
             <el-table-column label="优先级" width="110">
               <template #default="{ row }"><el-input-number v-model="row.priority" :min="0" :max="9999" size="small" /></template>
@@ -362,6 +374,7 @@
           <el-form inline>
             <el-form-item>
               <el-button type="primary" @click="addDowngradeRule">新增降套维系规则</el-button>
+              <el-button @click="addDowngradeFallbackRule">新增兜底规则</el-button>
             </el-form-item>
           </el-form>
           <el-table :data="downgradeRules" border stripe max-height="360">
@@ -387,7 +400,8 @@
             </el-table-column>
             <el-table-column label="匹配内容" min-width="220">
               <template #default="{ row }">
-                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" />
+                <el-input v-model="row.pattern" :placeholder="patternPlaceholder(row)" :disabled="isFallbackRule(row)" />
+                <div v-if="isFallbackRule(row)" class="regex-hint">匹配所有具体规则未命中的剩余数据，可处理空工号</div>
               </template>
             </el-table-column>
             <el-table-column label="优先级" width="110">
@@ -507,13 +521,15 @@ const MATCH_TYPES = [
   { value: 'equals', label: '等于' },
   { value: 'prefix', label: '前缀' },
   { value: 'suffix', label: '后缀' },
-  { value: 'regex', label: '正则（表达式）' }
+  { value: 'regex', label: '正则（表达式）' },
+  { value: 'fallback', label: '其他（兜底）' }
 ]
 
 const EMP_MATCH_TYPES = [
   { value: 'equals', label: '等于' },
   { value: 'prefix', label: '前缀' },
-  { value: 'regex', label: '正则（表达式）' }
+  { value: 'regex', label: '正则（表达式）' },
+  { value: 'fallback', label: '其他（兜底）' }
 ]
 
 const ONLINE_ROW_LABELS = [
@@ -559,7 +575,12 @@ const inheritedOnlineOrgRules = computed(() => onlineRules.value
 const onlineOrganizations = computed(() => organizations.value.filter((item) => item.data_type === 'xszb'))
 const workOrderOrganizations = computed(() => organizations.value.filter((item) => item.data_type === 'fwgd'))
 
+function isFallbackRule(row) {
+  return row.match_type === 'fallback'
+}
+
 function patternPlaceholder(row) {
+  if (isFallbackRule(row)) return '兜底规则无需填写匹配内容'
   return row.match_type === 'regex' ? '正则表达式，如：热线|营销' : '如：热线运营组'
 }
 
@@ -575,12 +596,28 @@ function newOverallRule(rowLabel, field = 'org_name') {
   }
 }
 
+function newFallbackRule(rowLabel, field = 'org_name') {
+  return {
+    ...newOverallRule(rowLabel, field),
+    match_type: 'fallback',
+    pattern: ''
+  }
+}
+
 function addOnlineRule() {
   config.rules.push(newOverallRule('线上直办-热线'))
 }
 
+function addOnlineFallbackRule() {
+  config.rules.push(newFallbackRule('线上直办-工单'))
+}
+
 function addDowngradeRule() {
   config.rules.push(newOverallRule('降套维系'))
+}
+
+function addDowngradeFallbackRule() {
+  config.rules.push(newFallbackRule('降套维系'))
 }
 
 function addWorkOrderOrgRule() {
@@ -589,6 +626,10 @@ function addWorkOrderOrgRule() {
 
 function addWorkOrderTenantRule() {
   config.rules.push(newOverallRule('营销工单-热线', 'tenant'))
+}
+
+function addWorkOrderFallbackRule() {
+  config.rules.push(newFallbackRule('营销工单-工单'))
 }
 
 function removeOverallRule(row) {
@@ -610,6 +651,17 @@ function addBroadbandEmpRule() {
     id: '',
     row_label: '营销工单-热线',
     match_type: 'equals',
+    pattern: '',
+    priority: 10,
+    enabled: true
+  })
+}
+
+function addBroadbandFallbackRule() {
+  broadbandRules.emp_rules.push({
+    id: '',
+    row_label: '营销工单-工单',
+    match_type: 'fallback',
     pattern: '',
     priority: 10,
     enabled: true
