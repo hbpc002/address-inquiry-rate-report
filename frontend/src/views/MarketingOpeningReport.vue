@@ -68,6 +68,56 @@
         <div class="stat-item"><el-statistic title="涉及员工" :value="stats.people_count" /></div>
       </el-row>
 
+      <div v-if="stats.contact_count > 0" class="chart-section">
+        <div class="chart-section-header">
+          <span class="chart-section-title">图表分析</span>
+          <el-radio-group v-model="chartSection" size="small">
+            <el-radio-button value="ranking">排行分析</el-radio-button>
+            <el-radio-button value="trend">趋势分析</el-radio-button>
+            <el-radio-button value="product">产品分析</el-radio-button>
+          </el-radio-group>
+        </div>
+        <template v-if="chartSection === 'ranking'">
+          <div class="chart-toolbar">
+            <span>Top N</span>
+            <el-select v-model="chartLimit" size="small" style="width: 90px">
+              <el-option v-for="limit in chartLimits" :key="limit" :label="String(limit)" :value="limit" />
+            </el-select>
+          </div>
+          <el-row :gutter="16">
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="teamOpeningRateOptions" height="320px" /></el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="classOpeningRateOptions" height="320px" /></el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :lg="8" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="employeeOpeningRateOptions" height="320px" /></el-card>
+            </el-col>
+          </el-row>
+        </template>
+        <template v-else-if="chartSection === 'trend'">
+          <el-row :gutter="16">
+            <el-col :span="24" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="openingDailyTrendOptions" height="340px" /></el-card>
+            </el-col>
+            <el-col :span="24" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="openingProductTrendOptions" height="300px" /></el-card>
+            </el-col>
+          </el-row>
+        </template>
+        <template v-else>
+          <el-row :gutter="16">
+            <el-col :xs="24" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="productOpeningOptions" height="320px" /></el-card>
+            </el-col>
+            <el-col :xs="24" :lg="12" class="chart-col">
+              <el-card shadow="hover" class="chart-card"><Echart :options="openRatioPieOptions" height="320px" /></el-card>
+            </el-col>
+          </el-row>
+        </template>
+      </div>
+
       <el-tabs v-model="dimension">
         <el-tab-pane label="员工" name="employee" />
         <el-tab-pane label="班组" name="team" />
@@ -129,6 +179,14 @@ import { api, useUserStore } from '../stores/user'
 import { useUiConfigStore } from '../stores/uiConfig'
 import { ElMessage } from 'element-plus'
 import { downloadBlob } from '../utils/download'
+import Echart from '../components/Echart.vue'
+import {
+  buildOpeningRateRankingOptions,
+  buildOpeningDailyTrendOptions,
+  buildOpeningDayProductTrendOptions,
+  buildProductOpeningOptions,
+  buildOpenRatioPieOptions
+} from '../utils/marketingCharts'
 
 const userStore = useUserStore()
 const ui = useUiConfigStore()
@@ -154,6 +212,9 @@ const dimension = ref('employee')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const sortState = reactive({ prop: '', order: '' })
+const chartSection = ref('ranking')
+const chartLimit = ref(10)
+const chartLimits = [10, 20, 50]
 const DEFAULT_OPENING_COLUMNS = [
   { key: 'active_overlay', label: '叠加包主动' },
   { key: 'opened_overlay', label: '叠加包已开' },
@@ -199,6 +260,25 @@ const pagedData = computed(() => {
   return sortedTableData.value.slice(start, start + pageSize.value)
 })
 const statsRate = computed(() => stats.opening_rate == null ? 0 : Number((stats.opening_rate * 100).toFixed(2)))
+const teamOpeningRateOptions = computed(() => buildOpeningRateRankingOptions(result.value.teams || [], {
+  title: '班组开口率排行',
+  limit: chartLimit.value,
+  labelKey: 'team'
+}))
+const classOpeningRateOptions = computed(() => buildOpeningRateRankingOptions(result.value.classes || [], {
+  title: '班级开口率排行',
+  limit: chartLimit.value,
+  labelKey: 'class_name'
+}))
+const employeeOpeningRateOptions = computed(() => buildOpeningRateRankingOptions(result.value.employees || [], {
+  title: '员工开口率排行',
+  limit: chartLimit.value,
+  labelKey: 'name'
+}))
+const openingDailyTrendOptions = computed(() => buildOpeningDailyTrendOptions(result.value.days || []))
+const openingProductTrendOptions = computed(() => buildOpeningDayProductTrendOptions(result.value.days || []))
+const productOpeningOptions = computed(() => buildProductOpeningOptions(stats))
+const openRatioPieOptions = computed(() => buildOpenRatioPieOptions(stats))
 
 function formatRate(value) {
   if (value == null) return '-'
@@ -313,6 +393,38 @@ onMounted(loadData)
   flex-wrap: nowrap;
   gap: 20px;
   margin-bottom: 16px;
+}
+.chart-section {
+  margin-bottom: 16px;
+}
+.chart-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.chart-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+.chart-col {
+  margin-bottom: 16px;
+}
+.chart-col :deep(.chart-card) {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
 }
 .stat-item {
   flex: 1 1 0;

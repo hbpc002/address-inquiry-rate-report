@@ -14,6 +14,10 @@ import {
   buildTeamScatterOptions,
   buildTeamRadarOptions,
   buildOpeningRateRankingOptions,
+  buildOpeningDailyTrendOptions,
+  buildOpeningDayProductTrendOptions,
+  buildProductOpeningOptions,
+  buildOpenRatioPieOptions,
   buildMemberRadarOptions,
   buildValidCrossOptions,
   filterMatchedTeams
@@ -279,5 +283,76 @@ describe('营销统计图表数据构建', () => {
       '办理量', '订单数', '来话', '去话', '叠加包', '套餐变更'
     ])
     expect(options.series[0].data).toHaveLength(2)
+  })
+
+  it('按日开口趋势应含双y轴：柱接触量/已开口量 + 开口率折线', () => {
+    const days = [
+      { date: '2026-11-01', contact_count: 10, opened_count: 4, opening_rate: 0.4 },
+      { date: '2026-11-02', contact_count: 5, opened_count: 2, opening_rate: null }
+    ]
+    const options = buildOpeningDailyTrendOptions(days)
+    expect(options.title.text).toBe('按日开口趋势')
+    expect(options.yAxis).toHaveLength(2)
+    expect(options.yAxis[1].name).toBe('开口率(%)')
+    expect(options.xAxis.data).toEqual(['2026-11-01', '2026-11-02'])
+    expect(options.series.map(s => s.name)).toEqual(['接触量', '已开口量', '总开口率'])
+    expect(options.series[2].type).toBe('line')
+    expect(options.series[2].yAxisIndex).toBe(1)
+    expect(options.series[2].data).toEqual([40, null])
+    expect(options.dataZoom).toBeUndefined()
+  })
+
+  it('按日开口趋势天数过多时启用 dataZoom', () => {
+    const days = Array.from({ length: 21 }, (_, i) => ({
+      date: `2026-10-${String(i + 1).padStart(2, '0')}`,
+      contact_count: 1,
+      opened_count: 1,
+      opening_rate: 1
+    }))
+    const options = buildOpeningDailyTrendOptions(days)
+    expect(options.dataZoom).toBeTruthy()
+  })
+
+  it('按日五大产品已开口趋势应输出五条已开口量折线', () => {
+    const days = [
+      {
+        date: '2026-11-01',
+        opened_overlay: 2, opened_broadband: 1, opened_mobile_new: 0,
+        opened_terminal: 3, opened_package: 4
+      }
+    ]
+    const options = buildOpeningDayProductTrendOptions(days)
+    expect(options.series.map(s => s.name)).toEqual(['叠加包', '宽带', '移网新装', '终端', '套餐'])
+    expect(options.series.map(s => s.data[0])).toEqual([2, 1, 0, 3, 4])
+  })
+
+  it('分产品开口量应按主动/已开口分组输出', () => {
+    const stats = {
+      active_overlay: 5, opened_overlay: 2,
+      active_broadband: 4, opened_broadband: 1,
+      active_mobile_new: 3, opened_mobile_new: 0,
+      active_terminal: 2, opened_terminal: 2,
+      active_package: 6, opened_package: 5
+    }
+    const options = buildProductOpeningOptions(stats)
+    expect(options.title.text).toBe('分产品开口量')
+    expect(options.xAxis.data).toEqual(['叠加包', '宽带', '移网新装', '终端', '套餐'])
+    expect(options.series.map(s => s.name)).toEqual(['主动开口', '已开口'])
+    expect(options.series[0].data).toEqual([5, 4, 3, 2, 6])
+    expect(options.series[1].data).toEqual([2, 1, 0, 2, 5])
+  })
+
+  it('已开口占比饼图应按接触量扣减未开口部分', () => {
+    const options = buildOpenRatioPieOptions({ contact_count: 10, opened_count: 4 })
+    expect(options.series[0].data.map(d => d.name)).toEqual(['已开口', '未开口'])
+    expect(options.series[0].data.map(d => d.value)).toEqual([4, 6])
+  })
+
+  it('开口率排行支持班级/员工 labelKey 自定义', () => {
+    const options = buildOpeningRateRankingOptions([
+      { class_name: '热线', contact_count: 5, opened_count: 1, opening_rate: 0.2 },
+      { class_name: '区域', contact_count: 5, opened_count: 4, opening_rate: 0.8 }
+    ], { title: '班级开口率排行', labelKey: 'class_name' })
+    expect(options.yAxis.data).toEqual(['热线', '区域'])
   })
 })

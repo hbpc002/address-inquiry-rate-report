@@ -89,7 +89,12 @@ const stubs = {
   'el-statistic': { template: '<div class="stat-stub" />' },
   'el-tabs': { template: '<div><slot /></div>' },
   'el-tab-pane': { template: '<div />' },
+  'el-radio-button': { template: '<label class="el-radio-button-stub"><slot /></label>' },
   'el-pagination': { template: '<div class="pagination-stub" />' },
+  Echart: {
+    props: ['options', 'height'],
+    template: '<div class="echart-stub" :data-height="height" :data-title="options && options.title ? options.title.text : \'\'"></div>'
+  },
   'el-table': { template: '<table><slot /></table>' },
   'el-table-column': {
     props: {

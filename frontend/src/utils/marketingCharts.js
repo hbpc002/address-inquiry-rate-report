@@ -4,6 +4,7 @@ import {
   createPieOptions,
   createHorizontalBarOptions,
   createStackedBarOptions,
+  createMultiBarOptions,
   createMultiLineOptions,
   layerTooltip
 } from './echarts'
@@ -710,4 +711,75 @@ export function buildTeamRadarOptions(teams = [], { limit = 8 } = {}) {
 
 export function buildMemberRadarOptions(members = [], { title = '组员多指标雷达', limit = 8 } = {}) {
   return buildRadarOptions(enrichEmployees(members), { title, limit, nameKey: 'displayName' })
+}
+
+export const OPENING_PRODUCT_KEYS = [
+  { key: 'active_overlay', openedKey: 'opened_overlay', label: '叠加包' },
+  { key: 'active_broadband', openedKey: 'opened_broadband', label: '宽带' },
+  { key: 'active_mobile_new', openedKey: 'opened_mobile_new', label: '移网新装' },
+  { key: 'active_terminal', openedKey: 'opened_terminal', label: '终端' },
+  { key: 'active_package', openedKey: 'opened_package', label: '套餐' }
+]
+
+export function buildOpeningDailyTrendOptions(days = []) {
+  const dates = days.map(item => item.date)
+  return layerTooltip({
+    title: { text: '按日开口趋势', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'axis' },
+    legend: { bottom: 0, data: ['接触量', '已开口量', '总开口率'] },
+    grid: { left: '3%', right: '4%', top: 50, bottom: dates.length > 20 ? '22%' : '15%', containLabel: true },
+    xAxis: { type: 'category', data: dates },
+    yAxis: [
+      { type: 'value', name: '接触量' },
+      { type: 'value', name: '开口率(%)', position: 'right', max: 100 }
+    ],
+    ...(dates.length > 20 ? { dataZoom: [{ type: 'inside' }, { type: 'slider', height: 16, bottom: 28 }] } : {}),
+    series: [
+      { name: '接触量', type: 'bar', data: days.map(d => toNumber(d.contact_count)), itemStyle: { color: CHART_COLORS[0] } },
+      { name: '已开口量', type: 'bar', data: days.map(d => toNumber(d.opened_count)), itemStyle: { color: CHART_COLORS[1] } },
+      {
+        name: '总开口率', type: 'line', yAxisIndex: 1, smooth: true, connectNulls: true,
+        data: days.map(d => (d.opening_rate == null ? null : round(toNumber(d.opening_rate) * 100, 2))),
+        itemStyle: { color: CHART_COLORS[3] }, lineStyle: { width: 2 }
+      }
+    ]
+  })
+}
+
+export function buildOpeningDayProductTrendOptions(days = []) {
+  const categories = days.map(item => item.date)
+  const series = OPENING_PRODUCT_KEYS.map(product => ({
+    name: product.label,
+    data: days.map(item => toNumber(item[product.openedKey]))
+  }))
+  return createMultiLineOptions(categories, series, '按日五大产品已开口量趋势', {
+    yName: '已开口量',
+    dataZoom: days.length > 20
+  })
+}
+
+export function buildProductOpeningOptions(stats = {}) {
+  return createMultiBarOptions(
+    OPENING_PRODUCT_KEYS.map(product => product.label),
+    [
+      { name: '主动开口', data: OPENING_PRODUCT_KEYS.map(product => toNumber(stats[product.key])) },
+      { name: '已开口', data: OPENING_PRODUCT_KEYS.map(product => toNumber(stats[product.openedKey])) }
+    ],
+    '分产品开口量'
+  )
+}
+
+export function buildOpenRatioPieOptions(stats = {}) {
+  const contact = toNumber(stats.contact_count)
+  const opened = toNumber(stats.opened_count)
+  const unopened = Math.max(0, contact - opened)
+  return createPieOptions(
+    [
+      { name: '已开口', value: opened },
+      { name: '未开口', value: unopened }
+    ],
+    '五大产品已开口占比',
+    [CHART_COLORS[1], CHART_COLORS[3]],
+    '接触量'
+  )
 }
