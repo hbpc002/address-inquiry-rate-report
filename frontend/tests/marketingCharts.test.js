@@ -471,6 +471,8 @@ describe('营销统计图表数据构建', () => {
       value: options.series[0].data[0].value
     }])
     expect(tooltip.split('\n').slice(0, 2)).toEqual(['班组：热线二组', '组长：李四'])
+    expect(tooltip.split('\n')).toHaveLength(8)
+    expect(options.tooltip.extraCssText).toContain('white-space: pre-line')
   })
 
   it('班组散点图 tooltip 先显示班组和组长', () => {

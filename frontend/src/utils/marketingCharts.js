@@ -736,6 +736,7 @@ function buildRadarOptions(items, { title, limit = 8, nameKey = 'team' } = {}) {
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
     tooltip: {
       trigger: 'item',
+      extraCssText: 'white-space: pre-line; max-width: 520px;',
       formatter: params => {
         const list = Array.isArray(params) ? params : [params]
         if (!list.length) return ''
