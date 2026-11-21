@@ -15,7 +15,7 @@ export function classKey(dept, className) {
   return `${dept || ''}${SCOPE_SEPARATOR}${className || ''}`
 }
 
-function decorateScopedItems(items, nameKey, keyField, labelField, buildKey) {
+function decorateScopedItems(items, nameKey, keyField, labelField, buildKey, { alwaysShowDept = false } = {}) {
   const rows = Array.isArray(items) ? items : []
   const counts = new Map()
   for (const item of rows) {
@@ -29,20 +29,21 @@ function decorateScopedItems(items, nameKey, keyField, labelField, buildKey) {
     const dept = item?.dept || ''
     const deptGroup = item?.dept_group || deptShort(dept)
     const duplicate = Boolean(name && dept && counts.get(name) > 1)
+    const showDept = Boolean(name && deptGroup && (alwaysShowDept || duplicate))
     return {
       ...item,
       [keyField]: buildKey(dept, name),
-      [labelField]: duplicate ? `${name}（${deptGroup}）` : name
+      [labelField]: showDept ? `${name}（${deptGroup}）` : name
     }
   })
 }
 
-export function decorateTeamRows(rows = []) {
-  return decorateScopedItems(rows, 'team', 'team_key', 'team_label', teamKey)
+export function decorateTeamRows(rows = [], options = {}) {
+  return decorateScopedItems(rows, 'team', 'team_key', 'team_label', teamKey, options)
 }
 
-export function decorateTeamOptions(options = []) {
-  return decorateTeamRows(options)
+export function decorateTeamOptions(options = [], decorateOptions = {}) {
+  return decorateTeamRows(options, decorateOptions)
 }
 
 export function decorateClassOptions(options = []) {

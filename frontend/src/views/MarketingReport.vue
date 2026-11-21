@@ -44,7 +44,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="班组">
-          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 180px" @change="handleTeamFilterChange">
+          <el-select v-model="searchForm.team_key" placeholder="全部班组" clearable filterable style="width: 220px" @change="handleTeamFilterChange">
             <el-option v-for="t in filteredTeamOptions" :key="t.team_key" :label="t.team_label" :value="t.team_key" />
           </el-select>
         </el-form-item>
@@ -233,7 +233,7 @@
           <el-table-column prop="group_name" label="行分类" width="120" show-overflow-tooltip sortable />
         </template>
         <template v-else-if="dimension === 'team'">
-          <el-table-column prop="team_label" label="班组" width="180" show-overflow-tooltip sortable />
+          <el-table-column prop="team_label" label="班组" width="220" show-overflow-tooltip sortable />
           <el-table-column prop="leader" label="组长" width="90" show-overflow-tooltip sortable />
           <el-table-column prop="people" label="人数" width="80" sortable />
         </template>
@@ -335,13 +335,14 @@ const stats = reactive({
 })
 const options = reactive({ groups: [], teams: [], department_groups: [], team_options: [], classes: [], class_options: [], orgs: [], products: [], sources: [] })
 const result = ref({ employees: [], teams: [], groups: [], products: [], days: [] })
+const TEAM_DECORATE_OPTIONS = { alwaysShowDept: true }
 const filteredTeamOptions = computed(() => searchForm.department_group
   ? options.team_options.filter(item => item.dept_group === searchForm.department_group)
   : options.team_options)
 const filteredClassOptions = computed(() => searchForm.department_group
   ? options.class_options.filter(item => item.dept_group === searchForm.department_group)
   : options.class_options)
-const decoratedTeams = computed(() => decorateTeamRows(result.value.teams || []))
+const decoratedTeams = computed(() => decorateTeamRows(result.value.teams || [], TEAM_DECORATE_OPTIONS))
 const dimension = ref('employee')
 const dimensionKey = computed(() => ({ employee: 'employees', team: 'teams', group: 'groups', product: 'products', day: 'days' }[dimension.value]))
 const chartSection = ref('team')
@@ -374,11 +375,11 @@ const tableData = computed(() => {
   if (teamDrillActive.value) {
     if (drillResult.value) {
       return dimension.value === 'team'
-        ? decorateTeamRows(drillResult.value.teams || [])
+        ? decorateTeamRows(drillResult.value.teams || [], TEAM_DECORATE_OPTIONS)
         : (drillResult.value[dimensionKey.value] || [])
     }
     if (dimension.value === 'employee') return teamMemberItems.value
-    if (dimension.value === 'team') return decorateTeamRows(decoratedTeams.value.filter(item => item.team_key === drillTeamKey.value))
+    if (dimension.value === 'team') return decorateTeamRows(decoratedTeams.value.filter(item => item.team_key === drillTeamKey.value), TEAM_DECORATE_OPTIONS)
     return []
   }
   return dimension.value === 'team' ? decoratedTeams.value : (result.value[dimensionKey.value] || [])
@@ -548,7 +549,7 @@ async function loadData() {
     const rawClassOptions = res.data.options?.class_options?.length
       ? res.data.options.class_options
       : (res.data.options?.classes || []).map(className => ({ dept: '', class_name: className }))
-    options.team_options = decorateTeamOptions(rawTeamOptions)
+    options.team_options = decorateTeamOptions(rawTeamOptions, TEAM_DECORATE_OPTIONS)
     options.class_options = decorateClassOptions(rawClassOptions)
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '加载失败')

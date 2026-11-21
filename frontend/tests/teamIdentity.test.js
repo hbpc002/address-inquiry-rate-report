@@ -45,6 +45,24 @@ describe('班组/班级组合标识', () => {
     ])
   })
 
+  it('可开启始终显示部门备注，非重名班组也会追加部门组或部门末级', () => {
+    const rows = decorateTeamOptions([
+      { dept: DEPT_A, dept_group: '工单运营组', team: '一班1组' },
+      { dept: DEPT_B, dept_group: '客户投诉处理组', team: '一班1组' },
+      { dept: DEPT_A, dept_group: '工单运营组', team: '二班1组' },
+      { dept: DEPT_A, team: '三班1组' },
+      { dept: '', team: '未匹配班组' }
+    ], { alwaysShowDept: true })
+
+    expect(rows.map(row => row.team_label)).toEqual([
+      '一班1组（工单运营组）',
+      '一班1组（客户投诉处理组）',
+      '二班1组（工单运营组）',
+      '三班1组（A部门）',
+      '未匹配班组'
+    ])
+  })
+
   it('班级选项按部门隔离，非法数据回退为空列表', () => {
     const rows = decorateClassOptions([
       { dept: DEPT_A, class_name: '一班' },

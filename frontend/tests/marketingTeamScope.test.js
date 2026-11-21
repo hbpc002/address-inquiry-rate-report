@@ -126,6 +126,49 @@ describe('营销统计班组/班级部门隔离', () => {
     expect(api.get.mock.calls.length).toBeGreaterThan(callsAfterTeam)
   })
 
+  it('营销统计页所有班组标签都附带部门备注', async () => {
+    const teamRow = (dept, deptGroup, team) => ({
+      dept,
+      dept_group: deptGroup,
+      team,
+      leader: '',
+      people: 1,
+      total: 0,
+      order_count: 0
+    })
+    api.get.mockResolvedValue({
+      data: {
+        ...reportData,
+        teams: [
+          teamRow(DEPT_A, '工单运营组', '一班1组'),
+          teamRow(DEPT_A, '工单运营组', '二班1组'),
+          teamRow(DEPT_B, '客户投诉处理组', '一班1组')
+        ],
+        options: {
+          ...reportData.options,
+          team_options: [
+            { dept: DEPT_A, dept_group: '工单运营组', team: '一班1组' },
+            { dept: DEPT_A, dept_group: '工单运营组', team: '二班1组' },
+            { dept: DEPT_B, dept_group: '客户投诉处理组', team: '一班1组' }
+          ]
+        }
+      }
+    })
+    const wrapper = await mountPage()
+    const state = wrapper.vm.$.setupState
+
+    expect(state.options.team_options.map(item => item.team_label)).toEqual([
+      '一班1组（工单运营组）',
+      '二班1组（工单运营组）',
+      '一班1组（客户投诉处理组）'
+    ])
+    expect(state.decoratedTeams.map(item => item.team_label)).toEqual([
+      '一班1组（工单运营组）',
+      '二班1组（工单运营组）',
+      '一班1组（客户投诉处理组）'
+    ])
+  })
+
   it('图表点击同名班组时使用组合 key 下钻，再点返回班组且不改顶部筛选', async () => {
     const wrapper = await mountPage()
     const state = wrapper.vm.$.setupState

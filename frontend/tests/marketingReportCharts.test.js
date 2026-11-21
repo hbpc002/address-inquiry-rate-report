@@ -187,12 +187,12 @@ describe('营销统计图表区域', () => {
     expect(state.teamMemberItems.map(item => item.name)).toEqual(['张三'])
     let titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
     expect(titles).toEqual([
-      '热线一组 组员产品办理量排行',
-      '热线一组 组员业务结构',
-      '热线一组 组员叠加包有效期结构',
-      '热线一组 组员多指标雷达',
-      '热线一组 组员办理量与订单数分布',
-      '热线一组 组员开口率排行'
+      '热线一组（客服部） 组员产品办理量排行',
+      '热线一组（客服部） 组员业务结构',
+      '热线一组（客服部） 组员叠加包有效期结构',
+      '热线一组（客服部） 组员多指标雷达',
+      '热线一组（客服部） 组员办理量与订单数分布',
+      '热线一组（客服部） 组员开口率排行'
     ])
 
     state.handleTeamChartClick({ name: '张三', data: { kf_id: 'KF001' } })
@@ -253,7 +253,7 @@ describe('营销统计图表区域', () => {
     })
     const wrapper = await mountPage()
     const teamLabels = wrapper.vm.$.setupState.teamItems.map(item => item.displayName)
-    expect(teamLabels).toEqual(['热线一组', '热线二组'])
+    expect(teamLabels).toEqual(['热线一组（客服部）', '热线二组（客服部）'])
   })
 
   it('趋势分析和辅助维度图表数量与标题正确', async () => {
