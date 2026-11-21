@@ -218,6 +218,25 @@ describe('营销统计图表数据构建', () => {
     expect(tooltip).toContain('人数：3')
   })
 
+  it('班组排行 tooltip 不显示部门行', () => {
+    const options = buildTeamRankingOptions([
+      {
+        team: '一班1组',
+        team_label: '一班1组（热线运营组）',
+        dept: '广西分公司>>省中心>>客户服务营销中心>>热线运营组',
+        leader: '李四',
+        people: 3,
+        total: 30,
+        order_count: 24
+      }
+    ], { metric: 'total', limit: 10 })
+    const tooltip = options.tooltip.formatter([{ data: options.series[0].data[0] }])
+    expect(tooltip).toContain('一班1组（热线运营组）')
+    expect(tooltip).toContain('组长：李四')
+    expect(tooltip).toContain('人数：3')
+    expect(tooltip).not.toContain('部门：')
+  })
+
   it('员工排行数据应携带工号供图表点击筛选', () => {
     const options = buildEmployeeRankingOptions(employees, { metric: 'order_count', limit: 10 })
     const target = options.series[0].data.find(item => item.kf_id === 'KF002')

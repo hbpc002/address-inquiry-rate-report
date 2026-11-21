@@ -226,7 +226,6 @@ function rankingTooltip(data, metric) {
   const lines = [data._label || data.name || '']
   if (data.kf_id) lines.push(`工号：${data.kf_id}`)
   if (data.team) lines.push(`班组：${data.team_label || data.team}`)
-  if (data.dept) lines.push(`部门：${data.dept}`)
   if (data.leader) lines.push(`组长：${data.leader}`)
   if (data.people && metric !== 'people') lines.push(`人数：${data.people}`)
   if (data.product_id && data.product_name) lines.push(`产品ID：${data.product_id}`)
