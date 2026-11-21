@@ -185,6 +185,20 @@ describe('营销统计图表区域', () => {
 
     expect(state.teamDrillActive).toBe(true)
     expect(state.teamMemberItems.map(item => item.name)).toEqual(['张三'])
+    expect(state.teamMemberItems.map(item => item.team_label)).toEqual(['热线一组（客服部）'])
+    const rankingTooltip = state.teamRankingOptions.tooltip.formatter([{ data: state.teamRankingOptions.series[0].data[0] }])
+    expect(rankingTooltip.split('\n').slice(0, 3)).toEqual([
+      '姓名：张三',
+      '工号：KF001',
+      '班组：热线一组（客服部）'
+    ])
+    expect(rankingTooltip).not.toContain('组长：')
+    const openingTooltip = state.teamOpeningRateOptions.tooltip.formatter([{ data: state.teamOpeningRateOptions.series[0].data[0] }])
+    expect(openingTooltip.split('\n').slice(0, 3)).toEqual([
+      '姓名：张三',
+      '工号：KF001',
+      '班组：热线一组（客服部）'
+    ])
     let titles = wrapper.findAll('.echart-stub').map(chart => chart.attributes('data-title'))
     expect(titles).toEqual([
       '热线一组（客服部） 组员产品办理量排行',

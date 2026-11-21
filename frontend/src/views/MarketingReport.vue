@@ -368,7 +368,8 @@ const teamDrillActive = computed(() => Boolean(drillTeamKey.value))
 const teamMemberItems = computed(() => {
   if (!drillTeamKey.value) return []
   const members = (result.value.employees || []).filter(item => teamKey(item.dept, item.team) === drillTeamKey.value)
-  return enrichEmployees(members)
+  const teamLabel = drillTeam.value?.team_label || drillTeam.value?.team || ''
+  return enrichEmployees(members).map(item => ({ ...item, team_label: teamLabel }))
 })
 
 const tableData = computed(() => {
@@ -441,12 +442,14 @@ const teamOpeningRateOptions = computed(() => {
   if (teamDrillActive.value) {
     return buildOpeningRateRankingOptions(teamMemberItems.value, {
       title: `${drillTeamLabel.value} 组员开口率排行`,
-      limit: teamLimit.value
+      limit: teamLimit.value,
+      unifiedTooltip: true
     })
   }
   return buildOpeningRateRankingOptions(teamItems.value, {
     title: '班组开口率排行',
-    limit: teamLimit.value
+    limit: teamLimit.value,
+    unifiedTooltip: true
   })
 })
 

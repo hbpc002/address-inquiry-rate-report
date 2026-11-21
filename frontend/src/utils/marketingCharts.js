@@ -221,14 +221,35 @@ export function rankingItems(items = [], { metric = 'total', limit = 10, labelKe
     .slice(0, limit)
 }
 
+function entityTooltipHeader(item) {
+  if (!item) return []
+  if (item.kf_id !== undefined) {
+    return [
+      `姓名：${item.name || item.displayName || item._label || '-'}`,
+      `工号：${item.kf_id || '-'}`,
+      `班组：${item.team_label || item.team || '-'}`
+    ]
+  }
+  if (item.product_id || item.product_name) {
+    const lines = [`产品：${item.product_name || item.product_id || item._label || '-'}`]
+    if (item.product_id) lines.push(`产品ID：${item.product_id}`)
+    return lines
+  }
+  if (item.team) {
+    return [
+      `班组：${item.team_label || item.team}`,
+      `组长：${item.leader || '-'}`
+    ]
+  }
+  if (item.group_name) return [`行分类：${item.group_name}`]
+  if (item.date) return [`日期：${item.date}`]
+  return item._label ? [`名称：${item._label}`] : []
+}
+
 function rankingTooltip(data, metric) {
   if (!data) return ''
-  const lines = [data._label || data.name || '']
-  if (data.kf_id) lines.push(`工号：${data.kf_id}`)
-  if (data.team) lines.push(`班组：${data.team_label || data.team}`)
-  if (data.leader) lines.push(`组长：${data.leader}`)
+  const lines = entityTooltipHeader(data)
   if (data.people && metric !== 'people') lines.push(`人数：${data.people}`)
-  if (data.product_id && data.product_name) lines.push(`产品ID：${data.product_id}`)
   lines.push(`${metricLabel(metric)}：${formatMetricValue(data._value, metric)}`)
   if (metric !== 'total') lines.push(`产品办理量：${toNumber(data.total).toLocaleString('zh-CN')}`)
   if (metric !== 'order_count') lines.push(`订单数：${toNumber(data.order_count).toLocaleString('zh-CN')}`)
@@ -295,7 +316,8 @@ export function buildGroupRankingOptions(groups = [], options = {}) {
 export function buildOpeningRateRankingOptions(items = [], {
   title = '开口率排行',
   limit = 10,
-  labelKey = 'displayName'
+  labelKey = 'displayName',
+  unifiedTooltip = false
 } = {}) {
   const ranked = items
     .filter(item => toNumber(item.contact_count) > 0 && item.opening_rate != null)
@@ -316,10 +338,14 @@ export function buildOpeningRateRankingOptions(items = [], {
     params => {
       const data = Array.isArray(params) ? params[0]?.data : params?.data
       if (!data) return ''
-      const lines = [data._label || data.name || '']
-      if (data.kf_id) lines.push(`工号：${data.kf_id}`)
-      if (data.team) lines.push(`班组：${data.team_label || data.team}`)
-      if (data.leader) lines.push(`组长：${data.leader}`)
+      const lines = unifiedTooltip
+        ? entityTooltipHeader(data)
+        : [data._label || data.name || '']
+      if (!unifiedTooltip) {
+        if (data.kf_id) lines.push(`工号：${data.kf_id}`)
+        if (data.team) lines.push(`班组：${data.team_label || data.team}`)
+        if (data.leader) lines.push(`组长：${data.leader}`)
+      }
       if (data.people) lines.push(`人数：${toNumber(data.people)}`)
       lines.push(`接触量：${toNumber(data.contact_count).toLocaleString('zh-CN')}`)
       lines.push(`已开口量：${toNumber(data.opened_count).toLocaleString('zh-CN')}`)
@@ -442,7 +468,7 @@ export function buildCrossData(items = [], {
   sortMetric = 'total'
 } = {}) {
   const definition = CROSS_DEFINITIONS[kind]
-  if (!definition) return { categories: [], series: [] }
+  if (!definition) return { categories: [], series: [], items: [] }
   const top = [...items]
     .map(item => ({
       ...item,
@@ -460,28 +486,44 @@ export function buildCrossData(items = [], {
         name,
         data: top.map(item => round(definition.values(item)[key]))
       }
-    })
+    }),
+    items: top
   }
 }
 
+function crossTooltip(params, items) {
+  const list = Array.isArray(params) ? params : [params]
+  if (!list.length) return ''
+  const item = items[list[0]?.dataIndex]
+  const lines = entityTooltipHeader(item)
+  if (!lines.length && list[0]?.axisValue) lines.push(list[0].axisValue)
+  lines.push(...list.map(entry => (
+    `${entry.marker || ''}${entry.seriesName}：${toNumber(entry.value).toLocaleString('zh-CN')}`
+  )))
+  return lines.join('\n')
+}
+
 export function buildBusinessCrossOptions(items = [], options = {}) {
-  const { categories, series } = buildCrossData(items, { ...options, kind: 'business' })
+  const { categories, series, items: top } = buildCrossData(items, { ...options, kind: 'business' })
   return createStackedBarOptions(categories, series, options.title || '业务结构', {
-    rotate: categories.length > 8 ? 30 : 0
+    rotate: categories.length > 8 ? 30 : 0,
+    tooltipFormatter: params => crossTooltip(params, top)
   })
 }
 
 export function buildLhCrossOptions(items = [], options = {}) {
-  const { categories, series } = buildCrossData(items, { ...options, kind: 'lh' })
+  const { categories, series, items: top } = buildCrossData(items, { ...options, kind: 'lh' })
   return createStackedBarOptions(categories, series, options.title || '来话/去话结构', {
-    rotate: categories.length > 8 ? 30 : 0
+    rotate: categories.length > 8 ? 30 : 0,
+    tooltipFormatter: params => crossTooltip(params, top)
   })
 }
 
 export function buildValidCrossOptions(items = [], options = {}) {
-  const { categories, series } = buildCrossData(items, { ...options, kind: 'valid' })
+  const { categories, series, items: top } = buildCrossData(items, { ...options, kind: 'valid' })
   return createStackedBarOptions(categories, series, options.title || '叠加包有效期结构', {
-    rotate: categories.length > 8 ? 30 : 0
+    rotate: categories.length > 8 ? 30 : 0,
+    tooltipFormatter: params => crossTooltip(params, top)
   })
 }
 
@@ -497,7 +539,8 @@ export function buildDailyTrendOptions(days = []) {
   ]
   return createMultiLineOptions(categories, series, '每日办理趋势', {
     yName: '数量',
-    dataZoom: days.length > 20
+    dataZoom: days.length > 20,
+    tooltipFormatter: dailySeriesTooltip
   })
 }
 
@@ -561,8 +604,19 @@ export function buildDailyOrderRateOptions(days = []) {
     data: values
   }], '每日订单覆盖率', {
     yName: '%',
-    dataZoom: days.length > 20
+    dataZoom: days.length > 20,
+    tooltipFormatter: dailySeriesTooltip
   })
+}
+
+function dailySeriesTooltip(params) {
+  const list = Array.isArray(params) ? params : [params]
+  if (!list.length) return ''
+  const date = list[0]?.axisValue || ''
+  return [
+    `日期：${date}`,
+    ...list.map(item => `${item.marker || ''}${item.seriesName}：${toNumber(item.value).toLocaleString('zh-CN')}`)
+  ].join('\n')
 }
 
 function dailyTooltip(params, days) {
@@ -570,12 +624,12 @@ function dailyTooltip(params, days) {
   if (!list.length) return ''
   const date = list[0]?.axisValue || ''
   const day = days.find(item => item.date === date)
-  if (!day) return list.map(item => `${item.marker}${item.seriesName}：${item.value}`).join('\n')
+  if (!day) return dailySeriesTooltip(params)
   const lines = [
-    date,
+    `日期：${date}`,
     `产品办理量：${toNumber(day.total).toLocaleString('zh-CN')}`,
     `订单数：${toNumber(day.order_count).toLocaleString('zh-CN')}`,
-    ...list.map(item => `${item.marker}${item.seriesName}：${toNumber(item.value).toLocaleString('zh-CN')}`)
+    ...list.map(item => `${item.marker || ''}${item.seriesName}：${toNumber(item.value).toLocaleString('zh-CN')}`)
   ]
   return lines.join('\n')
 }
@@ -603,8 +657,7 @@ export function buildTeamScatterOptions(teams = [], { title = '班组人均效�
       formatter: params => {
         const item = params.data || {}
         return [
-          item.team,
-          item.leader ? `组长：${item.leader}` : '',
+          ...entityTooltipHeader(item),
           `人数：${toNumber(item.people)}`,
           `人均办理量：${formatMetricValue(item.value?.[0], 'avg_total')}`,
           `订单覆盖率：${formatMetricValue(item.value?.[1], 'order_rate')}`,
@@ -647,14 +700,12 @@ export function buildEmployeeScatterOptions(employees = [], { title = '员工办
       formatter: params => {
         const item = params.data || {}
         return [
-          item.displayName,
-          `工号：${item.kf_id || '-'}`,
-          `班组：${item.team || '-'}`,
+          ...entityTooltipHeader(item),
           `行分类：${item.group_name || '-'}`,
           `办理量：${toNumber(item.total).toLocaleString('zh-CN')}`,
           `订单数：${toNumber(item.order_count).toLocaleString('zh-CN')}`,
           `订单覆盖率：${formatMetricValue(metricValue(item, 'order_rate'), 'order_rate')}`
-        ].join('\n')
+        ].filter(Boolean).join('\n')
       }
     },
     grid: { left: '3%', right: '6%', top: 50, bottom: '12%', containLabel: true },
@@ -683,7 +734,25 @@ function buildRadarOptions(items, { title, limit = 8, nameKey = 'team' } = {}) {
   ]
   return layerTooltip({
     title: { text: title, left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'item' },
+    tooltip: {
+      trigger: 'item',
+      formatter: params => {
+        const list = Array.isArray(params) ? params : [params]
+        if (!list.length) return ''
+        const entry = list[0]?.data?.raw || sorted[list[0]?.dataIndex]
+        const values = list[0]?.value || []
+        const source = entry || {}
+        return [
+          ...entityTooltipHeader(entry),
+          `办理量：${toNumber(source.total ?? values[0]).toLocaleString('zh-CN')}`,
+          `订单数：${toNumber(source.order_count ?? values[1]).toLocaleString('zh-CN')}`,
+          `来话：${toNumber(source.inbound ?? values[2]).toLocaleString('zh-CN')}`,
+          `去话：${toNumber(source.outbound ?? values[3]).toLocaleString('zh-CN')}`,
+          `叠加包：${toNumber(source.overlay ?? values[4]).toLocaleString('zh-CN')}`,
+          `套餐变更：${toNumber(source.package_change ?? values[5]).toLocaleString('zh-CN')}`
+        ].filter(Boolean).join('\n')
+      }
+    },
     legend: { bottom: 0, type: 'scroll' },
     radar: { indicator: indicators, radius: '58%' },
     series: [{
@@ -698,6 +767,7 @@ function buildRadarOptions(items, { title, limit = 8, nameKey = 'team' } = {}) {
           toNumber(item.overlay),
           toNumber(item.package_change)
         ],
+        raw: item,
         itemStyle: { color: CHART_COLORS[index % CHART_COLORS.length] }
       }))
     }]

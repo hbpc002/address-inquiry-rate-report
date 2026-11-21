@@ -9,9 +9,12 @@ import {
   buildCrossData,
   buildTeamRankingOptions,
   buildEmployeeRankingOptions,
+  buildBusinessCrossOptions,
   buildDailyTrendOptions,
   buildDailyBusinessOptions,
+  buildDailyOrderRateOptions,
   buildTeamScatterOptions,
+  buildEmployeeScatterOptions,
   buildTeamRadarOptions,
   buildOpeningRateRankingOptions,
   buildOpeningDailyTrendOptions,
@@ -373,5 +376,182 @@ describe('营销统计图表数据构建', () => {
       { class_name: '区域', contact_count: 5, opened_count: 4, opening_rate: 0.8 }
     ], { title: '班级开口率排行', labelKey: 'class_name' })
     expect(options.yAxis.data).toEqual(['热线', '区域'])
+  })
+
+  it('班组排行 tooltip 先显示班组和组长，再显示指标', () => {
+    const options = buildTeamRankingOptions(teams)
+    const tooltip = options.tooltip.formatter([{ data: options.series[0].data[1] }])
+    expect(tooltip.split('\n')).toEqual([
+      '班组：热线二组',
+      '组长：李四',
+      '人数：3',
+      '产品办理量：30',
+      '订单数：24'
+    ])
+  })
+
+  it('班组排行 tooltip 缺少组长时显示占位符', () => {
+    const options = buildTeamRankingOptions([{ team: '无组长组', people: 1, total: 1 }])
+    const tooltip = options.tooltip.formatter([{ data: options.series[0].data[0] }])
+    expect(tooltip.split('\n')[1]).toBe('组长：-')
+  })
+
+  it('员工排行 tooltip 按姓名、工号、班组排序且不显示组长', () => {
+    const options = buildEmployeeRankingOptions(employees)
+    const tooltip = options.tooltip.formatter([{ data: options.series[0].data[1] }])
+    expect(tooltip.split('\n').slice(0, 5)).toEqual([
+      '姓名：赵六',
+      '工号：KF002',
+      '班组：热线二组',
+      '人数：1',
+      '产品办理量：30'
+    ])
+    expect(tooltip).not.toContain('组长：')
+  })
+
+  it('班组结构图 tooltip 先显示班组和组长，再显示各分类数值', () => {
+    const options = buildBusinessCrossOptions(teams, { limit: 10 })
+    const params = options.series.map(series => ({
+      dataIndex: 0,
+      seriesName: series.name,
+      value: series.data[0]
+    }))
+    expect(options.tooltip.formatter(params).split('\n')).toEqual([
+      '班组：热线二组',
+      '组长：李四',
+      '叠加包：21',
+      '套餐变更：6',
+      '其他：3'
+    ])
+  })
+
+  it('产品结构图 tooltip 先显示产品名和产品ID', () => {
+    const products = [{
+      product_id: 'P001',
+      product_name: '千兆宽带',
+      total: 8,
+      overlay: 5,
+      package_change: 2
+    }]
+    const options = buildBusinessCrossOptions(products)
+    const params = options.series.map(series => ({
+      dataIndex: 0,
+      seriesName: series.name,
+      value: series.data[0]
+    }))
+    expect(options.tooltip.formatter(params).split('\n').slice(0, 2)).toEqual([
+      '产品：千兆宽带',
+      '产品ID：P001'
+    ])
+  })
+
+  it('行分类结构图 tooltip 先显示行分类', () => {
+    const groups = [{
+      group_name: '线上直办-热线',
+      people: 3,
+      total: 10,
+      order_count: 6,
+      overlay: 7,
+      package_change: 2
+    }]
+    const options = buildBusinessCrossOptions(groups)
+    const params = options.series.map(series => ({
+      dataIndex: 0,
+      seriesName: series.name,
+      value: series.data[0]
+    }))
+    expect(options.tooltip.formatter(params).split('\n')[0]).toBe('行分类：线上直办-热线')
+  })
+
+  it('班组雷达图 tooltip 先显示班组和组长', () => {
+    const options = buildTeamRadarOptions(teams)
+    const tooltip = options.tooltip.formatter([{
+      dataIndex: 0,
+      data: options.series[0].data[0],
+      value: options.series[0].data[0].value
+    }])
+    expect(tooltip.split('\n').slice(0, 2)).toEqual(['班组：热线二组', '组长：李四'])
+  })
+
+  it('班组散点图 tooltip 先显示班组和组长', () => {
+    const options = buildTeamScatterOptions(teams)
+    const data = options.series[0].data.find(item => item.team === '热线二组')
+    const tooltip = options.tooltip.formatter({ data })
+    expect(tooltip.split('\n').slice(0, 2)).toEqual(['班组：热线二组', '组长：李四'])
+  })
+
+  it('员工散点图 tooltip 先显示姓名、工号、班组且不显示组长', () => {
+    const options = buildEmployeeScatterOptions(employees)
+    const data = options.series[0].data.find(item => item.name === '赵六')
+    const tooltip = options.tooltip.formatter({ data })
+    expect(tooltip.split('\n').slice(0, 3)).toEqual([
+      '姓名：赵六',
+      '工号：KF002',
+      '班组：热线二组'
+    ])
+    expect(tooltip).not.toContain('组长：')
+  })
+
+  it('营销统计开口率排行启用统一 tooltip，默认保留开口率报表现有格式', () => {
+    const items = [{
+      team: '热线二组',
+      team_label: '热线二组（客服部）',
+      leader: '李四',
+      people: 3,
+      contact_count: 10,
+      opened_count: 8,
+      opening_rate: 0.8
+    }]
+    const unified = buildOpeningRateRankingOptions(items, { unifiedTooltip: true })
+    expect(unified.tooltip.formatter([{ data: unified.series[0].data[0] }]).split('\n')).toEqual([
+      '班组：热线二组（客服部）',
+      '组长：李四',
+      '人数：3',
+      '接触量：10',
+      '已开口量：8',
+      '开口率：80.00%'
+    ])
+    const legacy = buildOpeningRateRankingOptions(items)
+    expect(legacy.tooltip.formatter([{ data: legacy.series[0].data[0] }]).split('\n')[0])
+      .toBe('热线二组')
+  })
+
+  it('每日趋势 tooltip 首行为日期，随后显示各指标', () => {
+    const options = buildDailyTrendOptions(days)
+    const params = options.series.map(series => ({
+      axisValue: '2026-10-01',
+      seriesName: series.name,
+      value: series.data[0]
+    }))
+    expect(options.tooltip.formatter(params).split('\n').slice(0, 3)).toEqual([
+      '日期：2026-10-01',
+      '产品办理量：20',
+      '订单数：12'
+    ])
+  })
+
+  it('每日业务结构 tooltip 首行为日期并保留合计指标', () => {
+    const options = buildDailyBusinessOptions(days)
+    const params = options.series.map(series => ({
+      axisValue: '2026-10-01',
+      seriesName: series.name,
+      value: series.data[0]
+    }))
+    expect(options.tooltip.formatter(params).split('\n').slice(0, 4)).toEqual([
+      '日期：2026-10-01',
+      '产品办理量：20',
+      '订单数：12',
+      '叠加包：14'
+    ])
+  })
+
+  it('每日订单覆盖率 tooltip 首行为日期', () => {
+    const options = buildDailyOrderRateOptions(days)
+    const tooltip = options.tooltip.formatter([{
+      axisValue: '2026-10-01',
+      seriesName: '订单覆盖率',
+      value: options.series[0].data[0]
+    }])
+    expect(tooltip.split('\n')).toEqual(['日期：2026-10-01', '订单覆盖率：60'])
   })
 })
